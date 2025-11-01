@@ -1,0 +1,53 @@
+{
+  "name": "seqlok",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "typescript": "catalog:",
+    "eslint": "catalog:",
+    "typescript-eslint": "catalog:",
+    "eslint-plugin-import": "catalog:",
+    "eslint-import-resolver-typescript": "catalog:",
+    "@types/node": "catalog:",
+    "@commitlint/cli": "catalog:",
+    "@commitlint/config-conventional": "catalog:",
+    "simple-git-hooks": "catalog:",
+    "lint-staged": "catalog:",
+    "prettier": "catalog:"
+  },
+  "scripts": {
+    "format": "prettier --write .",
+    "prepare": "simple-git-hooks",
+    "lint": "pnpm -r -F @seqlok/* run lint",
+    "lint:fix": "pnpm -r -F @seqlok/* run lint --fix",
+    "test": "pnpm -r -F @seqlok/* run test",
+    "test:ci": "pnpm -r -F @seqlok/* run test -- --run",
+    "build": "pnpm -r -F @seqlok/* run build",
+    "commitlint": "commitlint --color"
+  },
+  "simple-git-hooks": {
+    "pre-commit": "pnpm lint-staged",
+    "commit-msg": "node ./scripts/validate-commit-msg.mjs $1 && pnpm commitlint --edit $1",
+    "pre-push": "pnpm test:ci && pnpm -w -r run build"
+  },
+  "commitlint": {
+    "extends": ["@commitlint/config-conventional"],
+    "rules": {
+      "type-enum": [2, "always", ["feat", "fix", "refactor", "perf", "test", "docs", "build", "ci", "chore", "revert"]],
+      "type-case": [2, "always", "lower-case"],
+      "type-empty": [2, "never"],
+      "scope-empty": [2, "never"],
+      "scope-case": [2, "always", "lower-case"],
+      "subject-empty": [2, "never"],
+      "subject-case": [2, "always", "lower-case"],
+      "subject-full-stop": [2, "never", "."],
+      "header-full-stop": [2, "never", "."],
+      "header-max-length": [2, "always", 72]
+    }
+  },
+  "lint-staged": {
+    "packages/core/**/*.{ts,tsx}": [
+      "eslint --fix --max-warnings=0"
+    ]
+  }
+}
