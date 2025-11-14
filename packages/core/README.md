@@ -1,88 +1,144 @@
 # @seqlok/core
 
-**Coherent, atomic, SWMR state sync for real-time systems**
+Coherent, atomic, SWMR state sync for real-time systems. A shared-memory layer between a **Controller** (main/UI) and a
+**Processor** (worker/worklet). Controller writes **Params**, Processor writes **Meters**.
+
+- Typed arrays over `SharedArrayBuffer`, guarded by seqlock
+  - API: `defineSpec → planLayout → allocateShared → buildHandoff → receiveHandoff → bindController / bindProcessor`
+- ESM-only (Browser 2024+ / Node 20+), COOP/COEP enabled
 
 ---
 
-### Coherent Read (Controller, values-only)
+## Install
 
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"textColor":"#ffffff","primaryTextColor":"#ffffff","lineColor":"#94a3b8","primaryColor":"#111827","secondaryColor":"#0f172a","tertiaryColor":"#0b1220","clusterBkg":"#0f172a","clusterBorder":"#334155","primaryBorderColor":"#94a3b8"}} }%%
-flowchart TD
-    Start["meters.snapshot({ keys, into? })"] --> R1["load seq s1"]
-    R1 --> Odd{is s1 odd?}
-    Odd -- yes --> Spin["spin / yield briefly"] --> R1
-    Odd -- no --> Read["read selected values\n(copy arrays; use 'into' if provided)"]
-    Read --> R2["load seq s2"]
-    R2 --> Stable{"s1 equals s2 and even?"}
-    Stable -- yes --> Ret["return values object"]
-    Stable -- no --> Retry["bounded retry (internal policy)"] --> R1
-```
-
-> Notes: values-only, no status in the return; bounded spin/retry is **internal policy** (not configurable).
-
----
-
-### `snapshotWithStatus` wrapper (diagnostics pair)
-
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"textColor":"#ffffff","primaryTextColor":"#ffffff","lineColor":"#94a3b8","primaryColor":"#111827","secondaryColor":"#0f172a","tertiaryColor":"#0b1220","clusterBkg":"#0f172a","clusterBorder":"#334155","primaryBorderColor":"#94a3b8"}} }%%
-flowchart TD
-    A["meters.snapshotWithStatus({ keys, into? })"] --> B["enable internal counters"]
-    B --> C["invoke values reader\n(same path as snapshot)"]
-    C --> D["collect counters → SnapshotStatus"]
-    D --> E["return [values, status] tuple"]
-```
-
-> Status includes `spins`, `retries`, `fallback`. Values remain a named object.
-
----
-
-### Processor coherent window (`params.within(cb)`)
-
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"textColor":"#ffffff","primaryTextColor":"#ffffff","lineColor":"#94a3b8","primaryColor":"#111827","secondaryColor":"#0f172a","tertiaryColor":"#0b1220","clusterBkg":"#0f172a","clusterBorder":"#334155","primaryBorderColor":"#94a3b8"}} }%%
-flowchart TD
-    P0["params.within(cb)"] --> P1["load PU seq s1"]
-    P1 --> Podd{is s1 odd?}
-    Podd -- yes --> Pspin["bounded spin (internal)"] --> P1
-    Podd -- no --> Pcap["capture scalars; copy array views to scratch"]
-    Pcap --> P2["load PU seq s2"]
-    P2 --> Pstable{"s1 equals s2 and even?"}
-    Pstable -- yes --> Pinvoke["invoke cb with coherent window"] --> Pdone["return"]
-    Pstable -- no --> Pret["bounded retry (internal)"] --> P1
-```
-
-> Scratch views must **not** escape the callback; copy to owned buffers if needed later.
-
----
-
-### Snapshot coherence (Controller, values-only—concise view)
-
-```mermaid
-%%{init: {"theme":"base","themeVariables":{"textColor":"#ffffff","primaryTextColor":"#ffffff","lineColor":"#94a3b8","primaryColor":"#111827","secondaryColor":"#0f172a","tertiaryColor":"#0b1220","clusterBkg":"#0f172a","clusterBorder":"#334155","primaryBorderColor":"#94a3b8"}} }%%
-flowchart TD
-    A["meters.snapshot({ keys, into? })"] --> B["if seq odd → wait briefly"]
-    B --> C["read values (arrays copied; 'into' honored)"]
-    C --> D["verify seq unchanged and even"]
-    D -- stable --> E["return values object"]
-    D -- changed --> B
+```bash
+pnpm add @seqlok/core
+# or
+npm i @seqlok/core
 ```
 
 ---
 
-### Backing memory planes
+## Quick Start — Define → Plan → Bind
 
 ```
-PF32  : Float32 param plane
-PI32  : Int32   param plane (incl. enums as int indices)
-PB    : Byte    param plane (booleans)
-PU    : Uint32  params lock + sequence
+src/
+  spec.ts
+  main.ts
+  worker.ts
+```
 
-MF32  : Float32 meter plane
-MF64  : Float64 meter plane
-MU32  : Uint32  meter plane (e.g., counters)
-MU    : Uint32  meters lock + sequence
+### `src/spec.ts`
+
+```ts
+import { defineSpec } from '@seqlok/core';
+
+export const spec = defineSpec(({ param, meter }) => ({
+  id: 'demo',
+  params: {
+    timeRatio: param.f32({ min: 0.25, max: 4 }),
+    coeffs: param.f32.array(8),
+    mode: param.enum({ values: ['normal', 'granular'] }),
+  },
+  meters: {
+    rms: meter.f32(),
+    peak: meter.f32(),
+    spectrum: meter.f32.array(1024),
+    frames: meter.u32(),
+  },
+}));
+
+export type DemoSpec = typeof spec;
+```
+
+### `src/main.ts`
+
+```ts
+import { planLayout, allocateShared, buildHandoff, bindController } from '@seqlok/core';
+import { spec } from './spec';
+
+const plan = planLayout(spec);
+const backing = allocateShared(plan);
+export const controller = bindController(spec, backing);
+
+const handoff = buildHandoff(plan, backing);
+worker.postMessage({ type: 'HANDOFF', handoff });
+
+controller.params.update({ timeRatio: 1.5 });
+controller.params.stage('coeffs', (v) => {
+  for (let i = 0; i < v.length; i++) v[i] = Math.random();
+});
+
+const v0 = controller.meters.version();
+if (controller.meters.version() !== v0) {
+  const { rms, spectrum } = controller.meters.snapshot({ keys: ['rms', 'spectrum'] });
+}
+```
+
+### `src/worker.ts`
+
+```ts
+import { receiveHandoff, bindProcessor } from '@seqlok/core';
+import { spec } from './spec';
+
+self.onmessage = (ev) => {
+  if (ev.data?.type !== 'HANDOFF') return;
+
+  const received = receiveHandoff(ev.data.handoff);
+  const processor = bindProcessor(spec, received);
+
+  processor.params.within((p) => {
+    const ratio = p.timeRatio;
+    const taps = p.coeffs;
+    const mode = p.mode;
+  });
+
+  processor.meters.publish((w) => {
+    w.rms(0.42);
+    w.peak(0.71);
+    w.stage('spectrum', (buf) => {
+      for (let i = 0; i < buf.length; i++) buf[i] = i & 1 ? 0 : 1;
+    });
+    w.frames(123_456);
+  });
+};
 ```
 
 ---
+
+## Memory planes (cheat sheet)
+
+PF32/PI32/PB/PU for **params**, MF32/MF64/MU32/MU for **meters**.
+Offsets are bytes → `index = offset / BYTES_PER_ELEMENT`.
+Bool meters are `0 | 1` on MU32.
+
+---
+
+## Documentation
+
+**Architecture**
+
+- [00 — Origin & Design History](./docs/architecture/00-seqlok-origin-and-design-history.md)
+- [01 — Goals & Non-Goals](./docs/architecture/01-seqlok-goals-and-non-goals.md)
+- [02 — Intellectual Heritage](./docs/architecture/02-seqlok-intellectual-heritage.md)
+- [03 — Concurrency Model & Roles](./docs/architecture/03-seqlok-concurrency-model-and-roles.md)
+- [04 — DSL Overview & Rationale](./docs/architecture/04-seqlok-dsl-overview-and-rationale.md)
+- [05 — Error System & Fail-Fast Philosophy](./docs/architecture/05-seqlok-error-system-and-fail-fast-philosophy.md)
+- [06 — Object Model Rationale](./docs/architecture/06-seqlok-object-model-rationale.md)
+- [07 — API Shape Rationale](./docs/architecture/07-seqlok-api-shape-rationale.md)
+- [08 — Primitives & Seqlock](./docs/architecture/08-seqlok-primitives-and-seqlock.md)
+- [09 — Backing & Plane Layout](./docs/architecture/09-seqlok-backing-and-plane-layout.md)
+- [10 — ABA/Wraparound: Not a Bug](./docs/architecture/10-seqlok-aba-wraparound-not-a-bug.md)
+- [11 — E2E Flow: Visual Guide](./docs/architecture/11-seqlok-e2e-flow-visual-guide.md)
+- [12 — Coherent Reads & Planes](./docs/architecture/12-coherent-reads-and-planes.md)
+- [13 — Implementation Notes (Kernel)](./docs/architecture/13-implementation-notes.md)
+
+**Reference**
+
+- [API Reference](./docs/api-reference.md)
+
+---
+
+## License
+
+MIT

@@ -17,6 +17,7 @@ out/
 
 # ── coverage and reports
 coverage/
+packages/**/.coverage/
 *.lcov
 .nyc_output/
 
@@ -48,8 +49,3 @@ Thumbs.db
 *.diff
 *_code.md
 *_code.txt
-
-# ── generated artifacts accidentally emitted outside dist
-packages/*/tests/**/*.d.ts
-packages/*/tests/**/*.d.ts.map
-examples/**/dist/

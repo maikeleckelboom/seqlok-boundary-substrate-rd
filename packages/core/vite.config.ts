@@ -1,7 +1,10 @@
 import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
+  define: {
+    __SEQLOK_DEV_ASSERTS__: mode === 'development' ? 'true' : 'false',
+  },
   build: {
     lib: {
       entry: 'src/index.ts',
@@ -9,9 +12,7 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      output: {
-        inlineDynamicImports: true,
-      },
+      output: { inlineDynamicImports: true },
     },
     sourcemap: false,
     emptyOutDir: true,
@@ -19,7 +20,10 @@ export default defineConfig({
   },
   plugins: [
     dts({
+      entryRoot: 'src',
       tsconfigPath: 'tsconfig.build.json',
+      outDir: 'dist',
+      insertTypesEntry: true,
       exclude: [
         'tests/**/*',
         'examples/**/*',
@@ -30,4 +34,4 @@ export default defineConfig({
       ],
     }),
   ],
-});
+}));

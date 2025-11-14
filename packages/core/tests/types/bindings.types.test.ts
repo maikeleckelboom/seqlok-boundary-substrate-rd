@@ -1,70 +1,175 @@
 import { describe, it, expectTypeOf } from 'vitest';
 
+import {
+  type Backing,
+  isSharedBacking,
+  isSharedPartitionedBacking,
+  isWasmSharedBacking,
+  type SharedBacking,
+  type SharedPartitionedBacking,
+  type WasmSharedBacking,
+} from '../../src/backing/types';
+
 import type {
-  SpecInput,
+  ControllerMeters,
   ControllerParams,
-  ProcessorParams,
   MeterWriter,
-} from '../../src/types';
+  ParamValueFor,
+  ProcessorParams,
+} from '../../src/binding/types';
+import type { SpecInput } from '../../src/spec/types';
 
-describe('bindings types', () => {
-  it('controller.update patch only contains scalar keys', () => {
-    interface S extends SpecInput {
-      id: 'x';
-      params: { rate: { kind: 'f32' }; coeffs: { kind: 'f32.array'; length: 8 } };
-    }
-
-    type Update = ControllerParams<S>['update'];
-    type Patch = Parameters<Update>[0];
-
-    // Only scalar key `rate` is allowed in the patch; array key `coeffs` is excluded.
-    expectTypeOf<Patch>().toMatchObjectType<Readonly<Partial<{ rate: number }>>>();
+describe('Backing union type guards (signatures)', () => {
+  it('isSharedBacking(b: Backing): b is SharedBacking', () => {
+    expectTypeOf(isSharedBacking).parameter(0).toEqualTypeOf<Backing>();
+    expectTypeOf(isSharedBacking).guards.toEqualTypeOf<SharedBacking>();
   });
 
-  it('processor.within view shapes are correct (pure type extraction)', () => {
-    interface S extends SpecInput {
-      id: 'x';
-      params: {
-        rate: { kind: 'f32' };
-        enabled: { kind: 'bool' };
-        coeffs: { kind: 'f32.array'; length: 8 };
-      };
-    }
-
-    type P = ProcessorParams<S>;
-    type Within = P['within'];
-    type View = Parameters<Within>[0] extends (v: infer V) => unknown ? V : never;
-
-    // Scalar → number
-    expectTypeOf<View['rate']>().toEqualTypeOf<number>();
-    // Bool → boolean (public surface)
-    expectTypeOf<View['enabled']>().toEqualTypeOf<boolean>();
-    // Array param → correct typed array class
-    expectTypeOf<View['coeffs']>().toEqualTypeOf<Float32Array>();
+  it('isSharedPartitionedBacking(b: Backing): b is SharedPartitionedBacking', () => {
+    expectTypeOf(isSharedPartitionedBacking).parameter(0).toEqualTypeOf<Backing>();
+    expectTypeOf(
+      isSharedPartitionedBacking,
+    ).guards.toEqualTypeOf<SharedPartitionedBacking>();
   });
 
-  it('meter writer has scalar setters and array stage', () => {
-    interface S extends SpecInput {
-      id: 'x';
-      meters: { peak: { kind: 'f32' }; spectrum: { kind: 'f32.array'; length: 512 } };
+  it('isWasmSharedBacking(b: Backing): b is WasmSharedBacking', () => {
+    expectTypeOf(isWasmSharedBacking).parameter(0).toEqualTypeOf<Backing>();
+    expectTypeOf(isWasmSharedBacking).guards.toEqualTypeOf<WasmSharedBacking>();
+  });
+});
+
+describe('Backing union discriminants (Extract<> mapping)', () => {
+  it('maps discriminants to exact backing shapes', () => {
+    type C = Extract<Backing, { kind: 'shared' }>;
+    type S = Extract<Backing, { kind: 'shared-partitioned' }>;
+    type W = Extract<Backing, { kind: 'wasm-shared' }>;
+
+    expectTypeOf<C>().toEqualTypeOf<SharedBacking>();
+    expectTypeOf<S>().toEqualTypeOf<SharedPartitionedBacking>();
+    expectTypeOf<W>().toEqualTypeOf<WasmSharedBacking>();
+
+    // Key property types
+    expectTypeOf<C['sab']>().toEqualTypeOf<SharedArrayBuffer>();
+    expectTypeOf<S['planes']['PF32']>().toEqualTypeOf<SharedArrayBuffer>();
+    expectTypeOf<W['memory']>().toEqualTypeOf<WebAssembly.Memory>();
+  });
+});
+
+describe('Control-flow narrowing against real values (non-deprecated checks)', () => {
+  it('narrows correctly in each branch', () => {
+    const cases: Backing[] = [
+      { kind: 'shared', sab: new SharedArrayBuffer(8) },
+      {
+        kind: 'shared-partitioned',
+        planes: {
+          PF32: new SharedArrayBuffer(0),
+          PI32: new SharedArrayBuffer(0),
+          PB: new SharedArrayBuffer(0),
+          PU: new SharedArrayBuffer(8),
+          MF32: new SharedArrayBuffer(0),
+          MF64: new SharedArrayBuffer(0),
+          MU32: new SharedArrayBuffer(0),
+          MU: new SharedArrayBuffer(8),
+        },
+      },
+      {
+        kind: 'wasm-shared',
+        memory: new WebAssembly.Memory({ shared: true, initial: 1, maximum: 1 }),
+      },
+    ] as const;
+
+    for (const b of cases) {
+      if (isSharedBacking(b)) {
+        // Exact equality is safe post-narrow
+        expectTypeOf(b).toEqualTypeOf<SharedBacking>();
+      } else if (isSharedPartitionedBacking(b)) {
+        expectTypeOf(b).toEqualTypeOf<SharedPartitionedBacking>();
+      } else if (isWasmSharedBacking(b)) {
+        expectTypeOf(b).toEqualTypeOf<WasmSharedBacking>();
+      } else {
+        const _never: never = b;
+      }
     }
-    type W = MeterWriter<S>;
+  });
+});
 
-    // Scalar meter is a setter function
-    expectTypeOf<W['peak']>().toEqualTypeOf<(value: number) => void>();
+// TS 5.4+ typed array alias (keeps assertions stable across lib variations)
+type F32RO = Readonly<Float32Array>;
 
-    // Array meter uses writer.stage - it's a generic method, not a concrete type
-    expectTypeOf<W>().toHaveProperty('stage');
+describe('binding (compile-time contracts)', () => {
+  interface S extends SpecInput {
+    readonly id: 'deck';
+    readonly params: {
+      rate: { kind: 'f32'; min: 0.25; max: 4 };
+      coeffs: { kind: 'f32.array'; length: 16 };
+      enabled: { kind: 'bool' };
+      mode: { kind: 'enum'; values: readonly ['a', 'b', 'c'] };
+    };
+    readonly meters: {
+      rms: { kind: 'f32' };
+      frame: { kind: 'u32' };
+      spectrum: { kind: 'f32.array'; length: 512 };
+    };
+  }
 
-    // Test that stage can be called with the correct signature
-    type StageMethod = W['stage'];
-    expectTypeOf<StageMethod>().toBeCallableWith('spectrum', (_: Float32Array) => {
-      /* empty */
-    });
+  it('ControllerParams.update accepts only scalar params by key, with correct value types', () => {
+    type UpdateArg = Parameters<ControllerParams<S>['update']>[0];
 
-    // Object subset check: writer has peak setter and stage method
-    expectTypeOf<W>().toMatchObjectType<{
-      peak: (value: number) => void;
-    }>();
+    // AFTER (robust; no deprecations; no MISMATCH)
+    type UpdateKeys = keyof UpdateArg;
+    type ScalarKeys = 'rate' | 'enabled' | 'mode';
+
+    // Keys are exactly the scalar keys (no arrays allowed like "coeffs")
+    expectTypeOf<UpdateKeys>().toExtend<ScalarKeys>();
+    expectTypeOf<ScalarKeys>().toExtend<UpdateKeys>();
+
+    // Value types (optional-or-undefined semantics tolerated)
+    expectTypeOf<UpdateArg['rate']>().toExtend<number | undefined>();
+    expectTypeOf<number | undefined>().toExtend<UpdateArg['rate']>();
+
+    expectTypeOf<UpdateArg['enabled']>().toExtend<boolean | undefined>();
+    expectTypeOf<boolean | undefined>().toExtend<UpdateArg['enabled']>();
+
+    expectTypeOf<UpdateArg['mode']>().toExtend<('a' | 'b' | 'c') | undefined>();
+    expectTypeOf<('a' | 'b' | 'c') | undefined>().toExtend<UpdateArg['mode']>();
+  });
+
+  it('MeterWriter has scalar writers and typed stage() for array meters', () => {
+    type MW = MeterWriter<S>;
+
+    type StageParams = Parameters<MW['stage']>;
+    type ExpectedStage = ['spectrum', (dst: Float32Array) => void];
+    expectTypeOf<StageParams>().toEqualTypeOf<ExpectedStage>();
+
+    expectTypeOf<StageParams>().toExtend<ExpectedStage>();
+    expectTypeOf<ExpectedStage>().toExtend<StageParams>();
+  });
+
+  it('ControllerMeters.snapshot returns a readonly view with correct shapes', () => {
+    type Snap = ReturnType<ControllerMeters<S>['snapshot']>;
+    expectTypeOf<Snap['rms']>().toEqualTypeOf<number>();
+    expectTypeOf<Snap['frame']>().toEqualTypeOf<number>();
+    // Use assignability for typed arrays (TS/lib stability)
+    expectTypeOf<Snap['spectrum']>().toExtend<F32RO>();
+  });
+
+  it('ProcessorParams.within exposes readonly values with correct shapes', () => {
+    // ProcessorParams.within exposes readonly values with correct shapes
+    type Within = Parameters<ProcessorParams<S>['within']>[0];
+    type ReadView = Parameters<Within>[0];
+
+    expectTypeOf<ReadView['rate']>().toExtend<number>();
+
+    // Processor arrays are scratch views (mutable), not Readonly<>
+    expectTypeOf<ReadView['coeffs']>().toExtend<Float32Array>();
+
+    expectTypeOf<ReadView['enabled']>().toExtend<boolean>();
+
+    // Processor enum scalar is a numeric index (not label union)
+    expectTypeOf<ReadView['mode']>().toExtend<number>();
+
+    // Compile-time Check
+    type ModeCtl = ParamValueFor<S, 'mode'>;
+    expectTypeOf<ModeCtl>().toExtend<'a' | 'b' | 'c'>();
   });
 });

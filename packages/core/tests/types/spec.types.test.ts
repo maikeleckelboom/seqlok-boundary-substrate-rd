@@ -1,5 +1,6 @@
-import { describe, it, expectTypeOf } from 'vitest';
+import { describe, expectTypeOf, it } from 'vitest';
 
+import type { MeterValueFor, ParamValueFor } from '../../src/binding/types';
 import type {
   ArrayMeterKeys,
   ArrayParamKeys,
@@ -8,52 +9,80 @@ import type {
   ScalarMeterKeys,
   ScalarParamKeys,
   SpecInput,
-} from '../../src/types';
+} from '../../src/spec/types';
 
-describe('key extraction preserves literal keys', () => {
-  it('ParamKeys', () => {
-    interface S {
-      readonly id: 'x';
-      readonly params: { readonly peak: { readonly kind: 'f32' } };
-    }
-    type Keys = ParamKeys<S>;
-    expectTypeOf<Keys>().toEqualTypeOf<'peak'>();
-  });
+type F32RO = Readonly<Float32Array>;
+type U8RO = Readonly<Uint8Array>;
 
-  it('MeterKeys', () => {
-    interface S {
-      readonly id: 'x';
-      readonly meters: { readonly rms: { readonly kind: 'f32' } };
-    }
-    type Keys = MeterKeys<S>;
-    expectTypeOf<Keys>().toEqualTypeOf<'rms'>();
-  });
-});
-
-describe('array/scalar key partitions', () => {
-  it('Param keys split correctly', () => {
-    interface S extends SpecInput {
+describe('keys splitting (compile-time)', () => {
+  it('Param/Meter keys', () => {
+    interface Spec extends SpecInput {
       id: 'x';
       params: {
-        a: { kind: 'f32' };
+        rate: {
+          kind: 'f32';
+          min: 0;
+          max: 4;
+        };
+      };
+      meters: {
+        rms: {
+          kind: 'f32';
+        };
+      };
+    }
+
+    type PK = ParamKeys<Spec>;
+    type MK = MeterKeys<Spec>;
+
+    expectTypeOf<PK>().toEqualTypeOf<'rate'>();
+    expectTypeOf<MK>().toEqualTypeOf<'rms'>();
+  });
+
+  it('array/scalar key partitions', () => {
+    interface Spec extends SpecInput {
+      id: 'x';
+      params: {
+        a: { kind: 'f32'; min: 0; max: 10 };
         b: { kind: 'f32.array'; length: 8 };
         c: { kind: 'bool' };
       };
-    }
-    expectTypeOf<ArrayParamKeys<S>>().toEqualTypeOf<'b'>();
-    expectTypeOf<ScalarParamKeys<S>>().toEqualTypeOf<'a' | 'c'>();
-  });
-
-  it('Meter keys split correctly', () => {
-    interface S extends SpecInput {
-      id: 'x';
       meters: {
         m1: { kind: 'f32' };
         m2: { kind: 'f32.array'; length: 16 };
         m3: { kind: 'f64' };
       };
     }
-    expectTypeOf<ArrayMeterKeys<S>>().toEqualTypeOf<'m2'>();
-    expectTypeOf<ScalarMeterKeys<S>>().toEqualTypeOf<'m1' | 'm3'>();
+
+    expectTypeOf<ArrayParamKeys<Spec>>().toEqualTypeOf<'b'>();
+    expectTypeOf<ArrayMeterKeys<Spec>>().toEqualTypeOf<'m2'>();
+
+    expectTypeOf<ScalarParamKeys<Spec>>().toEqualTypeOf<'a' | 'c'>();
+    expectTypeOf<ScalarMeterKeys<Spec>>().toEqualTypeOf<'m1' | 'm3'>();
+  });
+});
+
+describe('ParamValueFor / MeterValueFor shapes (spot checks)', () => {
+  it('value shapes are correct', () => {
+    interface Spec extends SpecInput {
+      id: 'x';
+      params: {
+        gain: { kind: 'f32'; min: 0; max: 4 };
+        flags: { kind: 'bool.array'; length: 4 };
+        mode: { kind: 'enum'; values: ['normal', 'granular'] };
+      };
+      meters: {
+        rms: { kind: 'f32' };
+        spectrum: { kind: 'f32.array'; length: 1024 };
+      };
+    }
+
+    expectTypeOf<ParamValueFor<Spec, 'gain'>>().toEqualTypeOf<number>();
+
+    expectTypeOf<ParamValueFor<Spec, 'mode'>>().toExtend<'normal' | 'granular'>();
+    expectTypeOf<'normal' | 'granular'>().toExtend<ParamValueFor<Spec, 'mode'>>();
+
+    expectTypeOf<ParamValueFor<Spec, 'flags'>>().toExtend<U8RO>();
+    expectTypeOf<MeterValueFor<Spec, 'spectrum'>>().toExtend<F32RO>();
   });
 });

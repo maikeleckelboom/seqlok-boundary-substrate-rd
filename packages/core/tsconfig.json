@@ -4,16 +4,18 @@
     "composite": true,
     "declaration": true,
     "declarationMap": true,
-    "types": ["vitest/globals", "node"],
-    "noEmit": true
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "types": ["vitest/globals", "node"]
   },
-  "include": [
-    "src/**/*",
+  "include": ["src/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.spec.ts",
     "tests/**/*",
     "examples/**/*",
-    "vitest.config.*",
-    "**/*.test.ts",
-    "**/*.spec.ts"
-  ],
-  "exclude": ["node_modules", "dist"]
+    "vitest.config.*"
+  ]
 }

@@ -3,7 +3,7 @@
     "baseUrl": ".",
     "paths": {},
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "target": "ESNext",
+    "target": "ES2022",
     "module": "ESNext",
     "moduleDetection": "force",
     "jsx": "react-jsx",
@@ -17,6 +17,17 @@
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": false,
     "noUnusedParameters": false,
-    "noPropertyAccessFromIndexSignature": false
+    "experimentalDecorators": false,
+    "emitDecoratorMetadata": false,
+    "noPropertyAccessFromIndexSignature": false,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true,
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
+    "isolatedDeclarations": true,
+    "stripInternal": true,
+    "emitDeclarationOnly": false
   }
 }

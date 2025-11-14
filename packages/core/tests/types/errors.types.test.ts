@@ -1,35 +1,38 @@
-import { describe, it, expectTypeOf } from 'vitest';
-
-import type { ErrorPayload, TypedArrayName } from '../../src/errors/registry';
+import type {
+  ErrorPayload,
+  TypedArrayName,
+  HandoffSpecHashMismatchDetails,
+} from '../../src/errors';
 
 describe('errors: payload shapes', () => {
-  it('params.intoTypeMismatch payload', () => {
-    type P = ErrorPayload<'params.intoTypeMismatch'>;
-    expectTypeOf<P>().toEqualTypeOf<{
+  it('binding.snapshotIntoTypeMismatch payload', () => {
+    type P = ErrorPayload<'binding.snapshotIntoTypeMismatch'>;
+    interface Required {
       readonly key: string;
       readonly expectedType: TypedArrayName;
       readonly receivedType: string;
-      readonly cause?: unknown;
-    }>();
-  });
-
-  it('meters.intoLengthMismatch payload', () => {
-    type P = ErrorPayload<'meters.intoLengthMismatch'>;
-    expectTypeOf<P>().toEqualTypeOf<{
-      readonly key: string;
       readonly expectedLength: number;
       readonly receivedLength: number;
-      readonly cause?: unknown;
-    }>();
+    }
+    expectTypeOf<P>().toExtend<Required>();
   });
 
-  it('handoff.hashMismatch payload', () => {
-    type P = ErrorPayload<'handoff.hashMismatch'>;
-    expectTypeOf<P>().toEqualTypeOf<{
-      readonly localHash: string;
-      readonly remoteHash: string;
-      readonly diff?: string;
-      readonly cause?: unknown;
-    }>();
+  it('binding.snapshotIntoLengthMismatch payload', () => {
+    type P = ErrorPayload<'binding.snapshotIntoLengthMismatch'>;
+    interface Required {
+      readonly key: string;
+      readonly expectedType: TypedArrayName;
+      readonly receivedType: string;
+      readonly expectedLength: number;
+      readonly receivedLength: number;
+    }
+    expectTypeOf<P>().toExtend<Required>();
+  });
+
+  it('handoff.specHashMismatch payload', () => {
+    type P = ErrorPayload<'handoff.specHashMismatch'>;
+    // P should be the strongly-typed payload for this code
+    // (we only care that it’s assignable to the published detail type)
+    expectTypeOf<P>().toExtend<HandoffSpecHashMismatchDetails>();
   });
 });

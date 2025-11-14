@@ -1,24 +1,28 @@
-import { describe, expectTypeOf, it } from 'vitest';
+import { describe, it, expectTypeOf } from 'vitest';
 
-import type { MeterShape, ParamShape, SpecInput } from '../../src/types';
+import type { SpecInput } from '../../src/spec/types';
+import type { MeterValueFor, ParamValueFor } from 'packages/core/src/binding/types';
 
-describe('param shapes', () => {
+type F32RO = Readonly<Float32Array>;
+type I32RO = Readonly<Int32Array>;
+type U8RO = Readonly<Uint8Array>;
+
+describe('param shapes (via ParamValueFor)', () => {
   it('bool → boolean', () => {
     interface S extends SpecInput {
       id: 'x';
       params: { enabled: { kind: 'bool' } };
     }
-
-    expectTypeOf<ParamShape<S>['enabled']>().toEqualTypeOf<boolean>();
+    expectTypeOf<ParamValueFor<S, 'enabled'>>().toEqualTypeOf<boolean>();
   });
 
-  it('enum → typed indices', () => {
-    interface S {
+  it('enum → public string union', () => {
+    interface S extends SpecInput {
       id: 'x';
       params: { mode: { kind: 'enum'; values: readonly ['a', 'b', 'c'] } };
     }
-
-    expectTypeOf<ParamShape<S>['mode']>().toEqualTypeOf<0 | 1 | 2>();
+    expectTypeOf<ParamValueFor<S, 'mode'>>().toExtend<'a' | 'b' | 'c'>();
+    expectTypeOf<'a' | 'b' | 'c'>().toExtend<ParamValueFor<S, 'mode'>>();
   });
 
   it('arrays → correct typed arrays', () => {
@@ -27,15 +31,16 @@ describe('param shapes', () => {
       params: {
         coeffsF: { kind: 'f32.array'; length: 8 };
         coeffsI: { kind: 'i32.array'; length: 4 };
+        flags: { kind: 'bool.array'; length: 16 };
       };
     }
-
-    expectTypeOf<ParamShape<S>['coeffsF']>().toEqualTypeOf<Float32Array>();
-    expectTypeOf<ParamShape<S>['coeffsI']>().toEqualTypeOf<Int32Array>();
+    expectTypeOf<ParamValueFor<S, 'coeffsF'>>().toExtend<F32RO>();
+    expectTypeOf<ParamValueFor<S, 'coeffsI'>>().toExtend<I32RO>();
+    expectTypeOf<ParamValueFor<S, 'flags'>>().toExtend<U8RO>();
   });
 });
 
-describe('meter shapes', () => {
+describe('meter shapes (via MeterValueFor)', () => {
   it('scalar + array', () => {
     interface S extends SpecInput {
       id: 'x';
@@ -44,8 +49,7 @@ describe('meter shapes', () => {
         spectrum: { kind: 'f32.array'; length: 512 };
       };
     }
-
-    expectTypeOf<MeterShape<S>['peak']>().toEqualTypeOf<number>();
-    expectTypeOf<MeterShape<S>['spectrum']>().toEqualTypeOf<Float32Array>();
+    expectTypeOf<MeterValueFor<S, 'peak'>>().toEqualTypeOf<number>();
+    expectTypeOf<MeterValueFor<S, 'spectrum'>>().toExtend<F32RO>();
   });
 });

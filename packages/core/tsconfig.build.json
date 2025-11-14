@@ -1,10 +1,37 @@
 {
-  "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": false,
-    "declaration": true,
-    "emitDeclarationOnly": true
+    "baseUrl": ".",
+    "paths": {},
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": false,
+    "verbatimModuleSyntax": true,
+    // PERFORMANCE OPTIMIZATIONS
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
+    "isolatedDeclarations": true,
+    "stripInternal": true,
+    "noEmit": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noPropertyAccessFromIndexSignature": false,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noImplicitOverride": true,
+    "forceConsistentCasingInFileNames": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["tests/**/*", "examples/**/*", "**/*.test.ts", "**/*.spec.ts"]
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/core"
+    }
+  ]
 }

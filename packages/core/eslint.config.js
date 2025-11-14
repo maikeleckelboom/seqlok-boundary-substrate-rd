@@ -4,17 +4,21 @@ import importPlugin from 'eslint-plugin-import';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 import { defineConfig } from 'eslint/config';
+import globals from 'globals';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = dirname(dirname(HERE));
 
 const IGNORES = [
   '**/dist/**',
   '**/build/**',
+  '**/.coverage/**',
   '**/coverage/**',
   '**/.vite/**',
   '**/.output/**',
   '**/generated/**',
   '**/node_modules/**',
+  '**/*.d.ts',
 ];
 
 const SRC = ['src/**/*.{ts,tsx}'];
@@ -22,29 +26,30 @@ const TESTS = ['tests/**/*.{ts,tsx}', '**/*.test.ts', '**/*.spec.ts'];
 const EXAMPLES = ['examples/**/*.{ts,tsx}'];
 const ALL_TS = [...SRC, ...TESTS, ...EXAMPLES];
 
-// Layered boundaries (relative to packages/core)
+/** Layers (co-location + import direction) */
 const LAYERS = {
-  primitives: 'src/primitives',
-  types: 'src/types',
-  spec: 'src/spec',
+  primitives: 'src/primitives', // atomics, seqlock, ephemeral utils
+  errors: 'src/errors', // error codes, createError(), helpers; LEAF
+  types: 'src/types', // cross-domain public shapes only (no domain-owned types)
+  spec: 'src/spec', // DSL + spec types
+  plan: 'src/plan', // planner + plan types
   backing: 'src/backing',
-  bindings: 'src/bindings',
+  handoff: 'src/handoff',
+  binding: 'src/binding', // controller/processor bindings
+  public: 'src/public', // top-level facade(s) for consumers (may mix spec+types)
 };
 
 export default defineConfig(
   // Global ignores
   { ignores: IGNORES },
 
-  // TS-ESLint presets (typed) scoped to our TS files
+  // TS-ESLint presets (typed) scoped to TS files
   ...tseslint.configs.strictTypeChecked.map((c) => ({ ...c, files: ALL_TS })),
   ...tseslint.configs.stylisticTypeChecked.map((c) => ({ ...c, files: ALL_TS })),
 
   // eslint-plugin-import presets
   ...[importPlugin.flatConfigs.recommended, importPlugin.flatConfigs.typescript].map(
-    (c) => ({
-      ...c,
-      files: ALL_TS,
-    }),
+    (c) => ({ ...c, files: ALL_TS }),
   ),
 
   // Project settings + base rules
@@ -61,7 +66,7 @@ export default defineConfig(
     },
     settings: {
       'import/resolver': {
-        typescript: { project: ['./tsconfig.eslint.json'], alwaysTryTypes: true },
+        typescript: { project: ['./tsconfig.json'], alwaysTryTypes: true },
         node: { extensions: ['.ts', '.tsx', '.js', '.jsx'] },
       },
       'import/ignore': ['\\?url$', '^virtual:', '^vite(-client)?$'],
@@ -123,17 +128,66 @@ export default defineConfig(
       ],
       'import/no-extraneous-dependencies': [
         'error',
-        { devDependencies: true, optionalDependencies: false, peerDependencies: true },
+        {
+          devDependencies: true,
+          optionalDependencies: false,
+          peerDependencies: true,
+          packageDir: [HERE, REPO_ROOT],
+        },
       ],
-      // No cycles across layers
       'import/no-cycle': ['error', { maxDepth: 2 }],
 
-      // Directional flow lock (production code only; tests override below)
+      /**
+       * Directional flow lock (production code only; tests/examples override below)
+       * Each zone reads as: modules in `target` MUST NOT import from `from`.
+       */
       'import/no-restricted-paths': [
         'error',
         {
           zones: [
-            // primitives cannot import anything above it
+            // errors: foundational LEAF — must not depend on other layers
+            {
+              target: LAYERS.errors,
+              from: LAYERS.primitives,
+              message: 'errors must not import primitives',
+            },
+            {
+              target: LAYERS.errors,
+              from: LAYERS.types,
+              message: 'errors must not import types',
+            },
+            {
+              target: LAYERS.errors,
+              from: LAYERS.spec,
+              message: 'errors must not import spec',
+            },
+            {
+              target: LAYERS.errors,
+              from: LAYERS.plan,
+              message: 'errors must not import plan',
+            },
+            {
+              target: LAYERS.errors,
+              from: LAYERS.backing,
+              message: 'errors must not import backing',
+            },
+            {
+              target: LAYERS.errors,
+              from: LAYERS.handoff,
+              message: 'errors must not import handoff',
+            },
+            {
+              target: LAYERS.errors,
+              from: LAYERS.binding,
+              message: 'errors must not import binding',
+            },
+            {
+              target: LAYERS.errors,
+              from: LAYERS.public,
+              message: 'errors must not import public',
+            },
+
+            // primitives: bottom
             {
               target: LAYERS.primitives,
               from: LAYERS.types,
@@ -146,20 +200,45 @@ export default defineConfig(
             },
             {
               target: LAYERS.primitives,
+              from: LAYERS.plan,
+              message: 'primitives must not import plan',
+            },
+            {
+              target: LAYERS.primitives,
               from: LAYERS.backing,
               message: 'primitives must not import backing',
             },
             {
               target: LAYERS.primitives,
-              from: LAYERS.bindings,
-              message: 'primitives must not import bindings',
+              from: LAYERS.handoff,
+              message: 'primitives must not import handoff',
+            },
+            {
+              target: LAYERS.primitives,
+              from: LAYERS.binding,
+              message: 'primitives must not import binding',
+            },
+            {
+              target: LAYERS.primitives,
+              from: LAYERS.errors,
+              message: 'primitives must not import errors',
+            },
+            {
+              target: LAYERS.primitives,
+              from: LAYERS.public,
+              message: 'primitives must not import public',
             },
 
-            // types cannot import spec/backing/bindings
+            // types: cross-domain public shapes — must not pull domain-owned types
             {
               target: LAYERS.types,
               from: LAYERS.spec,
               message: 'types must not import spec',
+            },
+            {
+              target: LAYERS.types,
+              from: LAYERS.plan,
+              message: 'types must not import plan',
             },
             {
               target: LAYERS.types,
@@ -168,11 +247,36 @@ export default defineConfig(
             },
             {
               target: LAYERS.types,
-              from: LAYERS.bindings,
-              message: 'types must not import bindings',
+              from: LAYERS.handoff,
+              message: 'types must not import handoff',
+            },
+            {
+              target: LAYERS.types,
+              from: LAYERS.binding,
+              message: 'types must not import binding',
+            },
+            {
+              target: LAYERS.types,
+              from: LAYERS.errors,
+              message: 'types must not import errors',
+            },
+            {
+              target: LAYERS.types,
+              from: LAYERS.primitives,
+              message: 'types must not import primitives',
+            },
+            {
+              target: LAYERS.types,
+              from: LAYERS.public,
+              message: 'types must not import public',
             },
 
-            // spec cannot import backing/bindings
+            // spec: must not depend upward
+            {
+              target: LAYERS.spec,
+              from: LAYERS.plan,
+              message: 'spec must not import plan',
+            },
             {
               target: LAYERS.spec,
               from: LAYERS.backing,
@@ -180,15 +284,106 @@ export default defineConfig(
             },
             {
               target: LAYERS.spec,
-              from: LAYERS.bindings,
-              message: 'spec must not import bindings',
+              from: LAYERS.handoff,
+              message: 'spec must not import handoff',
+            },
+            {
+              target: LAYERS.spec,
+              from: LAYERS.binding,
+              message: 'spec must not import binding',
+            },
+            {
+              target: LAYERS.spec,
+              from: LAYERS.public,
+              message: 'spec must not import public',
             },
 
-            // backing cannot import bindings
+            // plan: above spec, below backing
+            {
+              target: LAYERS.plan,
+              from: LAYERS.backing,
+              message: 'plan must not import backing',
+            },
+            {
+              target: LAYERS.plan,
+              from: LAYERS.handoff,
+              message: 'plan must not import handoff',
+            },
+            {
+              target: LAYERS.plan,
+              from: LAYERS.binding,
+              message: 'plan must not import binding',
+            },
+            {
+              target: LAYERS.plan,
+              from: LAYERS.public,
+              message: 'plan must not import public',
+            },
+
+            // backing: below handoff/binding
             {
               target: LAYERS.backing,
-              from: LAYERS.bindings,
-              message: 'backing must not import bindings',
+              from: LAYERS.handoff,
+              message: 'backing must not import handoff',
+            },
+            {
+              target: LAYERS.backing,
+              from: LAYERS.binding,
+              message: 'backing must not import binding',
+            },
+            {
+              target: LAYERS.backing,
+              from: LAYERS.public,
+              message: 'backing must not import public',
+            },
+
+            // handoff: must not import binding/public
+            {
+              target: LAYERS.handoff,
+              from: LAYERS.binding,
+              message: 'handoff must not import binding',
+            },
+            {
+              target: LAYERS.handoff,
+              from: LAYERS.public,
+              message: 'handoff must not import public',
+            },
+
+            // binding: top — allowed to import downwards (no zones here)
+
+            /**
+             * Ban "central types hop": anywhere under src/**, do not import
+             * domain-owned type files from src/types/*.ts — import from that domain’s own types.ts.
+             */
+            {
+              target: 'src',
+              from: 'src/types/backing.ts',
+              message: 'Import from src/backing/types.ts',
+            },
+            {
+              target: 'src',
+              from: 'src/types/binding.ts',
+              message: 'Import from src/binding/types.ts',
+            },
+            {
+              target: 'src',
+              from: 'src/types/spec.ts',
+              message: 'Import from src/spec/types.ts',
+            },
+            {
+              target: 'src',
+              from: 'src/types/plan.ts',
+              message: 'Import from src/plan/types.ts',
+            },
+            {
+              target: 'src',
+              from: 'src/types/handoff.ts',
+              message: 'Import from src/handoff/types.ts',
+            },
+            {
+              target: 'src',
+              from: 'src/types/errors.ts',
+              message: 'Import from src/errors/types.ts',
             },
           ],
         },
@@ -196,15 +391,16 @@ export default defineConfig(
     },
   },
 
-  // Tests and examples: allow crossing boundaries for white-box testing
+  // Tests & examples: allow crossing boundaries and enable vitest globals
   {
     files: [...TESTS, ...EXAMPLES],
+    languageOptions: { globals: { ...globals.vitest } },
     rules: {
       'import/no-restricted-paths': 'off',
     },
   },
 
-  // Regex bans for fence-style banners
+  // Regex bans (global)
   {
     files: ['**/*.{ts,tsx,js,jsx}'],
     plugins: { regex: { rules: regex.rules } },
@@ -212,6 +408,14 @@ export default defineConfig(
       'regex/invalid': [
         'error',
         [
+          // 1) No blanket type barrels inside a domain
+          {
+            id: 'no-blanket-type-barrels',
+            message: 'Do not blanket re-export types; import from the owning domain.',
+            regex: String.raw`^\s*export\s+type\s+\*\s+from\s+['"]\./types['"];`,
+            regexOptions: 'm',
+          },
+          // 2) No fence-style section headers (house style)
           {
             id: 'no-fence-singleline',
             message: 'Avoid fence-style section headers; prefer concise JSDoc.',
@@ -238,6 +442,18 @@ export default defineConfig(
           },
         ],
       ],
+    },
+  },
+
+  // .d.ts: no project for perf; relax unused-vars
+  {
+    files: ['**/*.d.ts'],
+    languageOptions: {
+      parser: tseslint.parser,
+      parserOptions: { project: null },
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': 'off',
     },
   },
 );
