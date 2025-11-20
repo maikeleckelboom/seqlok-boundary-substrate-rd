@@ -11,6 +11,13 @@ know the basic golden flow:
 
 ## Available guides
 
+- [Understanding The Architecture](understanding-seqlok-mwmr-from-pipe-to-hub.md)
+  How Seqlok scales from a simple pipe (SWSR) to a complex multi-writer system (MWMR) without locking the hot path. Covers:
+  - The evolution from **Controller/Processor** to **Hub/Ring/Observer**
+  - Critical mental models for **"Zero-GC"** programming
+  - Deployment realities (COOP/COEP headers)
+
+
 - [Enum helpers & UI wiring](./enum-helpers.md)
   How to drive UI controls, legends, and fixtures directly from enum params/meters using:
   - `enumValues`
