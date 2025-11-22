@@ -37,7 +37,7 @@ const spec = defineSpec(({ param, meter }) => ({
 
 const plan = planLayout(spec);
 const backing = allocateShared(plan);
-const controller = bindController(spec, backing);
+const controller = bindController(spec, plan, backing);
 const handoff = buildHandoff(plan, backing);
 const received = receiveHandoff(handoff);
 const processor = bindProcessor(received);

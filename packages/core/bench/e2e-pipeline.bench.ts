@@ -92,7 +92,7 @@ describe('End-to-end pipeline: plan, allocate, handoff, bind', () => {
       const received = receiveHandoff(handoff);
 
       // Exercise controller/processor bindings.
-      bindController(smallSpec, backing);
+      bindController(smallSpec, plan, backing);
       bindProcessor(received);
 
       // Trivial side-effect to keep the pipeline live.
@@ -109,7 +109,7 @@ describe('End-to-end pipeline: plan, allocate, handoff, bind', () => {
       const handoff = buildHandoff(plan, backing);
       const received = receiveHandoff(handoff);
 
-      bindController(mediumSpec, backing);
+      bindController(mediumSpec, plan, backing);
       bindProcessor(received);
 
       _blackhole ^= 2;
@@ -125,7 +125,7 @@ describe('End-to-end pipeline: plan, allocate, handoff, bind', () => {
       const handoff = buildHandoff(plan, backing);
       const received = receiveHandoff(handoff);
 
-      bindController(largeSpec, backing);
+      bindController(largeSpec, plan, backing);
       bindProcessor(received);
 
       _blackhole ^= 4;
