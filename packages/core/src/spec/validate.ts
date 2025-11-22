@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Validation utilities for spec definitions and parameters.
+ *
+ * @remarks
+ * - Provides runtime validation for scalar ranges, array lengths, and enum values.
+ * - Includes type guards and assertion functions for spec validation.
+ * - Used during spec definition to ensure correctness before binding.
+ */
+
 import { createError } from '../errors/error';
 
 export interface ScalarRangeInput {

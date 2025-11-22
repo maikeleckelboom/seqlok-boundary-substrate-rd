@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Diagnostics data export utilities.
+ *
+ * @remarks
+ * - Supports multiple export formats (JSON, Prometheus, CSV).
+ * - Handles validation and sanitization of diagnostics data.
+ * - Used for integrating with monitoring systems and debugging tools.
+ */
+
 import { createError } from '../errors/error';
 
 import type { DiagnosticsCounterName, DiagnosticsCountersSnapshot } from './counters';

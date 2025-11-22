@@ -1,54 +1,61 @@
+/**
+ * @fileoverview
+ * Backing and mapped-view type definitions.
+ *
+ * @remarks
+ * - Describes backing kinds (shared SAB, partitioned SAB, shared WASM).
+ * - Defines the `MappedViews` structure used by bindings and diagnostics.
+ * - Centralises typed views for param, meter and lock planes.
+ *
+ * @internal
+ */
+
 import type { PlaneKey } from '../primitives/planes';
 
-/** The different kinds of memory backing for planes. */
+/**
+ * Supported memory backing strategies for Seqlok's shared memory planes.
+ *
+ * @remarks
+ * - `shared`: Single SharedArrayBuffer for all planes
+ * - `shared-partitioned`: Separate SharedArrayBuffer per plane
+ * - `wasm-shared`: WebAssembly.Memory with shared buffer
+ */
 export type BackingKind = 'shared' | 'shared-partitioned' | 'wasm-shared';
 
-/** A contiguous SharedArrayBuffer backing all planes. */
+/** Contiguous SharedArrayBuffer backing all planes in a single allocation. */
 export interface SharedBacking {
   readonly kind: 'shared';
   readonly sab: SharedArrayBuffer;
 }
 
-/** A separate SharedArrayBuffer for each plane. */
+/** Separate SharedArrayBuffer allocation for each plane. */
 export interface SharedPartitionedBacking {
   readonly kind: 'shared-partitioned';
   readonly planes: Readonly<Record<PlaneKey, SharedArrayBuffer>>;
 }
 
-/** A shared WebAssembly.Memory instance. Its underlying buffer is a SharedArrayBuffer. */
+/** WebAssembly.Memory instance with shared buffer for WebAssembly interop. */
 export interface WasmSharedBacking {
   readonly kind: 'wasm-shared';
   readonly memory: WebAssembly.Memory;
 }
 
-/** A union of all supported memory backing types. */
+/** Union of all supported memory backing strategies. */
 export type Backing = SharedBacking | SharedPartitionedBacking | WasmSharedBacking;
 
-/**
- * Type guard to check if a backing is a SharedBacking.
- * @param backing The backing instance to check.
- * @returns True if the backing is a SharedBacking, otherwise false.
- */
+/** Type guard for {@link SharedBacking} instances. */
 export function isSharedBacking(backing: Backing): backing is SharedBacking {
   return backing.kind === 'shared';
 }
 
-/**
- * Type guard to check if a backing is a SharedPartitionedBacking.
- * @param backing The backing instance to check.
- * @returns True if the backing is a SharedPartitionedBacking, otherwise false.
- */
+/** Type guard for {@link SharedPartitionedBacking} instances. */
 export function isSharedPartitionedBacking(
   backing: Backing,
 ): backing is SharedPartitionedBacking {
   return backing.kind === 'shared-partitioned';
 }
 
-/**
- * Type guard to check if a backing is a WasmSharedBacking.
- * @param backing The backing instance to check.
- * @returns True if the backing is a WasmSharedBacking, otherwise false.
- */
+/** Type guard for {@link WasmSharedBacking} instances. */
 export function isWasmSharedBacking(backing: Backing): backing is WasmSharedBacking {
   return backing.kind === 'wasm-shared';
 }

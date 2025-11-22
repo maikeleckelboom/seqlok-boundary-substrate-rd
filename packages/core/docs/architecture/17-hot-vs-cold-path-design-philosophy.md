@@ -46,10 +46,10 @@ This document formalizes that philosophy and provides guidance for evaluating ex
 
 ```ts
 // Hot: Audio quantum processing
-processor.params.within(params => {
+processor.params.within((params) => {
   const { gain, frequency } = params;
   // DSP loop
-  processor.meters.publish(meters => {
+  processor.meters.publish((meters) => {
     meters.rms = computeRMS();
   });
 });
@@ -67,7 +67,7 @@ controller.params.set('gain', slider.value);
 controller.params.update({ gain, pitch, rate });
 
 // Hot: Array mutations via explicit views
-controller.params.stage('eqBands', dst => {
+controller.params.stage('eqBands', (dst) => {
   computeEQCurve(dst.view);
 });
 ```
@@ -109,7 +109,7 @@ controller.params.hydrate(loaded);
 
 // Cold: Controller-side meter snapshots for persistence
 const meterState = controller.meters.snapshot(['spectrum', 'history'], {
-  into: { spectrum: scratchBuffer } // Optional optimization
+  into: { spectrum: scratchBuffer }, // Optional optimization
 });
 await logTelemetry(meterState);
 
@@ -197,8 +197,8 @@ Error handling respects temperature semantics (see ADR-015):
 ```ts
 // ❌ If we allowed this:
 controller.params.update({
-  gain: 0.8,        // 4 bytes
-  eqBands: curve,   // 4 KB array
+  gain: 0.8, // 4 bytes
+  eqBands: curve, // 4 KB array
 });
 ```
 
@@ -216,7 +216,7 @@ controller.params.update({
 controller.params.update({ gain: 0.8, pitch: 1.05 });
 
 // ✅ Hot: Array-only, explicit view semantics
-controller.params.stage('eqBands', dst => {
+controller.params.stage('eqBands', (dst) => {
   dst.view.set(curve);
 });
 
@@ -321,7 +321,10 @@ interface ControllerParams<S> {
   // Hot path
   set<K extends ScalarParamKeys<S>>(key: K, value: ParamValueFor<S, K>): void;
   update(patch: ScalarParamPatch<S>): void;
-  stage<K extends ArrayParamKeys<S>>(key: K, cb: (view: ArrayParamView<S, K>) => void): void;
+  stage<K extends ArrayParamKeys<S>>(
+    key: K,
+    cb: (view: ArrayParamView<S, K>) => void,
+  ): void;
 
   // Cold path
   hydrate(patch: HydratePatch<S>): void;
@@ -386,7 +389,7 @@ function onFrame() {
 
 // Cold path: bulk preset load
 async function loadPreset(name: string) {
-  const preset = await fetch(`/presets/${name}.json`).then(r => r.json());
+  const preset = await fetch(`/presets/${name}.json`).then((r) => r.json());
   controller.params.hydrate(preset); // One call, all data
 }
 ```
@@ -397,13 +400,13 @@ async function loadPreset(name: string) {
 // ❌ WRONG: Using cold-path verb at hot frequency
 function onFrame() {
   const preset = getCurrentPresetState(); // Full state extraction
-  controller.params.hydrate(preset);      // Bulk write at 60 Hz
+  controller.params.hydrate(preset); // Bulk write at 60 Hz
   requestAnimationFrame(onFrame);
 }
 
 // ❌ WRONG: Using hot-path verb for large bulk updates
 async function loadPreset(name: string) {
-  const preset = await fetch(`/presets/${name}.json`).then(r => r.json());
+  const preset = await fetch(`/presets/${name}.json`).then((r) => r.json());
 
   // Manually splitting scalars and arrays
   controller.params.update({
@@ -412,8 +415,8 @@ async function loadPreset(name: string) {
     // ... 50 more scalars
   });
 
-  controller.params.stage('eqBands', dst => dst.view.set(preset.eqBands));
-  controller.params.stage('envelope', dst => dst.view.set(preset.envelope));
+  controller.params.stage('eqBands', (dst) => dst.view.set(preset.eqBands));
+  controller.params.stage('envelope', (dst) => dst.view.set(preset.envelope));
   // ... 10 more arrays
 
   // Should have just used hydrate()

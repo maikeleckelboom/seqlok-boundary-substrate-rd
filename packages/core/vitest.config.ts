@@ -1,15 +1,16 @@
 import { defineConfig } from 'vitest/config';
+
 import type { BenchOptions } from 'vitest';
 
 /**
  * For ultra-fast micro operations where we want low RME.
  */
 export const MICRO_BENCH_OPTS: BenchOptions = {
-  time: 1_000, // run ~1s per task
-  warmupTime: 500, // give V8 plenty of time to optimize
+  time: 1_000,
+  warmupTime: 500,
   warmupIterations: 128,
-  iterations: 512, // at least this many iterations
-  throws: true, // fail on errors, don't silently skip
+  iterations: 512,
+  throws: true,
 };
 
 /**
@@ -26,7 +27,7 @@ export const E2E_BENCH_OPTS: BenchOptions = {
 export default defineConfig({
   test: {
     globals: true,
-    reporters: ['default', 'verbose'],
+    reporters: ['default'],
     coverage: {
       provider: 'v8',
       enabled: false,
@@ -49,12 +50,8 @@ export default defineConfig({
 
     environment: 'node',
 
-    // Let Vitest use its default pool (threads) or even `vm`,
-    // but don't ask it to fork separate processes.
-    // pool: 'forks',  <-- drop this
-
-    fileParallelism: false, // run files serially
-    isolate: false, // reuse the same VM / modules
+    fileParallelism: false,
+    isolate: false,
 
     testTimeout: 60_000,
     hookTimeout: 30_000,
@@ -63,7 +60,8 @@ export default defineConfig({
       include: ['bench/**/*.bench.ts'],
       exclude: ['node_modules', 'dist', '.idea', '.git', '.cache'],
       reporters: ['verbose'],
-      outputJson: 'bench-results.json', // compare: 'bench-results-main.json',
+      outputJson: 'bench-results.json',
+      // compare: 'bench-results-main.json',
     },
   },
 });

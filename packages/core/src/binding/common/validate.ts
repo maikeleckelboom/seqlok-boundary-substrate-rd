@@ -1,11 +1,23 @@
+/**
+ * @fileoverview
+ * Shared validation and error helpers for binding implementations.
+ *
+ * @remarks
+ * - Provides slot-shape validation for params and meters.
+ * - Throws structured `binding.*` errors for unknown keys and bad shapes.
+ * - Used by both controller and processor bindings to keep checks consistent.
+ *
+ * @internal
+ */
+
 import {
   type BindingInvalidValueDetails,
   type BindingParamRangeDetails,
   type BindingSnapshotIntoLengthMismatchDetails,
   type BindingSnapshotIntoTypeMismatchDetails,
   type BindingUnknownKeyDetails,
-} from '../errors/codes/binding';
-import { createError } from '../errors/error';
+} from '../../errors/codes/binding';
+import { createError } from '../../errors/error';
 
 export function throwUnknownKey(
   scope: 'params' | 'meters',

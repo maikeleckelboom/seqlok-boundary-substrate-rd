@@ -1,14 +1,18 @@
 import { Worker } from 'node:worker_threads';
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { tryRead, type SeqPair } from '../../src/primitives/seqlock';
 
-interface SeqlokErrorLike {
+interface SeqlockErrorLike {
   readonly code: string;
 }
 
-function isSeqlockTimeout(error: unknown): error is SeqlokErrorLike & {
+/**
+ * Type guard to identify Seqlock timeout errors.
+ * These occur when the retry budget is exhausted due to high contention.
+ */
+function isSeqlockTimeout(error: unknown): error is SeqlockErrorLike & {
   readonly code: 'primitives.seqlockTimeout';
 } {
   if (typeof error !== 'object' || error === null) {
@@ -18,12 +22,14 @@ function isSeqlockTimeout(error: unknown): error is SeqlokErrorLike & {
   return maybe.code === 'primitives.seqlockTimeout';
 }
 
-describe('seqlock cross-thread stress', () => {
+describe('Seqlock Cross-Thread Stress', () => {
   it('reads monotone values under concurrent publishes', async () => {
     const WRITES = 50_000;
     const VALUE_INDEX = 2;
+    const MAX_OK_READS = 2000;
 
-    // Layout: [LOCK, SEQ, VALUE]
+    // Layout: [0: LOCK, 1: SEQ, 2: VALUE]
+    // We allocate 12 bytes for 3 x Uint32
     const sab = new SharedArrayBuffer(3 * 4);
     const u32 = new Uint32Array(sab);
     const pair: SeqPair = { u32, lockIndex: 0, seqIndex: 1 };
@@ -40,16 +46,16 @@ describe('seqlock cross-thread stress', () => {
           const writes = workerData.writes >>> 0;
 
           for (let n = 1; n <= writes; n++) {
-            // beginWrite: LOCK += 1 (odd)
+            // Begin Write: Increment LOCK (state becomes odd/locked)
             Atomics.add(u32, lockIndex, 1);
 
-            // payload write
+            // Write payload
             u32[valueIndex] = n;
 
-            // endWrite: LOCK += 1 (even)
+            // End Write: Increment LOCK (state becomes even/unlocked)
             Atomics.add(u32, lockIndex, 1);
 
-            // commit: SEQ += 1
+            // Commit: Increment SEQUENCE to invalidate previous reads
             Atomics.add(u32, seqIndex, 1);
           }
 
@@ -67,7 +73,7 @@ describe('seqlock cross-thread stress', () => {
       },
     );
 
-    // Optional: track done, but we don't *need* it for the loop now
+    // Track worker completion via message, though the exit code check is primary
     let done = false;
     worker.on('message', (msg: unknown) => {
       if (
@@ -79,20 +85,18 @@ describe('seqlock cross-thread stress', () => {
       }
     });
 
-    //  stress loop
+    // Stress Loop: Attempt to read values while the worker writes rapidly
+    let lastValue: number | undefined = undefined;
+    let successfulReads = 0;
 
-    const MAX_OK_READS = 2000;
-
-    let last: number | undefined = undefined;
-    let okReads = 0;
-
-    while (okReads < MAX_OK_READS) {
+    while (successfulReads < MAX_OK_READS) {
       let res;
       try {
+        // Attempt to read the value at index 2
         res = tryRead(pair, () => u32[VALUE_INDEX]);
       } catch (error) {
-        // Under the new API, heavy contention can trigger a recoverable timeout.
-        // For stress, we treat this as "no coherent read this attempt" and keep spinning.
+        // In high contention scenarios, the reader may exhaust its retry budget.
+        // We treat this as a transient failure and continue the stress test.
         if (isSeqlockTimeout(error)) {
           continue;
         }
@@ -103,29 +107,28 @@ describe('seqlock cross-thread stress', () => {
         continue;
       }
 
-      const v = res.value;
+      const value = res.value;
 
-      // Allow coherent reads of the initial state (0) before any publish.
-      if (v === 0 && last == null) {
+      // Skip the initial state (0) if we haven't started tracking writes yet
+      if (value === 0 && lastValue === undefined) {
         continue;
       }
 
-      if (last == null) {
-        // First meaningful value we see must be > 0 (writer starts at 1).
-        expect(v).toBeGreaterThan(0);
-        last = v;
-        okReads += 1;
+      // First successful read of a written value
+      if (lastValue === undefined) {
+        expect(value).toBeGreaterThan(0);
+        lastValue = value;
+        successfulReads += 1;
         continue;
       }
 
-      // After that, values must be monotone non-decreasing.
-      expect(v).toBeGreaterThanOrEqual(last);
-      last = v;
-      okReads += 1;
+      // Verify monotonicity: The value must never decrease
+      expect(value).toBeGreaterThanOrEqual(lastValue);
+      lastValue = value;
+      successfulReads += 1;
     }
 
-    //  ensure worker exited cleanly
-
+    // Ensure the worker exits cleanly
     const exitCode = await new Promise<number>((resolve) => {
       worker.on('exit', (code) => {
         resolve(code);
@@ -133,11 +136,9 @@ describe('seqlock cross-thread stress', () => {
     });
 
     expect(exitCode).toBe(0);
-    expect(okReads).toBeGreaterThan(0);
-    expect(last).not.toBeNull();
-    expect(last).toBeLessThanOrEqual(WRITES);
-
-    // Optional sanity: worker should be done by now
+    expect(successfulReads).toBeGreaterThan(0);
+    expect(lastValue).not.toBeNull();
+    expect(lastValue).toBeLessThanOrEqual(WRITES);
     expect(done).toBe(true);
   }, 20_000);
 });

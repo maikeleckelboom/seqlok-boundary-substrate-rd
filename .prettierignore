@@ -1,0 +1,14 @@
+# Build artifacts
+dist/
+coverage/
+
+# Node / pnpm
+node_modules/
+.pnpm-store/
+
+# Generated benchmark artifacts
+bench-results.json
+
+# Docs – keep hand-wrapped / manually edited
+packages/*/docs/**
+docs/**

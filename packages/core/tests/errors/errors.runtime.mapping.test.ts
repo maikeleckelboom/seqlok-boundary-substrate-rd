@@ -12,8 +12,8 @@ interface FeatureReasonShape {
 }
 
 /**
- * Test helper: asserts that details has a string `detail` field,
- * and narrows the type for subsequent assertions.
+ * Type assertion helper: verifies that the details object contains a string `detail` field.
+ * Narrows the type for subsequent property access.
  */
 function expectHasDetail(details: unknown): asserts details is DetailShape {
   expect(details, 'details must not be null/undefined').not.toBeNull();
@@ -24,7 +24,7 @@ function expectHasDetail(details: unknown): asserts details is DetailShape {
 }
 
 /**
- * Test helper: asserts that details has string `feature` and `reason` fields.
+ * Type assertion helper: verifies that the details object contains `feature` and `reason` fields.
  */
 function expectHasFeatureReason(details: unknown): asserts details is FeatureReasonShape {
   expect(details, 'details must not be null/undefined').not.toBeNull();
@@ -35,8 +35,9 @@ function expectHasFeatureReason(details: unknown): asserts details is FeatureRea
   expect(typeof rec.reason, 'details.reason must be a string').toBe('string');
 }
 
-describe('errors/error createError runtime composition', () => {
-  it('composes backing.wasmMemoryNotShared with message, details and cause', () => {
+describe('SeqlokError Factory: Runtime Composition', () => {
+  it('composes error objects with structured details and preserves underlying causes', () => {
+    // Simulate an upstream system error to verify cause preservation
     const cause = new TypeError('shared memory not supported');
 
     const err = createError(
@@ -53,18 +54,18 @@ describe('errors/error createError runtime composition', () => {
     expect(err).toBeInstanceOf(Error);
     expect(err.code).toBe('backing.wasmMemoryNotShared');
 
-    // Human-friendly explanation is present
+    // Verify human-readable message formatting
     expect(err.message).toMatch(/not shared/i);
 
-    // Details payload should be present and well-typed
+    // Verify structured details payload
     expectHasDetail(err.details);
     expect(err.details.detail).toMatch(/SharedArrayBuffer/i);
 
-    // Cause should be preserved verbatim
+    // Verify the original cause is attached verbatim
     expect(err.cause).toBe(cause);
   });
 
-  it('composes env.unsupported with feature + reason details', () => {
+  it('constructs environment errors with specific feature and reason schemas', () => {
     const err = createError('env.unsupported', 'Feature unavailable', {
       feature: 'SharedArrayBuffer',
       reason: 'Missing COOP/COEP',
@@ -73,10 +74,10 @@ describe('errors/error createError runtime composition', () => {
     expect(err).toBeInstanceOf(Error);
     expect(err.code).toBe('env.unsupported');
 
-    // Human message remains readable and stable
+    // Verify message stability
     expect(err.message).toMatch(/Feature unavailable/i);
 
-    // Shape-specific details contract: { feature, reason }
+    // Verify schema-specific details via type guard
     expectHasFeatureReason(err.details);
     expect(err.details.feature).toBe('SharedArrayBuffer');
     expect(err.details.reason).toMatch(/COOP\/COEP/i);

@@ -20,7 +20,7 @@
 
 ```txt
 defineSpec
-→ planSpec
+→ planLayout
 → allocateShared
 → buildHandoff
 → receiveHandoff
@@ -113,7 +113,7 @@ We introduce `@seqlok/compose` as a separate package that:
 
 - compiles that topology into:
 
-  - Seqlok plans & backings (`planSpec`, `allocateShared`, `buildHandoff`),
+  - Seqlok plans & backings (`planLayout`, `allocateShared`, `buildHandoff`),
   - runtime wiring (which worker hosts which binding role),
   - **ring wiring** (which runtimes produce/consume which intent buses, built from the core ring primitive),
 
@@ -189,7 +189,7 @@ The exact API will evolve, but the core intent is:
 
 - **Realization**
 
-  - running `planSpec` / `allocateShared` / `buildHandoff` for each domain,
+  - running `planLayout` / `allocateShared` / `buildHandoff` for each domain,
   - allocating SABs / shared Wasm memories according to plans,
   - producing handoffs to ship into workers / AudioWorklets,
   - instantiating ring instances (backings + producer/consumer bindings) with configured capacities / schemas.

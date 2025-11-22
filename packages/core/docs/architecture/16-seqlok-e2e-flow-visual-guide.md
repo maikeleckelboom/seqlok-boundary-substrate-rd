@@ -4,16 +4,17 @@
 
 This document is the "single page mental model" for Seqlok's end-to-end flow:
 
-- Main thread (controller) defines the shared state and owns **params**.
-- Worker / AudioWorklet (processor) owns **meters** and the real-time loop.
-- Both talk via a **plan-driven shared memory layout** (planes + seqlocks).
+* Main thread (controller) defines the shared state and owns **params**.
+* Worker / AudioWorklet (processor) owns **meters** and the real-time loop.
+* Both talk via a **plan-driven shared memory layout** (planes + seqlocks).
 
 For deeper dives, see:
 
-- `03-seqlok-concurrency-model-and-roles.md`
-- `07-seqlok-api-shape-rationale.md`
-- `08-seqlok-primitives-and-seqlock.md`
-- `09-seqlok-backing-and-plane-plan.md`
+* `03-seqlok-concurrency-model-and-roles.md`
+* `07-seqlok-api-shape-rationale.md`
+* `10-seqlok-primitives-and-seqlock.md`
+* `11-seqlok-backing-and-plane-layout.md`
+* `12-coherent-reads-and-planes.md`
 
 ---
 
@@ -25,7 +26,7 @@ graph TB
     A[Define Spec<br/>defineSpec] --> B[Plan Layout<br/>planLayout]
     B --> C[Allocate Shared Memory<br/>allocateShared]
     C --> D[Bind Controller<br/>bindController]
-    D --> E[Create Handoff<br/>buildHandoff]
+    B --> E[Create Handoff<br/>buildHandoff]
     E --> F[Send to Worker<br/>postMessage]
     D --> G[UI Controls<br/>params.set / params.update]
     D --> H[Read Meters<br/>meters.snapshot]
@@ -51,7 +52,10 @@ graph TB
   H --> Q
 ```
 
-> **Verification note:** > `verifyHandoff(plan, received)` exists for diagnostics/tests and can be run on the **controller side** or in a non-RT worker. It is **not** part of the processor's hot path and is omitted from the canonical runtime pipeline above.
+> **Verification note:**
+> `verifyHandoff(plan, received)` exists for diagnostics/tests (e.g. asserting a handoff matches a locally planned
+> layout). It can run on the controller side or in a non-RT worker. It is **not** part of the processor's hot path and
+> is omitted from the canonical runtime pipeline above.
 
 ---
 
@@ -69,20 +73,20 @@ sequenceDiagram
   UI ->> UI: defineSpec() → Spec
   UI ->> UI: planLayout(Spec) → Plan
   UI ->> MEM: allocateShared(Plan) → Backing (SharedArrayBuffer)
-  UI ->> CTL: bindController(Spec, Backing)
+  UI ->> CTL: bindController(Spec, Plan, Backing)
   UI ->> UI: buildHandoff(Plan, Backing) → Handoff
   UI ->> PROC: postMessage({ type: 'HANDOFF', handoff })
 
   Note over UI, RT: 2. WORKER INIT (Processor Side)
   PROC ->> PROC: receiveHandoff(handoff) → ReceivedHandoff
-  PROC ->> PROC: bindProcessor(Spec, ReceivedHandoff)
+  PROC ->> PROC: bindProcessor(ReceivedHandoff)
   PROC ->> RT: Start processing loop
 
   Note over UI, RT: 3. RUNTIME FLOW
 
   loop On UI interaction
     UI ->> CTL: controller.params.set('gain', value)
-    CTL ->> MEM: Write into PF32 plane (plus LOCK/SEQ in PU)
+    CTL ->> MEM: Write params into PF32/PI32/PB planes<br/>+ bump PU seqlock
   end
 
   loop On each RT tick (e.g. per quantum)
@@ -91,19 +95,19 @@ sequenceDiagram
     MEM -->> PROC: Coherent param snapshot
     PROC ->> RT: Run DSP / simulation with snapshot
     RT ->> PROC: processor.meters.publish(writer)
-    PROC ->> MEM: Write into MF32/MU32 planes (plus LOCK/SEQ in MU)
+    PROC ->> MEM: Write into MF32/MU32/MF64 planes<br/>+ bump MU seqlock
   end
 
   loop On each animation frame
     UI ->> CTL: controller.meters.snapshot()
-    CTL ->> MEM: Read MU seqlock + meter planes
-    MEM -->> CTL: Coherent meter snapshot
+    CTL ->> MEM: Read meter planes (best-effort)
+    MEM -->> CTL: Sampled meter values
     CTL ->> UI: Update HUD / meters / graphs
   end
 ```
 
-> **Seqlock nuance:** Writers bump `LOCK` on enter/exit and bump `SEQ` on commit (the one-bump rule).
-> The diagram compresses this to a single "update seqlock" step for readability.
+> **Seqlock nuance:** Writers bump `LOCK` on enter/exit and bump `SEQ` once per commit (the one-bump rule). The diagram
+> compresses this to a single "update seqlock" step for readability.
 
 ---
 
@@ -111,7 +115,7 @@ sequenceDiagram
 
 ```mermaid
 graph LR
-  subgraph "SharedArrayBuffer"
+  subgraph "SharedArrayBuffer (Contiguous Backing)"
     subgraph "Params Domain"
       P1[PF32<br/>Float32 params]
       P2[PI32<br/>Int32 / enum params]
@@ -137,9 +141,9 @@ graph LR
   M4 --> R3[MU: LOCK=38, SEQ=19]
 ```
 
-- **Plan** computes exactly how each param/meter key maps into these planes.
-- **Backing** allocates concrete memory and hosts the TypedArray views.
-- **Bindings** use that plan to enforce safe, coherent access on each side.
+* **Plan** computes exactly how each param/meter key maps into these planes (offsets + lengths).
+* **Backing** allocates concrete memory and hosts the TypedArray views.
+* **Bindings** use that plan to enforce safe, coherent access on each side.
 
 ---
 
@@ -148,7 +152,7 @@ graph LR
 ```mermaid
 stateDiagram-v2
   state "Writer (Controller / Processor)" as W
-  state "Reader (Controller / Processor)" as R
+  state "Reader (Processor / Observer)" as R
   state "Memory State" as M
 
   state M {
@@ -183,9 +187,9 @@ stateDiagram-v2
 
 Key properties:
 
-- **Single writer per domain** (params vs meters).
-- Readers are **lock-free** and **retry-based** with bounded spin/retry budgets.
-- On success, readers see a **coherent snapshot**; they never observe partially written payload.
+* **Single writer per domain** (params vs meters).
+* Readers are **lock-free** and **retry-based** with bounded spin/retry budgets.
+* On success, readers see a **coherent snapshot**; they never observe partially written payload for that family.
 
 ---
 
@@ -195,21 +199,21 @@ Key properties:
 graph TB
   subgraph "Compile Time"
     A[defineSpec DSL] --> B[Inferred Spec type S]
-    B --> C[ParamKeys<S>]
-    B --> D[MeterKeys<S>]
-    B --> E[ParamValueFor<S,K>]
-    B --> F[MeterValueFor<S,K>]
-    B --> G[ControllerBinding<S>, ProcessorBinding<S>]
+    B --> C[ParamKeys&lt;S&gt;]
+    B --> D[MeterKeys&lt;S&gt;]
+    B --> E[ParamValueFor&lt;S,K&gt;]
+    B --> F[MeterValueFor&lt;S,K&gt;]
+    B --> G[ControllerBinding&lt;S&gt;, ProcessorBinding&lt;S&gt;]
   end
 
   subgraph "Runtime API"
-    H[controller.params.set] --> I[Key: ParamKeys<S>]
-    H --> J[Value: ParamValueFor<S,K>]
+    H[controller.params.set] --> I[Key: ParamKeys&lt;S&gt;]
+    H --> J[Value: ParamValueFor&lt;S,K&gt;]
 
-    K[controller.meters.snapshot] --> L[Meter snapshot shape<S>]
+    K[controller.meters.snapshot] --> L[Meter snapshot shape&lt;S&gt;]
 
-    M[processor.params.within] --> N[params view: ParamShape<S>]
-    O[processor.meters.publish] --> P[meter writer: MeterWriter<S>]
+    M[processor.params.within] --> N[params view: ParamShape&lt;S&gt;]
+    O[processor.meters.publish] --> P[meter writer: MeterWriter&lt;S&gt;]
   end
 
   C --> I
@@ -223,20 +227,20 @@ graph TB
 
 Story in plain terms:
 
-- The DSL (`defineSpec`) defines a **single source of truth**: params + meters.
+* The DSL (`defineSpec`) defines a **single source of truth**: params + meters.
 
-- The spec type `S` drives:
+* The spec type `S` drives:
 
-  - Valid param / meter keys.
-  - The value types per key.
-  - The shapes of controller/processor bindings.
+  * Valid param / meter keys.
+  * The value types per key.
+  * The shapes of controller/processor bindings.
 
-- At runtime, you only get strongly-typed APIs:
+* At runtime, you only get strongly-typed APIs:
 
-  - `controller.params.set('gain', numberInRange)`
-  - `controller.meters.snapshot()`
-  - `processor.params.within(params => { … })`
-  - `processor.meters.publish(writer => { … })`
+  * `controller.params.set('gain', numberInRange)`
+  * `controller.meters.snapshot(...)`
+  * `processor.params.within(params => { … })`
+  * `processor.meters.publish(writer => { … })`
 
 Invalid keys/values are rejected at compile time; invalid layouts/backings are rejected at bind time.
 
@@ -249,27 +253,27 @@ This is illustrative, not a performance chart. Units are arbitrary.
 ```mermaid
 gantt
   title Seqlok E2E Timeline (Conceptual)
-  dateFormat X
-  axisFormat %s
+  dateFormat  X
+  axisFormat  %s
 
   section Main Thread
-    Define Spec & Plan: a1, 0, 10
-    Allocate Memory: a2, after a1, 5
-    Bind Controller: a3, after a2, 3
-    Create Handoff: a4, after a3, 2
-    Send to Worker: a5, after a4, 1
-    UI Controls (ongoing): a6, after a5, 300
-    Meter Reads (ongoing): a7, after a5, 300
+    Define Spec & Plan        :a1, 0, 10
+    Allocate Memory           :a2, after a1, 5
+    Bind Controller           :a3, after a2, 3
+    Create Handoff            :a4, after a3, 2
+    Send to Worker            :a5, after a4, 1
+    UI Controls (ongoing)     :a6, after a5, 300
+    Meter Reads (ongoing)     :a7, after a5, 300
 
   section Worker Thread
-    Receive Handoff: b1, after a5, 2
-    Bind Processor: b3, after b1, 3
-    Process Loop (ongoing): b4, after b3, 300
+    Receive Handoff           :b1, after a5, 2
+    Bind Processor            :b3, after b1, 3
+    Process Loop (ongoing)    :b4, after b3, 300
 
   section Shared Memory
-    Memory Ready: c1, after a2, 310
-    Param Updates (ongoing): c2, after a6, 290
-    Meter Updates (ongoing): c3, after b4, 290
+    Memory Ready              :c1, after a2, 310
+    Param Updates (ongoing)   :c2, after a6, 290
+    Meter Updates (ongoing)   :c3, after b4, 290
 ```
 
 ---
@@ -278,28 +282,34 @@ gantt
 
 1. **Two independent domains**
 
-- Params and meters sit in **separate planes** (`PF32/PI32/PB/PU` vs `MF32/MF64/MU32/MU`) with **separate seqlocks**.
-- Controller writes params; processor writes meters. There's no cross-domain write contention.
+  * Params and meters sit in **separate planes** (`PF32/PI32/PB/PU` vs `MF32/MF64/MU32/MU`) with **separate seqlocks**.
+  * Controller writes params; processor writes meters. There's no cross-domain write contention.
 
-2. **Seqlock-guarded coherence**
+2. **Where coherence actually lives**
 
-- All coherent param reads go through `processor.params.within`.
-- All coherent meter reads go through `controller.meters.snapshot`.
-- All meter commits go through `processor.meters.publish`.
-- The seqlock protocol guarantees snapshot coherence with bounded retries.
+  * **Params:** all coherent param reads go through `processor.params.within(...)`, which is seqlock-guarded on `PU`.
+  * **Meters (writer):** all coherent meter commits go through `processor.meters.publish(...)`, which is seqlock-guarded
+    on `MU`.
+  * **Meters (controller):** `controller.meters.snapshot(...)` is a **cold-path, best-effort read** – ideal for HUDs and
+    tooling, allowed to observe mixed frames under contention.
+  * **Meters (observer, future):** visualizer-grade coherent meter snapshots live in a future **observer binding**
+    (e.g. in `@seqlok/compose`), which will use seqlock-aware helpers over `MU` with budgets and degrade policy.
 
 3. **Type safety end-to-end**
 
-- `defineSpec` → spec type `S` → bindings and key/value types.
-- Invalid keys and values fail at compile time; mismatched backing/plan fails at bind time.
+  * `defineSpec` → spec type `S` → bindings and key/value types.
+  * Invalid keys and values fail at compile time; mismatched backing/plan fails at bind time.
 
 4. **Zero serialization / copies on the hot path**
 
-- SharedArrayBuffer + TypedArrays + Atomics – no JSON, no structured clone, no memcpy loops.
+  * SharedArrayBuffer + TypedArrays + Atomics – no JSON, no structured clone, no memcpy loops in the RT loop.
+  * Only the handoff envelope is cloned; the underlying memory is genuinely **shared**.
 
 5. **Real-time friendliness**
 
-- Processor binding's hot path (`within` / `publish`) does **no allocations** and uses bounded, predictable seqlock operations.
-- UI/main thread can be relatively "squishy"; the strict discipline is concentrated in the processor binding and backing.
+  * Processor binding's hot path (`within` / `publish`) does **no allocations** and uses bounded, predictable seqlock
+    operations.
+  * The main thread can be relatively "squishy"; strict discipline is concentrated in the processor binding and backing.
 
-This is the whole loop in one picture: **spec → plan → backing → handoff → bindings**, stitched together across agents by shared memory and seqlocks, with TypeScript keeping your keys and value types honest.
+This is the whole loop in one picture: **spec → plan → backing → handoff → bindings**, stitched together across agents
+by shared memory and seqlocks, with TypeScript keeping your keys and value types honest.

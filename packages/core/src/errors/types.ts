@@ -1,9 +1,16 @@
 /**
- * Centralized error type exports.
+ * @fileoverview
+ * Centralized error type exports for Seqlok.
  *
- * All error types are re-exported from their respective modules.
- * This file serves as a convenient single import point for error types.
+ * @remarks
+ * - Re-exports all error types from their respective modules.
+ * - Serves as a single import point for error-related types.
+ * - Organizes types by domain (primitives, env, plan, etc.).
+ * - Maintains type safety across the error handling system.
  */
+
+import type { CodeToPayload, ErrorCode } from './registry';
+
 export {
   ERROR_META,
   type ErrorCode,
@@ -13,6 +20,24 @@ export {
   type TypedArrayName,
 } from './registry';
 
+/**
+ * Compile-time guard: keep ErrorCode and CodeToPayload in perfect lockstep.
+ *
+ * @remarks
+ * - Ensures every ErrorCode has a payload entry.
+ * - Ensures CodeToPayload does not define unknown codes.
+ * - Causes a compile error if either side drifts silently.
+ */
+type CodesFromPayloads = keyof CodeToPayload;
+
+type _ErrorCodeMatchesCodeToPayload = [ErrorCode] extends [CodesFromPayloads]
+  ? [CodesFromPayloads] extends [ErrorCode]
+    ? true
+    : false
+  : false;
+
+export const _errorCodeMatchesCodeToPayload: _ErrorCodeMatchesCodeToPayload = true;
+
 export { interpretHealth, type HealthInterpretation } from './health';
 
 export type * from './codes/primitives';
@@ -21,7 +46,6 @@ export type * from './codes/plan';
 export type * from './codes/backing';
 export type * from './codes/handoff';
 export type * from './codes/binding';
-export type * from './codes/orchestration';
 export type * from './codes/diagnostics';
 export type * from './codes/internal';
 export type * from './codes/spec';

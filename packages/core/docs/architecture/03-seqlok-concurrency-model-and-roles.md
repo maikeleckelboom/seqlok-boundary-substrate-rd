@@ -1,11 +1,15 @@
 # Seqlok: Concurrency Model & Roles
 
-> _How Seqlok coordinates Controllers, Processors, and shared memory._
+> How Seqlok coordinates Controllers, Processors, and shared memory.
 
 This document describes **who is allowed to touch what**, **how Seqlok uses seqlocks**, and **what is actually
 guaranteed** when you call things like `within`, `publish`, and `snapshot`.
 
-It's the canonical reference for "what does this library promise, and under which conditions?".
+It is the canonical reference for:
+
+* param vs meter ownership,
+* SWMR discipline per domain,
+* what "coherent snapshot" means in Seqlok.
 
 ---
 
@@ -13,16 +17,16 @@ It's the canonical reference for "what does this library promise, and under whic
 
 Seqlok organizes shared state into two **domains**:
 
-- **Params** – control inputs flowing **from Controller → Processor**
-- **Meters** – telemetry outputs flowing **from Processor → Controller**
+* **Params** – control inputs flowing **from Controller → Processor**
+* **Meters** – telemetry outputs flowing **from Processor → Controller / observers**
 
 Each domain is:
 
-- Stored in **shared memory** (`SharedArrayBuffer` or shared `WebAssembly.Memory`)
-- Guarded by its own **seqlock** (sequence lock)
-- Accessed under strict **SWMR** (Single-Writer / Multiple-Reader) rules
+* Stored in **shared memory** (`SharedArrayBuffer` or shared `WebAssembly.Memory`)
+* Guarded by its own **seqlock** (sequence lock)
+* Accessed under strict **SWMR** (Single-Writer / Multiple-Reader) rules
 
-On top of that, Seqlok defines three **roles**:
+On top of that, Seqlok defines three roles:
 
 ```text
 Controller:
@@ -33,13 +37,13 @@ Processor:
   - reads params
   - writes meters
 
-Consumers:
-  - read meters (via Controller or aggregators)
+Observers / Consumers:
+  - read meters (via Controller bindings or observer-style helpers)
 ```
 
 If you remember only one thing:
 
-> **Controller owns inputs, Processor owns outputs, and everyone else is read-only.**
+> **Controller owns inputs, Processor owns outputs, everyone else is read-only.**
 
 ---
 
@@ -49,19 +53,27 @@ If you remember only one thing:
 
 The **Controller** typically lives on the main thread (browser) or a host thread (Node):
 
-- Writes to **params**
-- Reads from **meters**
-- Never writes meters
-- Never uses `within` / `publish` (those are Processor-only)
+* Writes to **params**
+* Reads from **meters**
+* Never writes meters
+* Never calls `within` / `publish` (those are processor-side semantics)
 
 Example (golden flow up to the Controller binding):
 
 ```ts
+import {
+  defineSpec,
+  planLayout,
+  allocateShared,
+  bindController,
+} from '@seqlok/core';
+
 const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
 const backing = allocateShared(plan);
 
-const controller = bindController(spec, backing);
+// Compatibility check: spec ↔ plan ↔ backing
+const controller = bindController(spec, plan, backing);
 
 // controller responsibilities:
 controller.params.set('gain', 0.8);
@@ -77,18 +89,21 @@ Conceptually, the Controller is **“the human’s hand on the device”**: UI, 
 
 ### Processor
 
-The **Processor** lives in a Worker, AudioWorklet, Wasm-backed engine, or some other engine-like context:
+The **Processor** lives in a Worker, AudioWorklet, WASM-backed engine, or some other engine-like context:
 
-- Reads **params** using `within`
-- Writes **meters** using `publish` (and `stage` for array meters)
-- Never writes params
-- Never reads meters by poking the backing directly
+* Reads **params** using `params.within(...)`
+* Writes **meters** using `meters.publish(...)` (and per-field `stage` for array meters)
+* Never writes params
+* Never reads meters by poking the backing directly
 
 Example (engine-side binding already constructed via `receiveHandoff` → `bindProcessor`):
 
 ```ts
+import type { ProcessorBinding } from '@seqlok/core';
+import type { DemoSpec } from './spec';
+
 class MyProcessor {
-  constructor(private readonly proc: ProcessorBinding<typeof spec>) {}
+  constructor(private readonly proc: ProcessorBinding<DemoSpec>) {}
 
   process(input: Float32Array[], output: Float32Array[]): boolean {
     this.proc.params.within((params) => {
@@ -100,7 +115,7 @@ class MyProcessor {
         m.peak(result.peak);
         m.rms(result.rms);
 
-        m.stage('spectrum', (buf) => {
+        m.spectrum.stage((buf) => {
           buf.set(result.spectrum); // array meter updated atomically
         });
       });
@@ -115,21 +130,22 @@ The Processor is **“the device brain”**: runs tight loops, does DSP / simula
 
 ---
 
-### Consumers
+### Observers / Consumers
 
-**Consumers** are anything that reads meters but doesn’t own params or meters:
+**Observers / consumers** are anything that reads meters but doesn’t own params or meters:
 
-- UI graphs
-- Logging/metrics jobs
-- Secondary workers doing analysis
+* UI graphs
+* Logging/metrics jobs
+* Secondary workers doing analysis
+* Future `bindObserver`-style bindings in `@seqlok/compose`
 
 They should:
 
-- Use **controller-facing APIs** (`controller.meters.snapshot()` or higher-level wrappers)
-- Never attempt to write into the Seqlok backing directly
-- Treat Seqlok as _source-of-truth telemetry_, not as mutable state
+* Use **controller-facing APIs** (`controller.meters.snapshot(...)`) or observer helpers
+* Never attempt to write into the Seqlok backing directly
+* Treat Seqlok as *source-of-truth telemetry*, not as mutable state
 
-Example:
+Example (controller-side consumer):
 
 ```ts
 // projection by keys
@@ -142,29 +158,39 @@ drawMeterUI({ peak, rms });
 
 ## Domains and Planes
 
-Seqlok has two logical domains, each backed by several **planes** in memory.
+Seqlok has two logical domains, each backed by several **planes** in a shared backing.
 
 ### Param Domain
 
-- **Scalar planes**: e.g. `PF32`, `PI32`, `PB` (floats, ints/enums, booleans)
-- **Control plane**: `PU` (param control)
+* **Payload planes**: `PF32`, `PI32`, `PB`
 
-  - Contains seqlock counters for params: `LOCK_P`, `SEQ_P`
-  - May hold additional meta indices
+  * `PF32` – `f32` scalars / arrays
+  * `PI32` – `i32` scalars / arrays and enum indices
+  * `PB`   – `bool` scalars / arrays as `0`/`1` bytes
+
+* **Control plane**: `PU`
+
+  * A `Uint32Array` control plane with **exactly two words**: `[LOCK, SEQ]`
+  * Guards **all param payload** via a single seqlock
 
 ### Meter Domain
 
-- **Scalar planes**: `MF32`, `MF64`, `MU32`, etc.
-- **Control plane**: `MU` (meter control)
+* **Payload planes**: `MF32`, `MF64`, `MU32`
 
-  - Contains seqlock counters for meters: `LOCK_M`, `SEQ_M`
-  - May hold additional meta indices
+  * `MF32` – `f32` scalars / arrays
+  * `MF64` – `f64` scalars / arrays (hi-res time / stats)
+  * `MU32` – `u32` counters / flags, plus bool meters as `0`/`1` `u32`
+
+* **Control plane**: `MU`
+
+  * A `Uint32Array` control plane with **exactly two words**: `[LOCK, SEQ]`
+  * Guards **all meter payload** via a single seqlock
 
 Each domain has:
 
-- One **writer** (Controller for params, Processor for meters)
-- Zero or more **readers**
-- Exactly one **seqlock** for coherence of that domain
+* One **writer** from Seqlok's perspective (Controller for params, Processor for meters)
+* Zero or more **readers**
+* Exactly one **seqlock pair** per backing
 
 There is **no single cross-domain seqlock**. Params and meters are separate, each with its own versioning and locking
 discipline.
@@ -199,16 +225,17 @@ Under the hood, the param writer:
 
 1. Begins a param write epoch:
 
-- marks the param `LOCK_P` as "writing" (odd value).
+  * marks the param `LOCK` as "writer active" (odd value).
 
 2. Writes the relevant scalar and array values into their planes.
+
 3. Ends the epoch:
 
-- sets `LOCK_P` back to "quiescent" (even value), and
-- bumps `SEQ_P` to indicate a new logical version.
+  * returns `LOCK` to an even value, and
+  * bumps `SEQ` once to indicate a new logical version (the **one-bump rule**).
 
 The Controller is free to call `set` / `update` / `stage` at any time; the seqlock ensures readers either see the **old**
-state or the **new** state, but never an in-between mix.
+state or the **new** state, but never an in-between mix for the param domain.
 
 ---
 
@@ -224,21 +251,22 @@ proc.params.within((params) => {
 
 Semantics:
 
-- `within(cb)`:
+* `within(cb)`:
 
-  - Uses the param seqlock (`LOCK_P`, `SEQ_P`) to obtain a **coherent view**.
-  - Retries internally if the Controller is mid-write.
-  - Passes `cb` a `params` view where:
+  * Uses the param seqlock `(PU.LOCK, PU.SEQ)` to obtain a **coherent view**.
+  * Spins and retries internally if the Controller is mid-write, with bounded budgets.
+  * Passes `cb` a `params` view where:
 
-    - **Scalars** are captured values (`number`, `boolean`, string enums).
-    - **Arrays** are scratch views scoped to this callback (e.g. `Readonly<Float32Array>`-like).
+    * **Scalars** are captured JS values (`number`, `boolean`, enum labels).
+    * **Arrays** are ephemeral aliasing views into the backing (no allocation).
 
-The callback is **synchronous**:
+The callback is **synchronous and scoped**:
 
-- You must not `await` inside `within`.
-- You must not retain references to the `params` object or its array views for later use.
+* Do **not** `await` inside `within`.
+* Do **not** retain references to `params` or its array views after the callback returns.
 
-**Contract:** Treat the `params` view as living exactly for the duration of that callback.
+**Contract:** Treat the param view as living exactly for the duration of that callback; outside that window, it is
+logically invalid.
 
 ---
 
@@ -246,23 +274,25 @@ The callback is **synchronous**:
 
 With correct usage:
 
-- Each call to `within` sees a param snapshot that corresponds to a single Controller state (for some `SEQ_P`).
-- Snapshots are **monotonic** in version:
+* Each call to `within` sees a param snapshot corresponding to a single param `SEQ` value.
 
-  - later calls to `within` see equal or greater `SEQ_P`, never older.
+* Snapshots are **monotonic** in version when you poll `params.version()`:
 
-- No `within` callback sees a mix of two different writes; at worst it spins and retries until one is stable.
+  * `version()` never goes backwards; later snapshots see equal or greater sequence numbers.
+
+* No `within` callback sees a mix of two different param writes; at worst it spins and retries until one is stable or
+  times out with a clear error.
 
 Seqlok does **not**:
 
-- Guarantee that every single intermediate `update` is visible to the Processor.
-- Guarantee any specific "age" of the snapshot, only that it is coherent.
+* Guarantee that every intermediate Controller update is visible to the Processor.
+* Guarantee a specific "age" for the snapshot, only that it is **coherent**.
 
 ---
 
-## Meter Flow (Processor → Controller)
+## Meter Flow (Processor → Controller / Observers)
 
-### Processor: Writes via `publish` and `stage`
+### Processor: Writes via `publish` and per-field `stage`
 
 On the Processor side, all meter writes go through:
 
@@ -271,7 +301,7 @@ proc.meters.publish((m) => {
   m.peak(result.peak);
   m.rms(result.rms);
 
-  m.stage('spectrum', (buf) => {
+  m.spectrum.stage((buf) => {
     buf.set(result.spectrum);
   });
 });
@@ -279,26 +309,26 @@ proc.meters.publish((m) => {
 
 Semantics:
 
-- `publish(cb)`:
+* `publish(cb)`:
 
-  - Begins a meter write epoch (using `LOCK_M`).
-  - Provides a **mutable writer** `m` where:
+  * Begins a meter write epoch (using the meter seqlock `(MU.LOCK, MU.SEQ)`).
 
-    - Scalar meters are functions: `m.peak(value)`, `m.rms(value)`, etc.
-    - Array meters are written via `m.stage('key', cb(view))`:
+  * Provides a **mutable writer** `m` where:
 
-      - the `view` is a scratch array view for that meter;
-      - you usually do a single `view.set(...)` or a tight loop.
+    * Scalar meters are functions: `m.peak(value)`, `m.rms(value)`, …
+    * Array meters are written via `m.<key>.stage((view) => { ... })`:
 
-  - Ends the epoch by:
+      * `view` is an aliasing TypedArray for that meter payload.
+      * You usually do a single `view.set(...)` or a tight loop.
 
-    - marking `LOCK_M` as quiescent, and
-    - bumping `SEQ_M` to a new version number.
+  * Ends the epoch by:
 
-Multiple `publish` calls per audio quantum are **allowed**. Each one represents an atomic “meter commit” from the
-Controller's point of view.
+    * restoring `LOCK` to an even value, and
+    * bumping `SEQ` once to mark a new committed meter frame.
 
-For example:
+Multiple `publish` calls per audio quantum are **allowed**. Each one is an independent “meter commit”.
+
+Example with multiple commits derived from one param snapshot:
 
 ```ts
 proc.params.within((params) => {
@@ -320,14 +350,13 @@ proc.params.within((params) => {
 });
 ```
 
-Each `publish` creates a distinct meter snapshot; both are **derived from the same param snapshot** captured by
-`within`.
+Each `publish` creates a distinct meter snapshot; both are derived from the same param snapshot captured by `within`.
 
 ---
 
-### Controller: Reads via `snapshot`
+### Controller / Observer: Reads via `snapshot`
 
-On the Controller side, all coherent meter reads go through `snapshot`:
+On the Controller side, coherent meter reads go through `snapshot`:
 
 ```ts
 // full snapshot
@@ -336,7 +365,7 @@ drawFullHud(allMeters);
 
 // projection by keys
 const { peak, rms } = controller.meters.snapshot(['peak', 'rms']);
-drawCompactHud(peak, rms);
+drawCompactHud({ peak, rms });
 
 // reuse existing arrays for array meters (no allocations)
 const buffers = {
@@ -357,20 +386,26 @@ frame();
 
 Semantics:
 
-- `snapshot()`:
+* `snapshot()`:
 
-  - Uses the meter seqlock (`LOCK_M`, `SEQ_M`) to read a coherent view.
-  - Retries internally if the Processor is mid-write.
-  - Returns an object with all meter scalars and arrays (arrays are copies unless you use `into`).
+  * Uses the meter seqlock `(MU.LOCK, MU.SEQ)` to read a **coherent meter view**.
+  * Retries internally if the Processor is mid-write, with bounded budgets.
+  * Returns an object with all meter scalars and arrays; arrays are new TypedArrays unless `into` is used.
 
-- `snapshot(keys, options?)`:
+* `snapshot(keys, options?)`:
 
-  - `keys`: array of meter names (e.g. `['peak', 'rms']`).
-  - `options.into`: map of meter names → pre-allocated arrays for array meters.
-  - Returns an object with just the requested meters; for array meters listed in `into`, Seqlok writes into the caller’s buffers instead of allocating.
+  * `keys`: array of meter names (e.g. `['peak', 'rms']`).
+  * `options.into`: map of meter names → pre-allocated arrays for array meters.
+  * Projects and fills just the requested meters.
 
-The controller-side snapshot result is **not ephemeral**: once `snapshot` returns, the data is yours to keep. The
-ephemeral-view rules apply to processor-side `within`/`publish`, not to controller-side snapshots.
+For `into` arrays:
+
+* Shape and type are validated against the plan.
+* On mismatch, a typed error (`binding.snapshotIntoLengthMismatch` / `binding.shape`) is thrown instead of silently
+  truncating.
+
+The snapshot result is **owned by the caller**: once `snapshot` returns, you may keep and reuse the object/arrays.
+Ephemeral-view rules apply to processor-side readers/writers, not to controller snapshots.
 
 ---
 
@@ -378,11 +413,11 @@ ephemeral-view rules apply to processor-side `within`/`publish`, not to controll
 
 With correct usage:
 
-- Each `snapshot` returns meter values corresponding to a single `SEQ_M`.
-- Repeated snapshots see monotonically increasing or equal `SEQ_M`.
-- No snapshot sees a half-written array (e.g. half old spectrum, half new).
-- Multiple `publish` calls between snapshots are allowed; the Controller just sees the latest committed state at the
-  time of `snapshot`.
+* Each `snapshot` returns meter values corresponding to a **single** meter `SEQ` value.
+* Repeated snapshots see monotonically increasing or equal `SEQ` values.
+* No snapshot sees half-written arrays from a single `publish`.
+* Multiple `publish` calls between snapshots are fine; the Controller/observer sees the latest committed frame at the
+  time of the `snapshot`.
 
 ---
 
@@ -391,7 +426,7 @@ With correct usage:
 A very common pattern (especially in audio) is:
 
 ```ts
-process(inputs, outputs): boolean {
+process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
   this.proc.params.within((params) => {
     // 1. read coherent params
     const result = this.dsp.process(inputs, outputs, params);
@@ -417,21 +452,21 @@ process(inputs, outputs): boolean {
 
 Important points:
 
-- All `publish` calls inside the `within` callback are **logically derived** from the same param snapshot.
-- They are **not** grouped into a single param+meter "transaction"; params and meters have independent seqlocks.
-- Each `publish` is its own atomic meter commit, seen as such by the Controller.
+* All `publish` calls inside one `within` callback are **causally derived** from the same param snapshot.
+* They are **not** grouped into a single param+meter transaction; params and meters have independent seqlocks.
+* Each `publish` is its own atomic meter commit.
 
 This is the **“quantum scope”** mental model:
 
-> One `within` defines the param snapshot window.
-> Any number of `publish` calls inside that `within` compute and commit meters derived from that snapshot.
+> One `within` defines the param snapshot window. Any number of `publish` calls inside that `within` compute and commit
+> meters derived from that snapshot.
 
 Seqlok guarantees:
 
-- Param reads inside that `within` are coherent.
-- Each meter commit is coherent.
-- The pairing (**this snapshot → these meter commits**) is _causal_ in your code, not enforced as a single hardware
-  transaction.
+* Param reads inside that `within` are coherent.
+* Each meter commit is coherent.
+* The pairing (**this snapshot → these meter commits**) is enforced by your code structure, not by a cross-domain
+  hardware transaction.
 
 ---
 
@@ -443,27 +478,27 @@ Within the documented roles and APIs, Seqlok guarantees:
 
 1. **Per-domain coherence via seqlock**
 
-- Param snapshots from `within` are internally consistent.
-- Meter snapshots from `snapshot` are internally consistent.
+  * Param snapshots from `params.within` are internally consistent.
+  * Meter snapshots from `meters.snapshot` are internally consistent.
 
 2. **SWMR discipline per domain**
 
-- Exactly one writer for params, one writer for meters (from Seqlok's perspective).
+  * Exactly one writer for params, one writer for meters (from Seqlok's perspective).
 
 3. **Monotonic versions**
 
-- Param `SEQ_P` and meter `SEQ_M` are monotonically increasing.
-- Readers never see a snapshot from "before" the last one they obtained (assuming calls are ordered).
+  * Param and meter sequence counters are monotonically increasing `u32`s.
+  * When you poll `version()` and then snapshot, versions never go backwards.
 
 4. **Atomic meter commits**
 
-- All meter changes within one `publish` are committed as a unit.
-- Controllers never see half-updated meters from a single `publish`.
+  * All meter changes within one `publish` are committed as a unit.
+  * Controllers/observers never see half-updated meters from a single `publish`.
 
-5. **No allocations on hot read paths inside the kernel**
+5. **Zero allocations in kernel hot paths**
 
-- `within` / `publish` do not allocate user-visible objects in the hot path.
-- `snapshot` can be allocation-free when used with `into` buffers.
+  * `params.within` / `meters.publish` do not allocate in the kernel hot path.
+  * `meters.snapshot` can be allocation-free when you supply `into` buffers.
 
 ### Non-Guarantees
 
@@ -471,22 +506,22 @@ Seqlok does **not** guarantee:
 
 1. **Fairness between readers and writers**
 
-- In pathological cases where the writer saturates the seqlock, readers may spin more.
-- Design intent is that writes are relatively infrequent compared to reads.
+  * A pathological writer that constantly holds the lock can cause readers to spin more or time out.
+  * Design intent is that write epochs are relatively short vs read frequency.
 
 2. **Cross-domain transactions**
 
-- There is no atomic "params + meters move together" transaction across domains.
-- Params and meters are separate; your code establishes the causal relationships.
+  * There is no atomic "params + meters move together" transaction across both domains.
+  * Params and meters are separate; your code expresses the causal relationship.
 
 3. **Async safety inside callbacks**
 
-- If you `await` inside `within` or `publish`, you violate the design; behavior is undefined and can break invariants.
+  * If you `await` inside `within` or `publish`, you violate the design; behaviour is undefined and can break invariants.
 
 4. **Protection against misuse of views**
 
-- JS cannot prevent you from storing a reference to an internal view and using it later.
-- The **contract** is that you won't; library behavior assumes usage follows the scope rules.
+  * JS cannot prevent you from storing internal aliasing views and using them later.
+  * The **contract** is that you treat those views as scoped to the callback that provided them.
 
 ---
 
@@ -494,7 +529,7 @@ Seqlok does **not** guarantee:
 
 Golden-flow wiring for a typical browser + AudioWorklet setup.
 
-**Controller (main thread):**
+### Controller (main thread)
 
 ```ts
 import {
@@ -509,7 +544,10 @@ const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
 const backing = allocateShared(plan);
 
-const controller = bindController(spec, backing);
+// Controller binding (spec + plan + backing cross-check)
+const controller = bindController(spec, plan, backing);
+
+// Handoff envelope for the worklet
 const handoff = buildHandoff(plan, backing);
 
 audioContext.audioWorklet.addModule('processor.js').then(() => {
@@ -534,23 +572,30 @@ audioContext.audioWorklet.addModule('processor.js').then(() => {
 });
 ```
 
-**Processor (AudioWorkletGlobalScope / worker):**
+### Processor (AudioWorkletGlobalScope / worker)
 
 ```ts
-import { receiveHandoff, bindProcessor, type ProcessorBinding } from '@seqlok/core';
+import {
+  receiveHandoff,
+  bindProcessor,
+  type ProcessorBinding,
+} from '@seqlok/core';
 import type { DemoSpec } from './spec';
 
 class MyProcessor extends AudioWorkletProcessor {
   private readonly binding: ProcessorBinding<DemoSpec>;
 
-  constructor(opts: any) {
+  constructor(opts: { processorOptions: { seqlok: unknown } }) {
     super();
 
     const received = receiveHandoff<DemoSpec>(opts.processorOptions.seqlok);
     this.binding = bindProcessor(received);
   }
 
-  process(inputs: Float32Array[][], outputs: Float32Array[][]): boolean {
+  process(
+    inputs: Float32Array[][],
+    outputs: Float32Array[][],
+  ): boolean {
     this.binding.params.within((params) => {
       const out = this.dsp.process(inputs[0][0], outputs[0][0], params.gain);
 
@@ -567,10 +612,12 @@ class MyProcessor extends AudioWorkletProcessor {
 registerProcessor('my-processor', MyProcessor);
 ```
 
-This is the canonical "Controller ↔ Processor" Seqlok pipeline:
+This is the canonical **Controller ↔ Processor** Seqlok pipeline:
 
-- Main side: `defineSpec → planLayout → allocateShared → buildHandoff → bindController`
-- Worklet side: `receiveHandoff → bindProcessor`
+* Main side: `defineSpec → planLayout → allocateShared → buildHandoff → bindController`
+* Worklet side: `receiveHandoff → bindProcessor`
+
+All shared state is in planes under seqlock; all accesses go through bindings.
 
 ---
 
@@ -578,42 +625,44 @@ This is the canonical "Controller ↔ Processor" Seqlok pipeline:
 
 Internally, the concurrency model relies on several invariants that **must not be broken**:
 
-1. **All shared-state reads/writes go through bindings**
+1. **All shared-state reads/writes go through bindings or primitives**
 
-- No module should directly poke `Atomics` on data planes except the lowest-level primitives.
+  * No high-level module should call `Atomics.*` on planes directly.
+  * Only the primitives layer (`seqlock`, `atomics`) touches `Atomics`.
 
 2. **Roles are enforced at the API level**
 
-- `bindController` must not expose meter write capabilities.
-- `bindProcessor` must not expose param write capabilities.
+  * `bindController` must not expose meter write capabilities.
+  * `bindProcessor` must not expose param write capabilities.
 
 3. **Callbacks are synchronous**
 
-- `within`, `publish` must not be `async` (no promises returned, no `await` intended inside).
+  * `within` and `publish` must not be `async`.
+  * Hot-path callbacks are assumed to complete quickly.
 
-4. **Seqlock state is always in a single control plane per domain**
+4. **One control pair per domain per backing**
 
-- No per-field seqlocks.
-- One param seqlock, one meter seqlock per backing.
+  * Exactly one param seqlock (`PU`) and one meter seqlock (`MU`) per backing.
+  * No per-field seqlocks.
 
-5. **Specs are structural, not behavioral**
+5. **Specs are structural, not behavioural**
 
-- No "behavior flags" that change concurrency semantics per field.
-- Concurrency semantics are always the same: snapshot for params, commit for meters.
+  * No field-level concurrency flags or ad-hoc semantics.
+  * Concurrency semantics are always the same: snapshot for params, commit for meters.
 
-If you extend Seqlok's capabilities, check any new feature against these invariants first.
+If you extend Seqlok's capabilities (e.g. observer bindings, MWMR ring topologies), check any new feature against these
+invariants first and keep the **kernel** firmly in the SWMR + seqlock model.
 
 ---
 
 ## Summary
 
-The concurrency model of Seqlok can be summarized in one line:
+The concurrency model of Seqlok in one line:
 
-> **One writer per domain, shared memory guarded by seqlocks, exposed through scoped
-> callbacks (`within` / `publish`) and seqlock-guarded snapshots on the Controller side, so coherent use is the default.**
+> **One writer per domain, shared memory guarded by seqlocks, exposed through scoped callbacks (`within` / `publish`) and seqlock-guarded snapshots, so coherent use is the default.**
 
-Everything else — planes, specs, plan, backing, handoff, bindings — exists to make that model:
+Everything else — spec, plan, backing, handoff, bindings, observers — exists to make that model:
 
-- **Fast enough** for real-time code
-- **Safe enough** for shared memory
-- **Clear enough** that you can reason about it at 2AM without hating future-you
+* **Fast enough** for real-time code
+* **Safe enough** for shared memory
+* **Clear enough** that you can reason about it at 2am without hating future-you.

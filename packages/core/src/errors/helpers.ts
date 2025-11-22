@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Convenience helpers for constructing and throwing SeqlokError instances.
+ *
+ * @remarks
+ * - Wraps {@link createError} for common, cross-cutting error patterns.
+ * - Keeps domain-specific error construction (env/backing/etc.) out of hot paths.
+ * - Intended for helpers that may be used across multiple modules or layers.
+ */
+
 import { createError } from './error';
 
 import type { EnvUnsupportedDetails } from './codes/env';

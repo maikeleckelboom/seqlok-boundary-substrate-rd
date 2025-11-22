@@ -2,30 +2,35 @@ import { describe, expect, it } from 'vitest';
 
 import { publish, tryRead, type SeqPair } from '../../src/primitives/seqlock';
 
-describe('seqlock contention & fallback paths', () => {
+describe('Seqlock Contention & Fallback Mechanisms', () => {
+  /**
+   * specific helper to create a SharedArrayBuffer-backed sequence pair
+   * for testing concurrency primitives.
+   */
   function makeSeqPair(): SeqPair {
+    // Allocate 8 bytes: [0] = Lock (u32), [1] = Sequence (u32)
     const u32 = new Uint32Array(new SharedArrayBuffer(8));
     return { u32, lockIndex: 0, seqIndex: 1 };
   }
 
-  it('returns fallback when lock stays odd and spin budget is limited', () => {
+  it('returns fallback value when lock stays held and spin budget is exhausted', () => {
     const pair = makeSeqPair();
 
-    // Lock pair in odd state (writer active)
-    pair.u32[0] = 1; // LOCK = odd
-    pair.u32[1] = 0; // SEQ = 0
+    // Simulate active writer: Lock is odd, Sequence is 0
+    pair.u32[0] = 1;
+    pair.u32[1] = 0;
 
-    const result = tryRead(pair, () => 42, { spinBudget: 10, retryBudget: 0 });
+    const fallbackValue = 42;
+    const result = tryRead(pair, () => fallbackValue, { spinBudget: 10, retryBudget: 0 });
 
     expect(result.ok).toBe(false);
-    // Implementation is free to consume fewer spins than the budget;
-    // we only assert non-negative and that it did not succeed.
+    // Implementation may optimize spins, so we assert valid range rather than exact count
     expect(result.status.spins).toBeGreaterThanOrEqual(0);
     expect(result.status.retries).toBe(0);
-    expect(result.value).toBe(42); // fallback value returned
+    expect(result.value).toBe(fallbackValue);
   });
 
-  it('throws timeout when retry budget is exhausted under rapid sequence changes', () => {
+  it('throws timeout when retry budget is exhausted under rapid writes', () => {
     const pair = makeSeqPair();
     let readCount = 0;
 
@@ -34,10 +39,10 @@ describe('seqlock contention & fallback paths', () => {
         pair,
         () => {
           readCount++;
-          // Simulate writer advancing sequence during read
+          // Simulate a writer advancing the sequence *during* the read operation
           if (readCount <= 5) {
-            // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-            pair.u32[1]!++;
+            const currentSeq = pair.u32[1] ?? 0;
+            pair.u32[1] = currentSeq + 1;
           }
           return readCount;
         },
@@ -46,61 +51,58 @@ describe('seqlock contention & fallback paths', () => {
     ).toThrow(/timeout/i);
   });
 
-  it('succeeds on first try under no contention', () => {
+  it('succeeds on first attempt under no contention', () => {
     const pair = makeSeqPair();
-    pair.u32[0] = 0; // LOCK = even
-    pair.u32[1] = 0; // SEQ = 0
+    pair.u32[0] = 0; // Lock even (unlocked)
+    pair.u32[1] = 0; // Sequence 0
 
-    const result = tryRead(pair, () => 123);
+    const expectedValue = 123;
+    const result = tryRead(pair, () => expectedValue);
 
     expect(result.ok).toBe(true);
     expect(result.status.spins).toBe(0);
     expect(result.status.retries).toBe(0);
-    expect(result.value).toBe(123);
+    expect(result.value).toBe(expectedValue);
   });
 
-  it('detects lock change mid-read', () => {
+  it('detects lock state change occurring mid-read', () => {
     const pair = makeSeqPair();
-    pair.u32[0] = 0; // LOCK = even
-    pair.u32[1] = 5; // SEQ = 5
+    pair.u32[0] = 0;
+    pair.u32[1] = 5;
 
     const result = tryRead(
       pair,
       () => {
-        // Simulate writer starting during read, make LOCK odd
+        // Simulate a writer acquiring the lock (odd) while the read is in progress
         pair.u32[0] = 1;
         return 999;
       },
       { spinBudget: 5, retryBudget: 2 },
     );
 
-    // Should retry since LOCK changed; implementation may ultimately fail
+    // The read should fail consistency checks and trigger retries
     expect(result.ok).toBe(false);
     expect(result.status.retries).toBeGreaterThan(0);
   });
 
-  it('handles sequence overflow (wraparound)', () => {
+  it('handles sequence integer overflow (wraparound) correctly', () => {
     const pair = makeSeqPair();
-    pair.u32[0] = 0; // LOCK = even
-    pair.u32[1] = 0xffffffff; // SEQ at max u32
+    pair.u32[0] = 0;
+    pair.u32[1] = 0xffffffff; // Max u32 value
 
     publish(pair, () => {
-      /* no-op write */
+      /* No-op write to trigger sequence increment */
     });
 
-    // SEQ should wrap to 0 (0xffffffff + 1 = 0 in u32 arithmetic)
+    // Sequence should wrap to 0 (0xffffffff + 1 = 0 in u32 arithmetic)
     expect(pair.u32[1]).toBe(0);
 
-    // LOCK should be 2 (0 + 1 + 1 from beginWrite/endWrite)
-    // beginWrite: 0 → 1 (odd)
-    // endWrite: 1 → 2 (even)
+    // Lock should increment twice (acquire + release): 0 -> 1 -> 2
     expect(pair.u32[0]).toBe(2);
   });
 
-  it('throws timeout when no coherent read is possible within budgets', () => {
+  it('throws timeout when no coherent read is possible within budget', () => {
     const pair = makeSeqPair();
-
-    // Keep advancing SEQ to force retry exhaustion
     let attempts = 0;
 
     expect(() =>
@@ -108,8 +110,9 @@ describe('seqlock contention & fallback paths', () => {
         pair,
         () => {
           attempts++;
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-          pair.u32[1]!++;
+          // Force sequence mismatch on every attempt
+          const currentSeq = pair.u32[1] ?? 0;
+          pair.u32[1] = currentSeq + 1;
           return `attempt-${String(attempts)}`;
         },
         { spinBudget: 0, retryBudget: 3 },
@@ -117,7 +120,7 @@ describe('seqlock contention & fallback paths', () => {
     ).toThrow(/timeout/i);
   });
 
-  it('resets spin counter across retries (documents current behavior)', () => {
+  it('resets spin counter between retries (documented behavior)', () => {
     const pair = makeSeqPair();
     let callCount = 0;
 
@@ -125,36 +128,36 @@ describe('seqlock contention & fallback paths', () => {
       pair,
       () => {
         callCount++;
-        // Force retry by changing sequence
+        // Force retry by changing sequence for the first few calls
         if (callCount < 3) {
-          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-          pair.u32[1]!++;
+          const currentSeq = pair.u32[1] ?? 0;
+          pair.u32[1] = currentSeq + 1;
         }
         return callCount;
       },
       { spinBudget: 5, retryBudget: 5 },
     );
 
-    // We only assert that spins are tracked and multiple attempts were made.
-    // (Implementation note: current impl accumulates spins; this test documents that.)
+    // Verifies that spins are tracked and multiple read attempts occurred
     expect(result.status.spins).toBeGreaterThanOrEqual(0);
     expect(callCount).toBeGreaterThan(1);
   });
 
-  it('demonstrates lock progression through publish cycle', () => {
+  it('tracks lock progression through a full publish cycle', () => {
     const pair = makeSeqPair();
-    pair.u32[0] = 4; // Start at even LOCK=4
-    pair.u32[1] = 10; // SEQ=10
+    pair.u32[0] = 4; // Start even
+    pair.u32[1] = 10;
 
-    expect(pair.u32[0] % 2).toBe(0); // Confirm even
+    expect(pair.u32[0] % 2).toBe(0);
 
     publish(pair, () => {
-      // During callback, LOCK should be odd
+      // Inside callback, lock must be odd (acquired)
+      // Using logical AND for bit check as it's cleaner for binary states
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      expect(pair.u32[0]! % 2).toBe(1);
+      expect(pair.u32[0]! & 1).toBe(1);
     });
 
-    // After publish: LOCK should be 6 (4 + 1 + 1), SEQ should be 11
+    // After publish: Lock increments by 2 (acquire + release), Sequence increments by 1
     expect(pair.u32[0]).toBe(6);
     expect(pair.u32[1]).toBe(11);
   });

@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Spec definition DSL and type-safe builders.
+ *
+ * @remarks
+ * - Provides `defineSpec()` for declaring params and meters with type inference.
+ * - Builders preserve literal types and array lengths for precise type checking.
+ * - Handles validation of min/max ranges and enum values at definition time.
+ */
+
 import {
   asNonEmpty,
   assertValidateScalarRange,

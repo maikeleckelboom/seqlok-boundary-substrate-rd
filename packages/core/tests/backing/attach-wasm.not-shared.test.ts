@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { allocateWasmShared } from '../../src/backing/allocate-wasm-shared';
 import { isSeqlokError } from '../../src/errors/error';
@@ -9,16 +9,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('allocateWasmShared — non-shared memory surface', () => {
-  it('throws backing.wasmMemoryNotShared if Memory.buffer is not a SharedArrayBuffer', () => {
+describe('Allocate Wasm Shared: Shared Memory Validation', () => {
+  it('throws backing.wasmMemoryNotShared when the allocated WebAssembly memory buffer is not shared', () => {
     const spec = defineSpec(({ param, meter }) => ({
-      id: 'demo',
+      id: 'wasm-shared-check',
       params: { p: param.f32({ min: 0, max: 1 }) },
       meters: { m: meter.f32() },
     }));
     const plan = planLayout(spec);
 
-    // Memory substitute returning a regular ArrayBuffer for buffer
+    // Mock: Simulate an environment where WebAssembly.Memory returns a standard ArrayBuffer.
+    // This happens in browsers if COOP/COEP headers are missing, even if Wasm is supported.
     class NonSharedMemory {
       private readonly _buf = new ArrayBuffer(1024);
       get buffer(): ArrayBuffer {
@@ -30,18 +31,24 @@ describe('allocateWasmShared — non-shared memory surface', () => {
       Memory: NonSharedMemory as unknown as typeof WebAssembly.Memory,
     } as unknown as typeof WebAssembly);
 
+    let thrown: unknown;
+
     try {
       allocateWasmShared(plan);
-      expect(false).toBe(true);
-    } catch (e: unknown) {
-      if (!isSeqlokError(e)) {
-        throw e;
-      }
-      expect(e.code).toBe('backing.wasmMemoryNotShared');
-      if ('shared' in e.details) {
-        expect(e.details.shared).toBe(false);
-      }
-      expect(e.details.where).toBe('allocateWasmShared');
+    } catch (e) {
+      thrown = e;
+    }
+
+    // Verify the error is strictly typed and contains the expected diagnostic details
+    if (!isSeqlokError(thrown)) {
+      throw new Error('Expected allocateWasmShared to throw a SeqlokError');
+    }
+
+    expect(thrown.code).toBe('backing.wasmMemoryNotShared');
+    expect(thrown.details.where).toBe('allocateWasmShared');
+
+    if ('shared' in thrown.details) {
+      expect(thrown.details.shared).toBe(false);
     }
   });
 });

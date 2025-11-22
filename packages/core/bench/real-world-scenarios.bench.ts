@@ -11,6 +11,14 @@ import {
 } from '../src';
 import { MICRO_BENCH_OPTS } from '../vitest.config';
 
+/**
+ * @fileoverview
+ * Parameter operations under mixed controller/processor load.
+ *
+ * Uses a DJ-style deck spec (transport, filter, EQ, meters) to exercise
+ * realistic hot paths on both sides of the binding.
+ */
+
 let _blackhole = 0;
 
 const spec = defineSpec(({ param, meter }) => ({
@@ -40,18 +48,14 @@ for (let i = 0; i < eqWriteBuffer.length; i++) {
   eqWriteBuffer[i] = 0.5 + i * 0.01;
 }
 
-/**
- * One scalar-only update via set(): gain + cutoffHz.
- */
+/** Scalar-only update via set(): gain + cutoffHz. */
 function paramsSetTwoScalars(): void {
   controller.params.set('gain', 1.0);
   controller.params.set('cutoffHz', 4_000);
   _blackhole ^= 1;
 }
 
-/**
- * Batch update of 3 scalars via update().
- */
+/** Batch update of three scalar params via update(). */
 function paramsUpdateThreeScalars(): void {
   controller.params.update({
     gain: 1.0,
@@ -62,9 +66,8 @@ function paramsUpdateThreeScalars(): void {
 }
 
 /**
- * Update 3 scalars + stage the eqBands f32[8] array.
- *
- * Important: arrays NEVER go through update() – only through stage().
+ * Update three scalars via update() and eqBands f32[8] via stage().
+ * Arrays always use stage(), never update().
  */
 function paramsUpdateScalarsAndStageArray(): void {
   // Scalars via update()
@@ -86,11 +89,7 @@ function paramsUpdateScalarsAndStageArray(): void {
   _blackhole ^= 4;
 }
 
-/**
- * Bulk hydrate: 3 scalars + eqBands f32[8] via params.hydrate().
- *
- * Mirrors paramsUpdateScalarsAndStageArray(), but exercises the hydrate macro path.
- */
+/** Bulk hydrate of three scalars + eqBands f32[8] via params.hydrate(), mirroring paramsUpdateScalarsAndStageArray(). */
 function paramsHydrateScalarsAndArray(): void {
   controller.params.hydrate({
     gain: 0.8,
@@ -101,9 +100,7 @@ function paramsHydrateScalarsAndArray(): void {
   _blackhole ^= 1024;
 }
 
-/**
- * Array-only write: pure stage() of eqBands.
- */
+/** Array-only write of eqBands via stage(). */
 function paramsStageArrayOnly(): void {
   controller.params.stage('eqBands', (view) => {
     const len = view.length;
@@ -115,9 +112,7 @@ function paramsStageArrayOnly(): void {
   _blackhole ^= 8;
 }
 
-/**
- * Processor: coherent read of scalar params only.
- */
+/** Processor-side coherent read of scalar params only. */
 function processorWithinScalarsOnly(): void {
   processor.params.within((view) => {
     const g = view.gain;
@@ -127,9 +122,7 @@ function processorWithinScalarsOnly(): void {
   });
 }
 
-/**
- * Processor: coherent read of scalars + eqBands array.
- */
+/** Processor-side coherent read of scalar params and the eqBands array. */
 function processorWithinScalarsAndArray(): void {
   processor.params.within((view) => {
     const g = view.gain;
@@ -148,9 +141,7 @@ function processorWithinScalarsAndArray(): void {
   });
 }
 
-/**
- * Interleaved controller update + processor read.
- */
+/** Interleaved controller update and processor read. */
 function interleavedControllerUpdateAndProcessorWithin(): void {
   controller.params.update({
     gain: 1.2,
@@ -164,7 +155,7 @@ function interleavedControllerUpdateAndProcessorWithin(): void {
   });
 }
 
-describe('Parameter operations: controller ↔ processor', () => {
+describe('Parameter operations: DJ-style controller ↔ processor', () => {
   bench(
     'controller.params.set (two scalars)',
     () => {

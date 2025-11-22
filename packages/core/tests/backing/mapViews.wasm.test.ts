@@ -7,36 +7,45 @@ import { specFromPlaneBytes } from '../helpers/spec-from-bytes';
 import type { WasmSharedBacking } from '../../src/backing/types';
 import type { PlaneByteLengths } from '../../src/plan/types';
 
-const B4 = 4;
-const B8 = 8;
-const PAGE = 64 * 1024;
+const BYTES_F32 = 4;
+const BYTES_F64 = 8;
+const WASM_PAGE_SIZE = 64 * 1024;
 
-function roundPages(bytes: number): number {
-  return Math.ceil(bytes / PAGE);
+/**
+ * Calculates the minimum number of WebAssembly pages required to contain
+ * the specified number of bytes.
+ */
+function pagesForBytes(bytes: number): number {
+  return Math.ceil(bytes / WASM_PAGE_SIZE);
 }
 
-describe('mapViews (wasm shared)', () => {
-  it('maps views from wasm-shared memory with planned byteLengths', () => {
+describe('Map Views: WebAssembly Shared Memory', () => {
+  it('correctly maps views from WebAssembly shared memory according to planned byte lengths', () => {
+    // Define specific byte requirements for various planes to verify mapping precision
     const req: PlaneByteLengths = {
-      PF32: 8 * B4,
-      PI32: 4 * B4,
+      PF32: 8 * BYTES_F32,
+      PI32: 4 * BYTES_F32,
       PB: 10,
-      PU: 2 * B4,
-      MF32: 6 * B4,
-      MF64: 3 * B8,
-      MU32: 3 * B4,
-      MU: 2 * B4,
+      PU: 2 * BYTES_F32,
+      MF32: 6 * BYTES_F32,
+      MF64: 3 * BYTES_F64,
+      MU32: 3 * BYTES_F32,
+      MU: 2 * BYTES_F32,
     };
+
     const plan = planLayout(specFromPlaneBytes(req));
 
+    // Allocate Wasm shared memory based on the plan's total size requirements
     const memory = new WebAssembly.Memory({
       shared: true,
-      initial: roundPages(plan.bytesTotal),
-      maximum: roundPages(plan.bytesTotal),
+      initial: pagesForBytes(plan.bytesTotal),
+      maximum: pagesForBytes(plan.bytesTotal),
     });
-    const backing: WasmSharedBacking = { kind: 'wasm-shared', memory };
 
+    const backing: WasmSharedBacking = { kind: 'wasm-shared', memory };
     const v = mapViews(plan, backing);
+
+    // Verify that the mapped view lengths match the plan exactly
     expect(v.params.PF32.byteLength).toBe(plan.planes.PF32);
     expect(v.params.PI32.byteLength).toBe(plan.planes.PI32);
     expect(v.params.PB.byteLength).toBe(plan.planes.PB);

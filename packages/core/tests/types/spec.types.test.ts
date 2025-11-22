@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from 'vitest';
 
-import type { MeterValueFor, ParamValueFor } from '../../src/binding/types';
+import type { MeterValueFor, ParamValueFor } from '../../src/binding/common/types';
 import type {
   ArrayMeterKeys,
   ArrayParamKeys,
@@ -11,10 +11,7 @@ import type {
   SpecInput,
 } from '../../src/spec/types';
 
-type F32RO = Readonly<Float32Array>;
-type U8RO = Readonly<Uint8Array>;
-
-describe('keys splitting (compile-time)', () => {
+describe('Spec Keys Splitting (Compile-Time Contracts)', () => {
   it('Param/Meter keys', () => {
     interface Spec extends SpecInput {
       id: 'x';
@@ -82,7 +79,7 @@ describe('ParamValueFor / MeterValueFor shapes (spot checks)', () => {
     expectTypeOf<ParamValueFor<Spec, 'mode'>>().toExtend<'normal' | 'granular'>();
     expectTypeOf<'normal' | 'granular'>().toExtend<ParamValueFor<Spec, 'mode'>>();
 
-    expectTypeOf<ParamValueFor<Spec, 'flags'>>().toExtend<U8RO>();
-    expectTypeOf<MeterValueFor<Spec, 'spectrum'>>().toExtend<F32RO>();
+    expectTypeOf<ParamValueFor<Spec, 'flags'>>().toExtend<Readonly<Uint8Array>>();
+    expectTypeOf<MeterValueFor<Spec, 'spectrum'>>().toExtend<Readonly<Float32Array>>();
   });
 });

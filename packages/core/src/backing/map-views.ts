@@ -1,3 +1,15 @@
+/**
+ * @fileoverview
+ * Maps backing memory into typed views for all planes and lock arrays.
+ *
+ * @remarks
+ * - Interprets a Plan's layout over SharedArrayBuffer or WASM backings.
+ * - Produces strongly typed views for param, meter and lock planes.
+ * - Validates offsets, alignment and sizes with structured diagnostics.
+ *
+ * @internal
+ */
+
 import { getSharedBuffer } from './buffers';
 import { createError } from '../errors/error';
 import { ALL_PLANES, BYTES_PER_ELEM, type PlaneKey } from '../primitives/planes';
@@ -7,57 +19,78 @@ import type { Plan, PlaneByteLengths } from '../plan/types';
 import type { SpecInput } from '../spec/types';
 
 /**
- * Backing ABI: byte-pack order of all planes for contiguous / wasm-shared backings.
+ * Defines the memory layout for packed plane storage.
  *
  * @remarks
- * - Used to compute contiguous base offsets (`PlaneBases`) for `SharedBacking`
- *   and `WasmSharedBacking`.
- * - Changing this is a breaking layout change; introduce a V2 constant instead
- *   of mutating this one in place.
+ * - Determines byte offsets for planes in contiguous/WASM backings
+ * - Changing requires a new version constant (V2, V3, etc.)
+ * - Order affects memory locality and alignment
+ *
+ * @see {@link computeBackingPlaneBases} for usage
  */
 export const BACKING_PLANE_PACK_ORDER_V1: readonly PlaneKey[] = [
-  'MF64',
-  'PF32',
-  'PI32',
-  'PU',
-  'MF32',
-  'MU32',
-  'MU',
-  'PB',
+  'MF64', // 8-byte aligned
+  'PF32', // 4-byte aligned
+  'PI32', // 4-byte aligned
+  'PU', // 4-byte aligned
+  'MF32', // 4-byte aligned
+  'MU32', // 4-byte aligned
+  'MU', // 4-byte aligned
+  'PB', // 1-byte aligned
 ];
 
+/** Maps each plane to its byte offset in a packed backing. */
 export type PlaneBases = Readonly<Record<PlaneKey, number>>;
 
-/** Internal mutable view used while constructing PlaneBases. */
+/** Mutable variant of {@link PlaneBases} for construction. */
 type MutablePlaneBases = Record<PlaneKey, number>;
 
+/** Typed array views for parameter planes. */
 export interface ParamPlaneViews {
+  /** 32-bit float parameters */
   readonly PF32: Float32Array;
+  /** 32-bit integer parameters */
   readonly PI32: Int32Array;
+  /** Boolean parameters (packed 8-bit) */
   readonly PB: Uint8Array;
+  /** Unsigned 32-bit parameters */
   readonly PU: Uint32Array;
 }
 
+/** Typed array views for meter planes. */
 export interface MeterPlaneViews {
+  /** 32-bit float meters */
   readonly MF32: Float32Array;
+  /** 64-bit float meters */
   readonly MF64: Float64Array;
+  /** 32-bit unsigned integer meters */
   readonly MU32: Uint32Array;
+  /** Meter update counters */
   readonly MU: Uint32Array;
 }
 
+/** Complete set of mapped views for a backing. */
 export interface MappedViews {
+  /** Byte offsets for each plane */
   readonly bases: PlaneBases;
+  /** Parameter plane views */
   readonly params: ParamPlaneViews;
+  /** Meter plane views */
   readonly meters: MeterPlaneViews;
+  /** Locking primitives */
   readonly locks: {
+    /** Parameter update lock */
     readonly PU: Uint32Array;
+    /** Meter update lock */
     readonly MU: Uint32Array;
   };
 }
 
 /**
- * Build a zero-initialized plane-bases record.
- * This keeps the set of planes in one place (`ALL_PLANES`).
+ * Creates a zero-initialized plane bases record.
+ *
+ * @remarks
+ * Uses `ALL_PLANES` to ensure all planes are included.
  */
 function createZeroPlaneBases(): MutablePlaneBases {
   const bases: MutablePlaneBases = {} as MutablePlaneBases;
@@ -68,11 +101,15 @@ function createZeroPlaneBases(): MutablePlaneBases {
 }
 
 /**
- * Compute byte offsets for each plane in a packed backing (contiguous / wasm-shared).
+ * Calculates byte offsets for planes in a packed backing.
  *
  * @remarks
- * - Offsets are expressed in bytes, not elements.
- * - Packing order is defined by `BACKING_PLANE_PACK_ORDER_V1`.
+ * - Offsets are in bytes, not elements
+ * - Follows {@link BACKING_PLANE_PACK_ORDER_V1} for layout
+ * - Used by both contiguous and WASM backings
+ *
+ * @param planes - Byte lengths for each plane
+ * @returns Record mapping planes to their byte offsets
  */
 export function computeBackingPlaneBases(planes: PlaneByteLengths): PlaneBases {
   const bases = createZeroPlaneBases();
@@ -86,6 +123,16 @@ export function computeBackingPlaneBases(planes: PlaneByteLengths): PlaneBases {
   return bases;
 }
 
+/**
+ * Creates typed array views for a packed backing (contiguous or WASM).
+ *
+ * @typeParam S - Layout spec type
+ * @param plan - Memory layout specification
+ * @param backing - Backing storage (SharedArrayBuffer or WebAssembly.Memory)
+ * @returns Mapped views for all planes and locks
+ * @throws {Error} If backing is undersized
+ * @internal
+ */
 function mapPackedBacking<S extends SpecInput>(
   plan: Plan<S>,
   backing: SharedBacking | WasmSharedBacking,
@@ -151,21 +198,35 @@ function mapPackedBacking<S extends SpecInput>(
   };
 }
 
+/**
+ * Creates typed array views for a partitioned backing (separate buffers per plane).
+ *
+ * @typeParam S - Layout spec type
+ * @param plan - Memory layout specification
+ * @param partitionedBacking - Backing with separate SharedArrayBuffer per plane
+ * @returns Mapped views for all planes and locks
+ * @throws {Error} If any plane buffer is undersized
+ * @internal
+ */
 function mapPartitionedBacking<S extends SpecInput>(
   plan: Plan<S>,
   partitionedBacking: Extract<Backing, { kind: 'shared-partitioned' }>,
 ): MappedViews {
-  // In partitioned mode each plane starts at byteOffset 0 in its own SAB.
+  // In partitioned mode, each plane has its own SAB starting at offset 0
   const bases = createZeroPlaneBases();
 
+  /**
+   * Validates and returns a plane's SharedArrayBuffer.
+   * @throws If the plane's buffer is smaller than required
+   */
   const ensurePlaneBuffer = (plane: PlaneKey): SharedArrayBuffer => {
     const sab = partitionedBacking.planes[plane];
-    const requiredByteLength = plan.planes[plane];
+    const requiredBytes = plan.planes[plane];
 
-    if (sab.byteLength < requiredByteLength) {
+    if (sab.byteLength < requiredBytes) {
       throw createError('backing.allocUndersized', `Plane ${plane} too small`, {
         plane,
-        requestedBytes: requiredByteLength,
+        requestedBytes: requiredBytes,
         allocatedBytes: sab.byteLength,
         where: 'mapViews.partitioned',
       });
@@ -220,6 +281,22 @@ function mapPartitionedBacking<S extends SpecInput>(
   };
 }
 
+/**
+ * Maps a backing to typed array views according to the provided layout.
+ *
+ * @typeParam S - Layout spec type
+ * @param plan - Memory layout specification
+ * @param backing - Backing storage to map
+ * @returns Typed array views for all planes and locks
+ * @throws {Error} If backing is invalid or undersized
+ *
+ * @example
+ * ```typescript
+ * const views = mapViews(plan, backing);
+ * // Access parameter: views.params.PF32[paramIndex]
+ * // Access meter: views.meters.MF32[meterIndex]
+ * ```
+ */
 export function mapViews<S extends SpecInput>(
   plan: Plan<S>,
   backing: Backing,

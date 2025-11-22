@@ -11,9 +11,19 @@ import {
 } from '../src';
 import { E2E_BENCH_OPTS } from '../vitest.config';
 
+/**
+ * @fileoverview
+ * End-to-end controller → seqlock → processor pipeline benchmarks.
+ *
+ * Measures the cost of the full flow:
+ * - plan + allocate + handoff + bind
+ * - controller writes
+ * - processor reads and meter publishes
+ */
+
 let _blackhole = 0;
 
-describe('E2E pipeline: plan + allocate + handoff + bind', () => {
+describe('End-to-end pipeline: plan, allocate, handoff, bind', () => {
   const smallSpec = defineSpec(({ param, meter }) => ({
     id: 'bench/e2e/small',
     params: {
@@ -81,11 +91,11 @@ describe('E2E pipeline: plan + allocate + handoff + bind', () => {
       const handoff = buildHandoff(plan, backing);
       const received = receiveHandoff(handoff);
 
-      // Exercise bindings
+      // Exercise controller/processor bindings.
       bindController(smallSpec, backing);
       bindProcessor(received);
 
-      // Trivial side-effect to keep things "live"
+      // Trivial side-effect to keep the pipeline live.
       _blackhole ^= 1;
     },
     E2E_BENCH_OPTS,

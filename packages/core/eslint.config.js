@@ -1,3 +1,9 @@
+/**
+ * @file ESLint configuration file.
+ * @author Maikel Eckelboom
+ * @license MIT
+ */
+
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -6,26 +12,45 @@ import regex from 'eslint-plugin-regex';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
 
+/**
+ * The directory name of the current module.
+ * @type {string}
+ */
 const HERE = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The root directory of the repository.
+ * @type {string}
+ */
 const REPO_ROOT = dirname(dirname(HERE));
 
+/**
+ * An object containing file and directory paths for ESLint configurations.
+ * @property {string[]} ignores - Patterns for files and directories to be ignored by ESLint.
+ * @property {string[]} src - Path patterns for source TypeScript files.
+ * @property {string[]} tests - Path patterns for test files.
+ * @property {string[]} examples - Path patterns for example files.
+ * @property {string[]} bench - Path patterns for benchmark files.
+ * @property {string[]} scripts - Path patterns for script files.
+ * @property {string[]} allTs - An aggregation of all TypeScript file paths.
+ */
 const paths = {
   ignores: [
     '**/dist/**',
     '**/build/**',
-    '**/.coverage/**',
     '**/coverage/**',
-    '**/.vite/**',
     '**/.output/**',
     '**/generated/**',
     '**/node_modules/**',
     '**/*.d.ts',
+    '**/docs/**',
   ],
   src: ['src/**/*.{ts,tsx}'],
   tests: ['tests/**/*.{ts,tsx}', '**/*.test.ts', '**/*.spec.ts'],
   examples: ['examples/**/*.{ts,tsx}'],
   bench: ['bench/**/*.{ts,tsx}'],
   scripts: ['scripts/**/*.{ts,tsx}'],
+  config: ['*.config.ts', 'vite.config.ts'],
 };
 
 paths.allTs = [
@@ -34,8 +59,13 @@ paths.allTs = [
   ...paths.examples,
   ...paths.bench,
   ...paths.scripts,
+  ...paths.config,
 ];
 
+/**
+ * Defines the architectural layers of the application for import restrictions.
+ * @type {Record<'primitives' | 'errors' | 'types' | 'spec' | 'plan' | 'backing' | 'handoff' | 'binding' | 'diagnostics', string>}
+ */
 const layers = {
   primitives: 'src/primitives',
   errors: 'src/errors',
@@ -48,19 +78,34 @@ const layers = {
   diagnostics: 'src/diagnostics',
 };
 
-function buildLayerRestrictions() {
-  const restrictions:{
-    target: string;
-    from: string;
-    message: string;
-  }[] = [];
+/**
+ * @typedef {object} LayerRestriction
+ * @property {string} target - The layer where the restriction is applied.
+ * @property {string} from - The layer that is not allowed to be imported.
+ * @property {string} message - The error message for the restriction.
+ */
 
-  const addRestriction = (target: string, from: string, message: string) => {
+/**
+ * Builds an array of layer-based import restrictions.
+ * This function enforces architectural boundaries by preventing illegal imports between layers.
+ * @returns {LayerRestriction[]} An array of restriction objects for the 'import/no-restricted-paths' rule.
+ */
+function buildLayerRestrictions() {
+  /** @type {LayerRestriction[]} */
+  const restrictions = [];
+
+  /**
+   * Adds a new restriction to the list.
+   * @param {string} target - The target layer.
+   * @param {string} from - The source layer that is forbidden.
+   * @param {string} message - The message to display on violation.
+   */
+  const addRestriction = (target, from, message) => {
     restrictions.push({ target, from, message });
   };
 
   // errors: foundational leaf — cannot import any other layer
-  const layersAboveErrors: (keyof typeof layers)[] = [
+  const layersAboveErrors = [
     'primitives',
     'types',
     'spec',
@@ -74,7 +119,7 @@ function buildLayerRestrictions() {
   }
 
   // primitives: bottom layer — cannot import domain layers
-  const layersAbovePrimitives: (keyof typeof layers)[] = [
+  const layersAbovePrimitives = [
     'types',
     'spec',
     'plan',
@@ -91,7 +136,7 @@ function buildLayerRestrictions() {
   }
 
   // types: cannot import any domain layer or primitives/errors
-  const layersAboveTypes: (keyof typeof layers)[] = [
+  const layersAboveTypes = [
     'spec',
     'plan',
     'backing',
@@ -105,17 +150,17 @@ function buildLayerRestrictions() {
   }
 
   // spec: cannot import layers above it
-  for (const layer of ['plan', 'backing', 'handoff', 'binding'] as const) {
+  for (const layer of ['plan', 'backing', 'handoff', 'binding']) {
     addRestriction(layers.spec, layers[layer], `spec must not import ${layer}`);
   }
 
   // plan: above spec, below backing
-  for (const layer of ['backing', 'handoff', 'binding'] as const) {
+  for (const layer of ['backing', 'handoff', 'binding']) {
     addRestriction(layers.plan, layers[layer], `plan must not import ${layer}`);
   }
 
   // backing: below handoff/binding
-  for (const layer of ['handoff', 'binding'] as const) {
+  for (const layer of ['handoff', 'binding']) {
     addRestriction(layers.backing, layers[layer], `backing must not import ${layer}`);
   }
 
@@ -123,12 +168,21 @@ function buildLayerRestrictions() {
   addRestriction(layers.handoff, layers.binding, 'handoff must not import binding');
 
   // Prevent imports from central type files (use domain-owned types instead)
-  const centralTypeFiles: { file: string; domain: string }[] = [
-    { file: 'src/types/backing.ts', domain: 'src/backing/types.ts' },
+  const centralTypeFiles = [
+    {
+      file: 'src/types/backing.ts',
+      domain: 'src/backing/types.ts',
+    },
     { file: 'src/types/binding.ts', domain: 'src/binding/types.ts' },
-    { file: 'src/types/spec.ts', domain: 'src/spec/types.ts' },
+    {
+      file: 'src/types/spec.ts',
+      domain: 'src/spec/types.ts',
+    },
     { file: 'src/types/plan.ts', domain: 'src/plan/types.ts' },
-    { file: 'src/types/handoff.ts', domain: 'src/handoff/types.ts' },
+    {
+      file: 'src/types/handoff.ts',
+      domain: 'src/handoff/types.ts',
+    },
     { file: 'src/types/errors.ts', domain: 'src/errors/types.ts' },
   ];
 
@@ -138,15 +192,14 @@ function buildLayerRestrictions() {
 
   // diagnostics: outermost leaf — production core layers cannot import it,
   // EXCEPT binding, which is allowed to bump counters on slow/error paths.
-  const productionLayersExceptBinding: (keyof typeof layers)[] = [
+  const productionLayersExceptBinding = [
     'primitives',
     'errors',
     'types',
     'spec',
     'plan',
     'backing',
-    'handoff',
-    // 'binding' intentionally excluded: binding is allowed to import diagnostics.
+    'handoff', // 'binding' intentionally excluded: binding is allowed to import diagnostics.
   ];
   for (const layer of productionLayersExceptBinding) {
     addRestriction(
@@ -159,7 +212,11 @@ function buildLayerRestrictions() {
   return restrictions;
 }
 
-const baseRules: Record<string, unknown> = {
+/**
+ * Base ESLint rules for code hygiene, TypeScript, and import organization.
+ * @type {import('eslint').Linter.RulesRecord}
+ */
+const baseRules = {
   // Code hygiene
   curly: ['error', 'all'],
   eqeqeq: ['error', 'smart'],
@@ -230,7 +287,11 @@ const baseRules: Record<string, unknown> = {
   'import/no-restricted-paths': ['error', { zones: buildLayerRestrictions() }],
 };
 
-const regexRules: Record<string, unknown> = {
+/**
+ * Rules for banning specific string patterns in the codebase using regex.
+ * @type {import('eslint').Linter.RulesRecord}
+ */
+const regexRules = {
   'regex/invalid': [
     'error',
     [
@@ -268,9 +329,14 @@ const regexRules: Record<string, unknown> = {
   ],
 };
 
+/**
+ * The main ESLint configuration exported as a flat config array.
+ * @type {import('typescript-eslint').Config}
+ */
 export default tseslint.config(
   { ignores: paths.ignores },
 
+  // Apply strict and stylistic type-checking rules to all TypeScript files.
   ...tseslint.configs.strictTypeChecked.map((c) => ({
     ...c,
     files: paths.allTs,
@@ -281,10 +347,15 @@ export default tseslint.config(
     files: paths.allTs,
   })),
 
+  // Apply recommended import plugin rules.
   ...[importPlugin.flatConfigs.recommended, importPlugin.flatConfigs.typescript].map(
-    (c) => ({ ...c, files: paths.allTs }),
+    (c) => ({
+      ...c,
+      files: paths.allTs,
+    }),
   ),
 
+  // Base configuration for the project.
   {
     name: 'seqlok/base',
     files: paths.allTs,
@@ -315,6 +386,7 @@ export default tseslint.config(
     rules: baseRules,
   },
 
+  // Configuration overrides for tests and examples.
   {
     name: 'seqlok/tests-and-examples',
     files: [...paths.tests, ...paths.examples],
@@ -322,30 +394,41 @@ export default tseslint.config(
       globals: { ...globals.vitest },
     },
     rules: {
-      'import/no-restricted-paths': 'off',
+      'import/no-restricted-paths': 'off', // Relax layer restrictions in tests.
     },
   },
 
+  // Configuration for regular expression-based rules.
   {
     name: 'seqlok/regex-bans',
     files: ['**/*.{ts,tsx,js,jsx}'],
     plugins: {
+      // @ts-expect-error -- eslint-plugin-regex doesn't have flat config types yet
       regex: { rules: regex.rules },
     },
     rules: regexRules,
   },
 
+  // Configuration for TypeScript declaration files (*.d.ts).
   {
     name: 'seqlok/type-declarations',
     files: ['**/*.d.ts'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {
-        project: null,
+        project: null, // No type-checking needed for d.ts files.
       },
     },
     rules: {
       '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+
+  // Allow console logging in benches and scripts
+  {
+    files: ['bench/**/*.{ts,tsx}', 'scripts/**/*.{ts,tsx}'],
+    rules: {
+      'no-console': 'off',
     },
   },
 );

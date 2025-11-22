@@ -1,21 +1,41 @@
-import { createMeterSnapshot, createParamSnapshot } from './controller.snapshot';
-import { claimBinding, noteBinding, releaseBinding } from './registry';
+/**
+ * @fileoverview
+ * Controller binding implementation.
+ *
+ * @remarks
+ * - Validates and normalizes public param values against spec definitions.
+ * - Maps controller operations onto seqlock-protected backing planes.
+ * - Ensures one successful commit (set/update/stage/hydrate) → one PU bump.
+ * - Provides snapshot helpers for params and meters, including zero-alloc `into`.
+ */
+
+import { createMeterSnapshot, createParamSnapshot } from './snapshot';
+import {
+  type MappedViews,
+  mapViews,
+  type MeterPlaneViews,
+  type ParamPlaneViews,
+} from '../../backing/map-views';
+import { invariant } from '../../errors/invariant';
+import { publish } from '../../primitives/seqlock';
+import { claimBinding, noteBinding, releaseBinding } from '../common/registry';
 import {
   throwInvalidParamValue,
   throwParamRange,
   throwUnknownKey,
   type MeterPlane,
   type ParamPlane,
-} from './validate';
-import {
-  type MappedViews,
-  mapViews,
-  type MeterPlaneViews,
-  type ParamPlaneViews,
-} from '../backing/map-views';
-import { invariant } from '../errors/invariant';
-import { publish } from '../primitives/seqlock';
+} from '../common/validate';
 
+import type { Backing } from '../../backing/types';
+import type { Plan } from '../../plan/types';
+import type {
+  ArrayParamKeys,
+  ParamDef,
+  ParamKeys,
+  ScalarParamKeys,
+  SpecInput,
+} from '../../spec/types';
 import type {
   ArrayParamView,
   ControllerBinding,
@@ -30,43 +50,68 @@ import type {
   PUSeq,
   RangePolicy,
   ScalarParamPatch,
-} from './types';
-import type { Backing } from '../backing/types';
-import type { Plan } from '../plan/types';
-import type {
-  ArrayParamKeys,
-  ParamDef,
-  ParamKeys,
-  ScalarParamKeys,
-  SpecInput,
-} from '../spec/types';
+} from '../common/types';
 
+/**
+ * Base layout information for a param/meter slot in a plane.
+ */
 interface SlotBase {
   readonly offset: number;
   readonly length: number;
   readonly bytesPerElement: number;
 }
 
+/**
+ * Param slot descriptor as produced by the planner.
+ *
+ * @remarks
+ * - `plane` may refer to a logical param plane or the PU lock plane.
+ */
 interface ParamSlot extends SlotBase {
   readonly plane: ParamPlane | 'PU';
 }
 
+/**
+ * Meter slot descriptor as produced by the planner.
+ *
+ * @remarks
+ * - `plane` may refer to a logical meter plane or the MU lock plane.
+ */
 interface MeterSlot extends SlotBase {
   readonly plane: MeterPlane | 'MU';
 }
 
-/** Validated fast-path slots (precomputed element index). */
+/**
+ * Validated fast-path param slot (precomputed element index).
+ *
+ * @remarks
+ * - Plane is guaranteed to be a param data plane (not PU).
+ * - `index` is `offset / bytesPerElement` and bounds-checked.
+ */
 interface ValidatedParamSlot extends SlotBase {
   readonly plane: ParamPlane;
-  readonly index: number; // element index (offset / bytesPerElement)
+  readonly index: number;
 }
 
+/**
+ * Validated fast-path meter slot (precomputed element index).
+ *
+ * @remarks
+ * - Plane is guaranteed to be a meter data plane (not MU).
+ * - `index` is `offset / bytesPerElement` and bounds-checked.
+ */
 interface ValidatedMeterSlot extends SlotBase {
   readonly plane: MeterPlane;
-  readonly index: number; // element index (offset / bytesPerElement)
+  readonly index: number;
 }
 
-/** Internal helper for bulk array copies in hydrate(). */
+/**
+ * Internal helper for bulk array copies in `hydrate()`.
+ *
+ * @remarks
+ * - Plane is one of the param array planes (PF32, PI32, PB).
+ * - `slot.index` represents the starting element offset.
+ */
 type ArrayOp =
   | {
       readonly plane: 'PF32';
@@ -84,15 +129,26 @@ type ArrayOp =
       readonly src: Uint8Array;
     };
 
+/**
+ * Structural object check used by type guards.
+ *
+ * @remarks
+ * - Avoids unsafe casts by working on `Record<string, unknown>`.
+ */
 const isObject = (x: unknown): x is Record<string, unknown> =>
   x !== null && typeof x === 'object';
 
-/** Range-bearing scalar defs. */
+/**
+ * Range-bearing f32 scalar definition.
+ */
 type F32RangeDef = Extract<ParamDef, { kind: 'f32' }> & {
   readonly min: number;
   readonly max: number;
 };
 
+/**
+ * Range-bearing i32 scalar definition.
+ */
 type I32RangeDef = Extract<ParamDef, { kind: 'i32' }> & {
   readonly min: number;
   readonly max: number;
@@ -102,8 +158,7 @@ type BoolDef = Extract<ParamDef, { kind: 'bool' }>;
 type EnumDef = Extract<ParamDef, { kind: 'enum' }>;
 
 /**
- * Type guards use only structural checks on `Record<string, unknown>` and
- * do not rely on `as unknown` casts.
+ * Type guard for f32 scalar definitions with explicit range.
  */
 const isF32RangeDef = (d: unknown): d is F32RangeDef =>
   isObject(d) &&
@@ -111,22 +166,40 @@ const isF32RangeDef = (d: unknown): d is F32RangeDef =>
   typeof d.min === 'number' &&
   typeof d.max === 'number';
 
+/**
+ * Type guard for i32 scalar definitions with explicit range.
+ */
 const isI32RangeDef = (d: unknown): d is I32RangeDef =>
   isObject(d) &&
   d.kind === 'i32' &&
   typeof d.min === 'number' &&
   typeof d.max === 'number';
 
+/**
+ * Type guard for boolean param definitions.
+ */
 const isBoolDef = (d: unknown): d is BoolDef => isObject(d) && d.kind === 'bool';
 
+/**
+ * Type guard for enum param definitions.
+ */
 const isEnumDef = (d: unknown): d is EnumDef =>
   isObject(d) && d.kind === 'enum' && Array.isArray(d.values);
 
-/** Clamp helper for range policy 'clamp'. */
+/**
+ * Clamp helper for range policy `'clamp'`.
+ */
 const clamp = (v: number, min: number, max: number): number =>
   v < min ? min : v > max ? max : v;
 
-/** Extract inclusive numeric range for scalar kinds that have one. */
+/**
+ * Extract inclusive numeric range for scalar kinds that have one.
+ *
+ * @remarks
+ * - f32/i32 scalars use their explicit `[min, max]` fields.
+ * - Enums use `[0, values.length - 1]` (or `[0, 0]` when empty).
+ * - Returns `undefined` when the def has no numeric range.
+ */
 function scalarRangeFor(def: unknown): { min: number; max: number } | undefined {
   if (isF32RangeDef(def) || isI32RangeDef(def)) {
     return { min: def.min, max: def.max };
@@ -141,6 +214,14 @@ function scalarRangeFor(def: unknown): { min: number; max: number } | undefined 
   return undefined;
 }
 
+/**
+ * Validate param slots against the mapped param plane views.
+ *
+ * @remarks
+ * - Filters out non-data-plane entries (e.g. PU).
+ * - Computes and validates element indices for scalars and arrays.
+ * - Throws `internal.assertionFailed` if any slot is out of bounds.
+ */
 function validateParamSlots(
   slots: Record<string, ParamSlot>,
   views: ParamPlaneViews,
@@ -202,6 +283,14 @@ function validateParamSlots(
   return validated;
 }
 
+/**
+ * Validate meter slots against the mapped meter plane views.
+ *
+ * @remarks
+ * - Filters out non-data-plane entries (e.g. MU).
+ * - Computes and validates element indices for scalars and arrays.
+ * - Throws `internal.assertionFailed` if any slot is out of bounds.
+ */
 function validateMeterSlots(
   slots: Record<string, MeterSlot>,
   views: MeterPlaneViews,
@@ -264,8 +353,11 @@ function validateMeterSlots(
 }
 
 /**
- * Assert that a slot exists and is scalar (length === 1).
- * This gives us a precise type without `as` at call sites.
+ * Assert that a param slot exists and is scalar (`length === 1`).
+ *
+ * @remarks
+ * - Throws `binding.unknownKey` when the key is missing or array-shaped.
+ * - Narrows the slot type for scalar write helpers.
  */
 function assertScalarParamSlot(
   slot: ValidatedParamSlot | undefined,
@@ -280,10 +372,20 @@ function assertScalarParamSlot(
 }
 
 /**
- * Normalize public scalar value → plane-storable scalar (number | boolean).
- * - enum: string label or numeric index → numeric index
- * - bool: boolean or 0/1 → boolean (converted to 0/1 at write)
- * - f32/i32: number
+ * Normalize public scalar value → plane-storable scalar (`number | boolean`).
+ *
+ * @remarks
+ * - Enum:
+ *   - Accepts string labels or numeric indices.
+ *   - Returns numeric index.
+ * - Bool:
+ *   - Accepts `boolean` or `0 | 1`.
+ *   - Returns boolean; converted to 0/1 at write.
+ * - f32/i32:
+ *   - Requires a `number`.
+ * - Fallback:
+ *   - Accepts `number | boolean`.
+ *   - Throws for any other shape.
  */
 function normalizeScalarValue(
   def: unknown,
@@ -329,8 +431,12 @@ function normalizeScalarValue(
 }
 
 /**
- * Unchecked scalar write (no policy/validation). Use only inside publish()
- * after all validation and range policy have been applied.
+ * Unchecked scalar write (no policy/validation).
+ *
+ * @remarks
+ * - Use only inside `publish(...)` after all validation and range policy
+ *   have been applied.
+ * - Handles coercion from boolean to 0/1 for numeric planes.
  */
 function writeScalarUnchecked(
   views: ParamPlaneViews,
@@ -359,10 +465,10 @@ function writeScalarUnchecked(
  * Assert that the backing buffer is large enough for the plan.
  *
  * @remarks
- * For shared backings, validates that the SAB byteLength can satisfy
- * the layout described by plan.bytesTotal. Other backing kinds (WASM,
- * partitioned) should be validated in their respective allocators or
- * mapViews implementations.
+ * - For shared backings, validates that the SAB `byteLength` can satisfy
+ *   `plan.bytesTotal`.
+ * - Other backing kinds (WASM, partitioned) are expected to be validated in
+ *   their respective allocators or `mapViews` implementations.
  */
 function assertBackingCapacity<S extends SpecInput>(
   plan: Plan<S>,
@@ -387,12 +493,13 @@ function assertBackingCapacity<S extends SpecInput>(
 }
 
 /**
- * Build a controller binding from a concrete plan + backing.
+ * Build a controller binding from a concrete plan and backing.
  *
  * @remarks
  * - One successful commit (set/update/stage/hydrate) → exactly one PU bump.
  * - All validation happens before `publish`, so failures never bump PU.
- * - `version()` reads the commit counter; no parity check needed on the controller side.
+ * - `version()` reads the commit counter; no parity check is needed on the
+ *   controller side.
  */
 export function controllerImpl<const S extends SpecInput>(
   plan: Plan<S>,
@@ -420,7 +527,7 @@ export function controllerImpl<const S extends SpecInput>(
       seqIndex: plan.locks.PU.seq,
     };
 
-    // Prevalidate & cache fast-path slots.
+    // Prevalidate and cache fast-path slots.
     const validatedParams = validateParamSlots(
       plan.params as Record<string, ParamSlot>,
       mapped.params,
@@ -432,12 +539,17 @@ export function controllerImpl<const S extends SpecInput>(
     const knownParamKeys = Object.keys(validatedParams);
 
     /**
-     * Prepare a single scalar write:
-     * - validates key/shape,
-     * - normalizes public value,
-     * - applies range policy (throw for 'reject', clamp for 'clamp'),
-     * - returns the validated slot + final value to write.
-     * No side-effects; safe to call before publish().
+     * Prepare a single scalar write.
+     *
+     * @remarks
+     * - Validates key and scalar shape.
+     * - Normalizes public value into a plane-storable scalar.
+     * - Applies range policy:
+     *   - `'reject'` → throws on out-of-range.
+     *   - `'clamp'` → clamps into `[min, max]`.
+     * - Returns the validated slot and final value to write.
+     *
+     * No side-effects; safe to call before `publish()`.
      */
     function prepareScalarWrite<K extends ScalarParamKeys<S>>(
       key: K,
@@ -628,7 +740,6 @@ export function controllerImpl<const S extends SpecInput>(
               }
               default: {
                 // Compile-time exhaustiveness: if ArrayOp grows, this is a type error.
-                // noinspection UnnecessaryLocalVariableJS
                 const _exhaustive: never = op;
                 void _exhaustive;
 
@@ -682,11 +793,15 @@ export function controllerImpl<const S extends SpecInput>(
       /**
        * Version (MU sequence number).
        *
-       * Semantics:
-       * - Processor-side `publish(...)` commits exactly once per call by bumping MU.SEQ.
-       * - This reader observes that commit via an SC atomic load on the MU Int32Array.
-       * - The value is returned in the u32 domain (>>> 0) to model wraparound precisely.
-       * - No parity checks are needed for a version read: we only need the commit counter.
+       * @remarks
+       * - Processor-side `publish(...)` commits exactly once per call by
+       *   bumping `MU.SEQ`.
+       * - This reader observes that commit via an SC atomic load on the MU
+       *   `Int32Array`.
+       * - The value is returned in the u32 domain (`>>> 0`) to model wraparound
+       *   precisely.
+       * - No parity checks are needed for a version read: it is a pure commit
+       *   counter.
        */
       version(): MUSeq {
         const u = mapped.locks.MU;

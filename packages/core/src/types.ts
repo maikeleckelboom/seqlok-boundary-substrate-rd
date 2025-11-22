@@ -3,7 +3,7 @@ import type {
   MeterValueFor,
   ParamShape,
   ParamValueFor,
-} from './binding/types';
+} from './binding/common/types';
 import type { MeterKeys, ParamKeys, SpecInput } from './spec/types';
 
 /**

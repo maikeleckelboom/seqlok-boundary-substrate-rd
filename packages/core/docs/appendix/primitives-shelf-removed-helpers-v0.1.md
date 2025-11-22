@@ -1,13 +1,13 @@
-# Primitives Shelf: Removed Helpers in v1 (with Code Reference)
+# Primitives Shelf: Removed Helpers in v0.1.0 (with Code Reference)
 
 > Status: Accepted
-> Scope: `src/primitives/*` in `@seqlok/core` v1
+> Scope: `src/primitives/*` in `@seqlok/core`
 > Intent: Record the intent and **exact implementations** of primitives that were removed from the runtime, so they can
 > be resurrected or reused without spelunking history.
 
 ## 1. Context
 
-For v1, `@seqlok/core` deliberately exposes **only** the high-level flow:
+`@seqlok/core` deliberately exposes **only** the high-level flow:
 
 - `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff` / `receiveHandoff` → `bindController` /
   `bindProcessor`
@@ -21,7 +21,7 @@ This document captures:
 
 - What was removed,
 - What it did / was meant to do,
-- The **exact TypeScript implementations** as they existed in v1 so they can be copy-pasted into other projects or
+- The **exact TypeScript implementations** as they existed in v0.1.0 so they can be copy-pasted into other projects or
   future packages.
 
 ---
@@ -31,7 +31,7 @@ This document captures:
 For reference, this is the final decision matrix for the primitives under discussion:
 
 | Symbol                | Action               | Rationale                                              |
-| --------------------- | -------------------- | ------------------------------------------------------ |
+|-----------------------|----------------------|--------------------------------------------------------|
 | `isPow2`              | **DELETE**           | Unused; adds noise                                     |
 | `isAligned`           | **DELETE**           | Unused; adds noise                                     |
 | `acquire`             | **DELETE**           | Design stub for future feature; implement when needed  |
@@ -340,7 +340,7 @@ export function isWriterActive(p: SeqPair): boolean {
 
 ## 5. When to Resurrect Anything from This Shelf
 
-These helpers are **not** part of the v1 public API, but they're preserved here because they are:
+These helpers are **not** part of the v0.1.0 public API, but they're preserved here because they are:
 
 - Small,
 - Self-contained,
@@ -352,4 +352,4 @@ If you bring any of them back into the runtime or into a new package:
 2. Start from the **binding API design** first, and then pull in the primitive (e.g. `acquire`) to support that.
 3. Add tests and short docs for the new feature, rather than relying solely on this file.
 
-Until then, this doc is the "cold storage" for the nice bits of code we decided not to ship in v1.
+Until then, this doc is the "cold storage" for the nice bits of code we decided not to ship in v0.1.0

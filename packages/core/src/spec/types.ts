@@ -1,9 +1,20 @@
 /**
+ * @fileoverview
+ * Core type definitions for spec and parameter metadata.
+ *
+ * @remarks
+ * - Defines the type system for parameter and meter specifications.
+ * - Includes type utilities for working with specs in a type-safe manner.
+ * - Preserves literal types for precise type checking and inference.
+ */
+
+/**
  * Stable hash for a spec.
  *
- * Keys sorted; enums include value order; arrays include only length.
- * Scalar params encode presence of min/max.
- * Backed by FNV-1a 64 over canonical JSON → base36 string.
+ * @remarks
+ * - Keys are sorted; enums include value order; arrays include only length.
+ * - Scalar params encode presence of min/max.
+ * - Backed by FNV-1a 64 over canonical JSON → base36 string.
  */
 export type SpecHash = string;
 

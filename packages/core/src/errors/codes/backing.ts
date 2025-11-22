@@ -1,8 +1,11 @@
 /**
- * Backing error codes with navigable descriptors.
- * Symbolic constants + metadata + type safety.
+ * @fileoverview
+ * Error codes and detail types for backing/memory operations.
  *
- * @module errors/codes/backing
+ * @remarks
+ * - Covers allocation, attachment, and buffer/plane shape validation.
+ * - Used by shared/partitioned/Wasm backing allocators and helpers.
+ * - Registered into the global error registry as the `backing.*` domain.
  */
 
 import type { BufferDetails } from '../details';
@@ -111,5 +114,5 @@ export type _BackingCodesMatch = _CodesFromDescriptors extends _CodesExact
     : never
   : never;
 
-export const _backingCodesMatch: _BackingCodesMatch = true;
+const _backingCodesMatch: _BackingCodesMatch = true;
 void _backingCodesMatch;

@@ -47,10 +47,10 @@ if (!result.ok) {
 
   // These increment on ANY failure
   if (spins >= spinBudget) {
-    incrementDiagnosticsCounter('spinBudgetExhausted');
+    incrementCounter('spinBudgetExhausted');
   }
   if (retries >= retryBudget) {
-    incrementDiagnosticsCounter('retryBudgetExhausted');
+    incrementCounter('retryBudgetExhausted');
   }
 
   if (degrade === 'never') {
@@ -59,7 +59,7 @@ if (!result.ok) {
   }
 
   // ONLY increment when we actually degrade
-  incrementDiagnosticsCounter('degradedSnapshots');
+  incrementCounter('degradedSnapshots');
   return getDegradedSnapshot();
 }
 ```
@@ -107,7 +107,7 @@ export interface ControllerMeterPolicyOptions {
 // In binding layer failure paths (already cold):
 // NO feature gate needed - this is already rare
 if (spins >= spinBudget) {
-  incrementDiagnosticsCounter('spinBudgetExhausted');
+  incrementCounter('spinBudgetExhausted');
 }
 
 // In hot paths or high-frequency observation:

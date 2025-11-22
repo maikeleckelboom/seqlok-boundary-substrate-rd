@@ -1,36 +1,37 @@
 import { describe, expect, it } from 'vitest';
 
-import { defineSpec, planLayout, allocateShared, bindController } from '../../src';
+import { allocateShared, bindController, defineSpec, planLayout } from '../../src';
 
+/**
+ * Creates a harness with mixed array types (Float32, Int32) and a scalar
+ * to validate snapshot buffer management across different view types.
+ */
 function createHarness() {
   const spec = defineSpec(({ param }) => ({
-    id: 'demo',
+    id: 'params-identity-test',
     params: {
       curve: param.f32.array(1024),
       steps: param.i32.array(8),
       gain: param.f32({ min: 0, max: 4 }),
     },
-    meters: {},
   }));
 
   const plan = planLayout(spec);
   const backing = allocateShared(plan);
-  const ctl = bindController(spec, backing);
+  const ctl = bindController(spec, plan, backing);
   return { ctl };
 }
 
-describe('params.snapshot into identity', () => {
-  it('returns provided into buffers by identity for array params', () => {
+describe('Params Snapshot: Buffer Identity & Allocation', () => {
+  it('reuses provided "into" buffers strictly by identity for array parameters', () => {
     const { ctl } = createHarness();
 
-    ctl.params.stage(
-      'curve' /* <- TS2345: Argument of type "curve" is not assignable to parameter of type never */,
-      (v) => {
-        for (let i = 0; i < v.length; i++) {
-          v[i] = i;
-        }
-      },
-    );
+    // Populate initial state
+    ctl.params.stage('curve', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = i;
+      }
+    });
     ctl.params.stage('steps', (v) => {
       v.set([1, 2, 3, 4, 5, 6, 7, 8]);
     });
@@ -38,55 +39,30 @@ describe('params.snapshot into identity', () => {
       gain: 2,
     });
 
-    const buf = new Float32Array(1024);
-    const sub = ctl.params.snapshot({
+    const targetBuffer = new Float32Array(1024);
+
+    const snap = ctl.params.snapshot({
       keys: ['curve'],
       into: {
-        curve: buf,
+        curve: targetBuffer,
       },
     });
 
-    expect(sub.curve).toBe(buf);
-    expect(buf[10]).toBe(10);
+    // Verify strict referential identity
+    expect(snap.curve).toBe(targetBuffer);
+
+    // Verify content verification
+    expect(targetBuffer[10]).toBe(10);
   });
 
-  it('allocates fresh arrays when into is omitted for that key', () => {
+  it('allocates fresh arrays when "into" is omitted for a specific key', () => {
     const { ctl } = createHarness();
 
-    ctl.params.stage(
-      'steps' /* <- TS2345: Argument of type "steps" is not assignable to parameter of type never */,
-      (v) => v.fill(9) /* <-
-ESLint: Unsafe call of a(n) `error` type typed value. (@typescript-eslint/no-unsafe-call)
-ESLint: Unsafe return of a value of type error. (@typescript-eslint/no-unsafe-return)
-TS2339: Property fill does not exist on type never */,
-    );
+    ctl.params.stage('steps', (v) => v.fill(9));
 
-    const sub = ctl.params.snapshot({ keys: ['steps'] });
-    expect(sub.steps).toBeInstanceOf(Int32Array);
-    // Fresh copy, so it should not be any external buffer identity
+    const snap = ctl.params.snapshot({ keys: ['steps'] });
+
+    expect(snap.steps).toBeInstanceOf(Int32Array);
+    // Implicitly verifies a new allocation since no buffer was provided
   });
-
-  //   it('snapshotWithStatus preserves into identity', () => {
-  //     const { ctl } = createHarness();
-  //
-  //     ctl.params.stage(
-  //       'curve' /* <- S2345: Argument of type "curve" is not assignable to parameter of type never */,
-  //       (v) => v.fill(123) /*
-  // ESLint: Unsafe call of a(n) `error` type typed value. (@typescript-eslint/no-unsafe-call)
-  // ESLint: Unsafe return of a value of type error. (@typescript-eslint/no-unsafe-return) */,
-  //     );
-  //
-  //     const into = new Float32Array(1024);
-  //     const [sub, status] = ctl.params.snapshotWithStatus({
-  //       keys: ['curve'],
-  //       into: {
-  //         curve:
-  //           /* <- TS2322: Type Float32Array<ArrayBuffer> is not assignable to type undefined */ into,
-  //       },
-  //     });
-  //
-  //     expect(sub.curve).toBe(into);
-  //     expect(into[0]).toBe(123);
-  //     expect(status.fallback).toBe(false);
-  //   });
 });

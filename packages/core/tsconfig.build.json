@@ -1,31 +1,16 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    "composite": true,
-    "declaration": true,
-    "declarationMap": true,
-    "emitDeclarationOnly": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-
     "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "declarationMap": false,
 
-    // Keep your optimizations
-    "incremental": true,
-    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
-    "isolatedDeclarations": true,
+    "outDir": "dist",
+    "rootDir": "src",
+
     "stripInternal": true,
-
-    "types": ["vitest/globals", "node"]
+    "types": []
   },
-  "include": ["src/**/*"],
-  "exclude": [
-    "node_modules",
-    "dist",
-    "**/*.test.ts",
-    "**/*.spec.ts",
-    "tests/**/*",
-    "examples/**/*",
-    "vitest.config.*"
-  ]
+  "include": ["src/**/*"]
 }

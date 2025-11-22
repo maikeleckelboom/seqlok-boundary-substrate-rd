@@ -1,29 +1,39 @@
-# Alternative Dispute Resolution 2025-11-12 — Meter Writes & Snapshot `into` (Seqlok v1)
+# Alternative Dispute Resolution 2025-11-12 — Meter Writes & Snapshot `into` (Seqlok v0.1.0)
 
 **Status:** Accepted
 **Date:** 2025-11-12
+**Revised:** 2025-11-22 (align with final `meters.publish` API; remove `writer.set`)
 **Scope:** `@seqlok/core` bindings — meter writing API and controller snapshots
 **Decision Owners:** Binding/API maintainers
 
 ---
 
-#
-
 ## 0) Summary
 
 We finalize two user-visible binding decisions:
 
-1. **No lazy scalar setters.** Scalars are written by value; arrays are written via a mutator callback. We keep three
-   entry points with distinct use cases:
+1. **Meter writes use per-key functions + array staging, no generic `set`.**
 
-- **Direct scalar writers**: `writer.peak(1.25)` — hot path
-- **Generic writer**: `writer.set(key, valueOrMutator)` — dynamic keys, single mental model
-- **Explicit array mutation**: `writer.stage('spectrum', dst => { /* mutate */ })`
+  * Scalars are written by value via **per-key writers** generated from the spec:
 
-2. **Controller snapshot keeps `into` as a nested option** (do **not** flatten). Arrays may be zero-copied into
-   caller-supplied buffers via `snapshot(keys, { into: { arrayKey: buffer } })`.
+    * `writer.peak(1.25)` — hot path
+  * Arrays are written via **explicit mutator callbacks**:
 
-These choices preserve semantic clarity, maintain type precision, and avoid runtime discrimination overhead.
+    * `writer.stage('spectrum', (dst) => { /* mutate */ })`
+  * There is **no `writer.set(key, valueOrMutator)`** in the core API. Dynamic-key dispatch and “one function to rule them all” patterns live in higher-level helpers (`@seqlok/compose`, product code), not in the kernel binding.
+
+2. **Controller snapshot keeps `into` as a nested option** (do **not** flatten).
+
+  * Arrays may be zero-copied into caller-supplied buffers via:
+
+    * `snapshot(keys, { into: { arrayKey: buffer } })`
+    * or `snapshot({ keys, into })` in object form.
+
+These choices:
+
+* keep meter writes maximally predictable and cheap in hot paths,
+* preserve type precision for both fixed and projected snapshots,
+* avoid runtime discrimination or dynamic dispatch on the core binding.
 
 ---
 
@@ -31,16 +41,93 @@ These choices preserve semantic clarity, maintain type precision, and avoid runt
 
 ### 1.1 Scalars by value; arrays by mutation
 
-- Different semantics: scalars are cheap immutable values; arrays are buffers mutated in place.
-- Type safety: avoids "lazy" scalar callbacks and forgotten returns.
-- Performance: avoids per-call key lookups / extra invocations for scalars.
-- API honesty: two data categories → two write styles. `set()` supports both without weakening rules.
+There are two fundamentally different data categories:
+
+* **Scalars** – cheap numbers (`f32`, `f64`, `u32`) that are replaced atomically.
+* **Arrays** – buffers that are mutated in place over many elements.
+
+We codify this distinction:
+
+* **Scalars by value**
+
+  * Per-key functions give the best hot-path ergonomics and performance:
+
+    * `writer.rms(value)`, `writer.peak(value)`, …
+  * No closures, no shape checks, no runtime key dispatch.
+  * The TypeScript signature is straight-line and easily inlined.
+
+* **Arrays by mutation**
+
+  * Arrays are always written via `stage(key, fn(view))`:
+
+    * The callback receives a **mutable view** into a backing plane.
+    * The write is scoped: one coherent commit per `publish`, with a single MU bump.
+  * This makes the seqlock contract explicit: "enter staging, mutate, commit once."
+
+* **No lazy scalar setters**
+
+  * We deliberately forbid lazy scalar forms like:
+
+    ```ts
+    // ❌ not allowed in core
+    writer.peak(() => computePeak());
+    ```
+
+  * They are easy to misuse (forgetting to call, double-calling, etc.), and add nothing we cannot express with a local variable:
+
+    ```ts
+    const peak = computePeak();
+    writer.peak(peak);
+    ```
+
+* **Why drop `writer.set` from core**
+
+  * A generic `set(key, valueOrMutator)` would:
+
+    * require runtime key discrimination,
+    * complicate types (union overloads, conditional types),
+    * blur the scalar vs array distinction.
+
+  * We keep meter writers **minimal and per-key**. Any code that needs dynamic selection can be implemented in product space:
+
+    ```ts
+    function writeMeterDynamic(
+      writer: ProcessorMetersWriter<MySpec>,
+      key: MeterKey<MySpec>,
+      value: number,
+    ): void {
+      writer[key](value as never); // higher-level helper; not core surface
+    }
+    ```
 
 ### 1.2 Keep `into` nested
 
-- Signals intent: `into` is an explicit destination map for zero-copy writes.
-- Future-proof: room for options like `format` / `precision` / `normalize` without clashing with meter names.
-- Simple types & impl: buffers (`into`) are separated from other options.
+For controller snapshots, we keep `into` as a nested options field:
+
+* **Intent signalling**
+
+  * `into` is an explicit "destination map":
+
+    ```ts
+    controller.meters.snapshot(['spectrum'], {
+      into: { spectrum: scratchSpectrum },
+    });
+    ```
+  * This makes it obvious which fields are zero-copy / reuse vs which are allocated fresh.
+
+* **Future-proof shape**
+
+  * A nested `into` allows adding other options (`format`, `normalize`, `precision`, …) without colliding with meter keys.
+  * Options remain structurally separated from the data.
+
+* **Simple types & implementation**
+
+  * Callers either:
+
+    * accept brand-new arrays (no `into`), or
+    * pass a partial `into` object where they care about allocations.
+
+  * Implementation remains straightforward: a single `{ into?: Record<string, TypedArray> }` branch, no flattened overloads.
 
 ---
 
@@ -48,177 +135,266 @@ These choices preserve semantic clarity, maintain type precision, and avoid runt
 
 ### 2.1 Processor — meter writers
 
-Inside `processor.meters.publish(fn)` we expose three entry points:
+The processor is the **sole writer** for meters. The canonical entry point is:
 
-- **Per-key scalar methods** generated from the spec: `w.peak(v)`, `w.rms(v)`, …
-- **Generic `set(key, valueOrMutator)`** for dynamic keys or single-model code.
-- **`stage(key, fn)`**: explicit array mutation; thin alias of the array branch of `set`.
+```ts
+// conceptual shape, not exact implementation
+export interface ProcessorMetersWriter<S> {
+  // Per-key scalar writers (generated from the spec)
+  // Example:
+  rms(value: number): void;
+  peak(value: number): void;
 
-**Invariant:** one MU bump per `publish` call; array mutations commit at the end of the mutator.
+  // Array writer: RAII-style staging
+  stage<const K extends MeterArrayKeys<S>>(
+    key: K,
+    fn: (view: MutableMeterArrayView<S, K>) => void,
+  ): void;
+}
 
-Constraints:
+export interface ProcessorMetersBinding<S> {
+  publish(fn: (writer: ProcessorMetersWriter<S>) => void): void;
+}
+```
 
-- Scalars are always `set(key, scalarValue)`.
-- Arrays are always `set(key, fn(view))` / `stage(key, fn(view))`.
-- Lazy scalar setters like `set('peak', () => compute())` are **not** supported.
+**Invariants:**
+
+* **Exactly one MU bump per call** to `publish`:
+
+  * The binding handles `MU.LOCK` / `MU.SEQ` dance around the entire `fn(writer)` call.
+  * All scalar writes and array mutations in that call are part of one coherent meter frame.
+
+* **Scalar writes:**
+
+  * Always via per-key methods:
+
+    * `writer.rms(value)`
+    * `writer.peak(value)`
+  * No callback form, no lazy evaluation.
+
+* **Array writes:**
+
+  * Always via `writer.stage(key, fn(view))`.
+  * The `view` is a **scratch alias** into the meter plane; callers must not retain it outside the call.
+  * The stage function may be called multiple times inside one `publish`, but there is still only one commit.
+
+**Usage pattern (with params):**
+
+```ts
+processor.params.within((p) => {
+  const ratio = p.timeRatio;
+  const coeffs = p.coeffs; // aliasing view into PF32/PI32
+
+  const { peak, rms, spectrum } = this.dsp.process(input, ratio, coeffs);
+
+  processor.meters.publish((w) => {
+    w.peak(peak);
+    w.rms(rms);
+
+    w.stage('spectrum', (dst) => {
+      dst.set(spectrum);
+    });
+  });
+});
+```
+
+Within a single `publish` call:
+
+* all scalar and array writes are causally linked to a **single coherent param snapshot** (from `params.within`),
+* observers and controller snapshots that see the resulting MU bump treat it as **one meter frame**.
 
 ### 2.2 Controller — meter snapshots (with `into`)
 
 Controller-side meter reads:
 
-- `ctl.meters.snapshot()` — full snapshot
-- `ctl.meters.snapshot(keys, options?)` — projection snapshot
-- `options.into` — buffer map for zero-copy array meters
+* `controller.meters.snapshot()` — full snapshot
+* `controller.meters.snapshot(keys, options?)` — projection snapshot
+* `controller.meters.snapshot(options)` — object form (`{ keys?, into? }`)
+* `options.into` — buffer map for zero-alloc array meters
 
-**Only array and object forms** (no tuple/variadic overload):
+Conceptual shape:
 
 ```ts
+export interface ControllerMetersBinding<S> {
+  snapshot(): MetersSnapshot<S>;
+
+  snapshot<const K extends readonly MeterKeys<S>[]>(
+    keys: K,
+    options?: {
+      readonly into?: Partial<MetersArrayBuffers<S, K>>;
+    },
+  ): MetersSnapshotTuple<S, K>;
+
+  snapshot<const K extends readonly MeterKeys<S>[]>(
+    options: {
+      readonly keys: K;
+      readonly into?: Partial<MetersArrayBuffers<S, K>>;
+    },
+  ): MetersSnapshotTuple<S, K>;
+}
+```
+
+**Examples:**
+
+```ts
+// Full snapshot: convenient, maximal work
+const all = controller.meters.snapshot();
+
+// Selected keys, new arrays allocated
+const [rms, spectrum] = controller.meters.snapshot(['rms', 'spectrum']);
+
+// Selected keys, reusing caller buffers for arrays
 const scratch = { spectrum: new Float32Array(1024) };
 
-const [peak, spectrum] = ctl.meters.snapshot(['peak', 'spectrum'], {
+const [peak, spectrumView] = controller.meters.snapshot(['peak', 'spectrum'], {
   into: { spectrum: scratch.spectrum },
 });
 
-// Or object form:
-const { 0: peak2, 1: frameMs } = ctl.meters.snapshot({
-  keys: ['peak', 'frameMs'],
-  // into: { frameMs: buf }
+// Object form (e.g. for TIER 0 "zero-alloc" usage)
+const { rms: rms2 } = controller.meters.snapshot({
+  keys: ['rms'] as const,
+  into: {},
 });
 ```
 
-Returned arrays are typed readonly; if `into` is supplied, the implementation fills the caller's buffer in place and the
-returned view aliases that buffer.
+Semantics:
 
-Diagnostics:
+* Snapshots are **logically copies** from the controller's POV:
 
-- `binding.snapshotIntoTypeMismatch`
-- `binding.snapshotIntoLengthMismatch`
+  * Even if the implementation reuses internal scratch arrays when no `into` is supplied,
+    the caller treats the returned structure as detached from SAB (suitable for persistence / hydrate).
+
+* When `into` is provided:
+
+  * For matching array meters, we write into the provided buffers **in place**.
+  * For scalars or missing entries in `into`, we allocate as usual or return plain numbers.
+
+* Combined with seqlock (see other docs), snapshots are **coherent per call**:
+
+  * each invocation corresponds to a single meter frame.
 
 ---
 
-## 3) Alternatives Considered
+## 3) Snapshot tiers (controller meters)
 
-### 3.1 Single `mutate(key, valueOrFn)` for scalars + arrays
+We use "tiers" to describe **work levels**, not new APIs:
 
-Rejected.
-
-Pros:
-
-- One mental model for all meter writes.
-- Slightly simpler surface area.
-
-Cons:
-
-- Hot-path branching on "is this a function or a scalar?".
-- Per-call key lookup and dispatch; worse inlining.
-- Temptation to overuse callback form for scalars, hurting readability and performance.
-- Type signature gets more complex; harder to keep zero-`any`.
-
-We prefer:
-
-- Per-key scalar functions for fast paths.
-- `set`/`stage` for data-driven and array cases.
-
-### 3.2 Flattened `into` options
-
-e.g.
-
-```ts
-ctl.meters.snapshot(['spectrum'], { spectrum: buf });
+```text
+Controller meter snapshot usage tiers
+┌──────────────────┬──────────────────┬──────────────────┬──────────────────┐
+│     TIER 0       │     TIER 1       │     TIER 2       │     TIER 3       │
+│   Zero-alloc     │  Single-key      │   Selected keys  │   Full snapshot  │
+├──────────────────┼──────────────────┼──────────────────┼──────────────────┤
+│ .snapshot({      │ .snapshot(       │ .snapshot(       │ .snapshot()      │
+│   into: {        │   ['rms']        │   ['rms',        │                  │
+│     spectrum:    │ )                │    'spectrum'],  │                  │
+│       buf        │                  │   { into: bufs } │                  │
+│   },             │                  │ )                │                  │
+│ })               │                  │                  │                  │
+└──────────────────┴──────────────────┴──────────────────┴──────────────────┘
 ```
 
-Rejected.
+Notes:
 
-Cons:
+* Mirrors the `meters.snapshot` API:
 
-- Name collisions between option keys and meter keys.
-- Harder to extend options in the future (format/precision/normalize/etc.).
-- Less obvious that these are **destination buffers** rather than general options.
+  * optional keys array,
+  * optional `{ into }` object for zero-alloc snapshots.
 
-We keep `into` nested:
+* Purely about **bandwidth vs convenience**:
+
+  * TIER 0: zero alloc, fixed buffers, minimal copying.
+  * TIER 3: convenient but max bandwidth.
+
+---
+
+## 4) Consequences
+
+### 4.1 Positive
+
+* **Hot path stays minimal and explicit**
+
+  * `meters.publish(cb)` + per-key writers is easy to inline and reason about.
+  * No extra polymorphism in the core binding.
+
+* **Clear semantics per data category**
+
+  * Scalars → value.
+  * Arrays → `stage` mutator.
+  * This maps directly onto TypedArray + seqlock behavior.
+
+* **Controller snapshots are expressive without being magical**
+
+  * Single entry point (`snapshot`) covers:
+
+    * full snapshots,
+    * projections,
+    * zero-alloc patterns via `into`.
+
+  * Type inference remains strong and predictable.
+
+* **Room for higher-level libraries**
+
+  * `@seqlok/compose` and product code can add:
+
+    * dynamic writers (`setDynamic(writer, key, value)`),
+    * preset serializers built on `snapshot`/`hydrate`,
+    * observer-grade visualizers with their own policies.
+
+### 4.2 Trade-offs / negatives
+
+* Dynamic meter selection in the processor requires a tiny wrapper in product space:
+
+  * No universal `set` means more boilerplate in some higher-level code.
+  * This is deliberate: the kernel stays minimal; products that truly need dynamic dispatch can pay for it explicitly.
+
+* Controller snapshot options are slightly more verbose than a "flattened" signature:
+
+  * `{ into: { spectrum } }` instead of extra positional parameters.
+  * We accept this for better extensibility and clearer types.
+
+---
+
+## 5) Alternatives (rejected)
+
+### 5.1 Keep `writer.set(key, valueOrMutator)` in core
+
+**Rejected.**
+
+* Pros:
+
+  * Single mental model for all writes.
+  * Easier to write generic helpers that don't know about per-key methods.
+
+* Cons:
+
+  * Requires runtime dispatch based on `key` and `valueOrMutator` shape.
+  * Complicates TypeScript types (overloaded unions, conditional branches).
+  * Encourages generic code in the hottest path, where per-key calls are cheaper and clearer.
+
+Decision: push generic, dynamic patterns into higher-level helpers; keep the core binding explicit and per-key.
+
+### 5.2 Flatten `into` into top-level snapshot parameters
+
+Example of the rejected shape:
 
 ```ts
-ctl.meters.snapshot(['spectrum'], { into: { spectrum: buf } });
+controller.meters.snapshot(['rms', 'spectrum'], spectrumBuffer /* into */, { normalize: true });
 ```
 
----
+Issues:
 
-## 4) Migration
+* Parameter order becomes brittle as we add more options.
+* Type signatures grow unwieldy for little gain.
+* It's harder to visually distinguish **destination buffers** from other options.
 
-For code written before this ADR:
-
-- **Hot loops**
-  Prefer per-key scalar writers:
-
-  ```ts
-  proc.meters.publish((w) => {
-    w.peak(peakValue);
-    w.rms(rmsValue);
-  });
-  ```
-
-- **Dynamic paths**
-  Use `set(key, valueOrMutator)` when keys are not statically known:
-
-  ```ts
-  function writeDynamicMeter(
-    w: MeterWriter<MySpec>,
-    key: keyof MeterShape<MySpec>,
-    value: number,
-  ) {
-    w.set(key as any, value); // cast only at the call site
-  }
-  ```
-
-  (The public API stays zero-`any`; any casts are caller-owned for dynamic scenarios.)
-
-- **Array meters**
-  Prefer `stage` (or the array branch of `set`) to make array semantics explicit:
-
-  ```ts
-  proc.meters.publish((w) => {
-    w.stage('spectrum', (dst) => {
-      dst.view.set(spectrumScratch);
-    });
-  });
-  ```
-
-- **Snapshots**
-  Use nested `into` for zero-copy polling loops:
-
-  ```ts
-  const buffers = { spectrum: new Float32Array(1024) };
-  let lastVersion = 0;
-
-  function frame() {
-    const v = ctl.meters.version();
-    if (v !== lastVersion) {
-      const [spectrum] = ctl.meters.snapshot(['spectrum'], {
-        into: { spectrum: buffers.spectrum },
-      });
-      drawSpectrum(spectrum);
-      lastVersion = v;
-    }
-    requestAnimationFrame(frame);
-  }
-  ```
+Decision: keep `into` nested; if we grow more options, they remain structurally isolated from meter names and destination buffers.
 
 ---
 
-## 5) Documentation Tasks
+This ADR is the normative source for:
 
-- **API Reference** (`09-seqlok-api-reference.md`)
+* the presence and shape of `processor.meters.publish(cb)` and its writer surface, and
+* the controller's `meters.snapshot(..., { into })` behavior and overloads.
 
-  - Document the three writer entry points (`w.key`, `w.set`, `w.stage`).
-  - Document `meters.snapshot` array/object forms and nested `into`.
-  - Include examples of `version()` + `into` for garbage-free polling loops.
-  - Include error codes: `binding.snapshotIntoTypeMismatch`, `binding.snapshotIntoLengthMismatch`.
-
-- **Rationale docs**
-
-  - Cross-link this ADR from:
-
-    - `07-seqlok-api-shape-rationale.md` (bindings section)
-    - `12-coherent-reads-and-planes.md` (meters side)
-
-This ADR is the normative source for meter write semantics and controller snapshot `into` behavior in Seqlok v1.
+If future releases add richer observer policies or new convenience helpers, they should **build on** these decisions rather than redefine them.

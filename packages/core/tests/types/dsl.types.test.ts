@@ -60,7 +60,7 @@ describe('DSL: type inference & validation', () => {
       defineSpec(({ param }) => ({
         id: 'bad-range',
         params: {
-          gain: param.f32({ min: 10, max: 1 }), // Invalid!
+          gain: param.f32({ min: 10, max: 1 }), // Invalid: min > max.
         },
         meters: {},
       }));
@@ -72,7 +72,7 @@ describe('DSL: type inference & validation', () => {
       defineSpec(({ param }) => ({
         id: 'fractional-i32',
         params: {
-          steps: param.i32({ min: 1.5, max: 10 }), // Fractional!
+          steps: param.i32({ min: 1.5, max: 10 }), // Invalid: Fractional min.
         },
         meters: {},
       }));
@@ -84,7 +84,7 @@ describe('DSL: type inference & validation', () => {
       defineSpec(({ param }) => ({
         id: 'zero-array',
         params: {
-          invalid: param.f32.array(0), // Zero length!
+          invalid: param.f32.array(0), // Invalid: Zero length.
         },
         meters: {},
       }));
@@ -94,7 +94,7 @@ describe('DSL: type inference & validation', () => {
       defineSpec(({ param }) => ({
         id: 'negative-array',
         params: {
-          invalid: param.f32.array(-5), // Negative!
+          invalid: param.f32.array(-5), // Invalid: Negative length.
         },
         meters: {},
       }));
@@ -125,7 +125,7 @@ describe('DSL: type inference & validation', () => {
     }).toThrow(/nonempty|string/i);
   });
 
-  it('accepts fractional array length via object form', () => {
+  it('accepts array length when passed as an object', () => {
     const spec = defineSpec(({ param }) => ({
       id: 'object-length',
       params: {
@@ -160,7 +160,6 @@ describe('DSL: type inference & validation', () => {
         f: { kind: 'f32' },
         i: { kind: 'i32' },
       },
-      meters: {},
     }));
 
     expect(spec.params.f.kind).toBe('f32');
@@ -192,7 +191,6 @@ describe('DSL: type inference & validation', () => {
       params: {
         gain: param.f32({ min: 0, max: 1 }),
       },
-      meters: {},
     }));
 
     type IsReadonly<T> = T extends { readonly kind: unknown } ? true : false;

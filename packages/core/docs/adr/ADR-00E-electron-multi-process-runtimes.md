@@ -75,7 +75,7 @@ Seqlok's golden flow is per address space:
 
 ```txt
 defineSpec
-→ planSpec
+→ planLayout
 → allocateShared / allocateWasmShared
 → buildHandoff
 → receiveHandoff

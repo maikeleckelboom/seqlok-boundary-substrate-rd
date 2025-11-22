@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Diagnostics session lifecycle management.
+ *
+ * @remarks
+ * - Tracks the lifecycle and metadata of diagnostics runs (HUDs, CI, stress tests).
+ * - Validates session timestamps via structured diagnostics.counterInvalid errors.
+ * - Integrates with the error registry for consistent diagnostics reporting.
+ */
+
 import { createError } from '../errors/error';
 
 import type { DiagnosticsCounterDetails } from '../errors/codes/diagnostics';
@@ -8,11 +18,13 @@ import type { DiagnosticsCounterDetails } from '../errors/codes/diagnostics';
  * @remarks
  * A session is a period where diagnostics are actively collecting data.
  * Useful for HUDs, stress tests, or CI runs that sample diagnostics.
+ * @property `startTime` ms since epoch
+ * @property `endTime` ms since epoch, or null if active
  */
 export interface DiagnosticsSession {
   readonly id: string;
-  readonly startTime: number; // ms since epoch
-  readonly endTime: number | null; // ms since epoch, or null if active
+  readonly startTime: number;
+  readonly endTime: number | null;
   readonly metadata: Record<string, unknown>;
 }
 

@@ -1,9 +1,9 @@
 import { describe, it, expectTypeOf } from 'vitest';
 
-import type { CoherentParamShape } from '../../src/binding/types';
+import type { CoherentParamShape } from '../../src/binding/common/types';
 import type { SpecInput } from '../../src/spec/types';
 
-describe('CoherentParamShape', () => {
+describe('Coherent Param Shape', () => {
   interface S extends SpecInput {
     readonly id: 'demo';
     readonly params: {
@@ -26,11 +26,11 @@ describe('CoherentParamShape', () => {
 
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     if (false as unknown as never) {
-      // @ts-expect-error CoherentValue is intentionally non-callable
+      // @ts-expect-error Intentional check to ensure CoherentValue is not callable.
       p.gain(123);
     }
 
-    // Usable as primitives
+    // Verify usage as primitives.
     void (p.gain * 2);
     void String(p.mode);
   });

@@ -29,14 +29,12 @@ import { invariant } from '../errors/invariant';
 import type { PrimitivesSeqlockTimeoutDetails } from '../errors/codes/primitives';
 
 /**
- * Pair of indices into a shared `Uint32Array` that stores `[LOCK, SEQ]`.
+ * Pair of indices into a `Uint32Array` forming a seqlock.
  *
  * @remarks
- * - `LOCK` is incremented by writers:
- *   - even → no writer active
- *   - odd  → writer in critical section
- * - `SEQ` is a monotonically increasing version stamp, incremented exactly
- *   once per successful commit.
+ * Layout:
+ * - `u32[lockIndex]` – lock word (even = quiescent, odd = writer active).
+ * - `u32[seqIndex]` – version word.
  */
 export interface SeqPair {
   readonly u32: Uint32Array;
@@ -45,53 +43,33 @@ export interface SeqPair {
 }
 
 /**
- * Construct a {@link SeqPair} with bounds validation.
+ * Create a {@link SeqPair} view over a shared `Uint32Array`.
  *
- * @param u32 Shared `Uint32Array` plane holding the lock/sequence words.
- * @param lockIndex Index of the LOCK word (must be in-bounds).
- * @param seqIndex Index of the SEQ word (must be in-bounds and distinct from `lockIndex`).
+ * @remarks
+ * This helper is primarily used in primitives tests.
  *
  * @throws {@link import('../errors').SeqlokError}
- * Throws with code `"internal.assertionFailed"` if any index is out of bounds,
- * or if `lockIndex === seqIndex`.
+ * - `internal.assertionFailed` – if indices are out of range or equal.
  *
  * @internal
- * Used by primitives tests only; not part of the bindings API.
  */
 export function createSeqPair(
   u32: Uint32Array,
   lockIndex: number,
   seqIndex: number,
 ): SeqPair {
-  const len = u32.length >>> 0;
+  const len = u32.length;
 
   invariant(
-    lockIndex >= 0 && lockIndex < len,
+    lockIndex >= 0 && lockIndex < len && seqIndex >= 0 && seqIndex < len,
     'internal.assertionFailed',
-    'lockIndex out of bounds',
-    {
-      where: 'primitives.seqlock.createSeqPair',
-      detail: `lockIndex=${String(lockIndex)}, len=${String(len)}`,
-    },
-  );
-
-  invariant(
-    seqIndex >= 0 && seqIndex < len,
-    'internal.assertionFailed',
-    'seqIndex out of bounds',
-    {
-      where: 'primitives.seqlock.createSeqPair',
-      detail: `seqIndex=${String(seqIndex)}, len=${String(len)}`,
-    },
+    'SeqPair indices must be within bounds of the backing Uint32Array',
   );
 
   invariant(
     lockIndex !== seqIndex,
     'internal.assertionFailed',
-    'lockIndex and seqIndex must differ',
-    {
-      where: 'primitives.seqlock.createSeqPair',
-    },
+    'SeqPair lockIndex and seqIndex must be distinct',
   );
 
   return { u32, lockIndex, seqIndex };
@@ -156,62 +134,34 @@ export type TryReadResult<T> =
     };
 
 /**
- * Begin a write: transition LOCK from even → odd to enter the critical section.
- *
- * @remarks
- * This function does **not** perform any memory barriers by itself; the
- * seqlock protocol relies on the ordering of:
- *
- * 1. `beginWrite()` – LOCK becomes odd.
- * 2. user writes their data.
- * 3. `endWrite()` – SEQ increment + LOCK becomes even.
+ * Begin a write: transition LOCK from even → odd to enter the critical
+ * section.
  */
-export function beginWrite(p: SeqPair): void {
-  addU32(p.u32, p.lockIndex, 1);
+export function beginWrite(pair: SeqPair): void {
+  addU32(pair.u32, pair.lockIndex, 1);
 }
 
 /**
- * End a write: commit the new version first, then unlock.
- *
- * @remarks
- * Ordering is crucial:
- *
- * - `SEQ` is incremented *before* releasing the lock so that readers which
- *   see an even LOCK and stable SEQ pair are guaranteed to observe a fully
- *   committed snapshot.
- * - Unlocking last (odd → even) prevents readers from seeing an even LOCK
- *   with bytes written under the odd phase but without the version stamp.
+ * End a write: commit version (SEQ+1), then unlock (LOCK+1).
  */
-export function endWrite(p: SeqPair): void {
-  // 1) publish the new version (release edge for readers)
-  addU32(p.u32, p.seqIndex, 1);
-  // 2) leave the critical section (odd → even)
-  addU32(p.u32, p.lockIndex, 1);
+export function endWrite(pair: SeqPair): void {
+  // 1. Publish new version (release barrier)
+  addU32(pair.u32, pair.seqIndex, 1);
+  // 2. Leave critical section (odd → even)
+  addU32(pair.u32, pair.lockIndex, 1);
 }
 
 /**
  * Exception-safe publish wrapper.
  *
- * @typeParam T Value type produced by the critical section.
- * @param p Seqlock pair to guard the critical section.
- * @param fn Critical section that mutates shared state under the lock.
- *
- * @returns The value returned by `fn`.
- *
- * @throws Rethrows any error thrown by `fn`.
- *
  * @remarks
- * This helper ensures that the writer never remains stuck in an odd (locked)
- * state. If `fn` throws, the lock is released and `SEQ` is **not**
- * incremented.
+ * Guarantees that the writer lock is always released, even if the callback
+ * throws. On failure it now also bumps the SEQ word to avoid "silent tearing"
+ * where partially-written data would still be tagged with the previous
+ * version number.
  *
- * Typical usage:
- *
- * ```ts
- * publish(pair, () => {
- *   shared[0] = nextValue;
- * });
- * ```
+ * Readers that see this SEQ bump will treat the write as contended and
+ * retry (or exhaust their budgets) instead of trusting the old version.
  */
 export function publish<T>(p: SeqPair, fn: () => T): T {
   beginWrite(p);
@@ -219,8 +169,12 @@ export function publish<T>(p: SeqPair, fn: () => T): T {
   try {
     result = fn();
   } catch (e) {
-    // Best effort: make sure we leave the lock in a consistent state.
-    // SEQ is not incremented because the write did not complete.
+    // Writer attempted to modify shared state and threw.
+    // The underlying memory may now be "dirty but coherent": a partial
+    // write happened under the lock. We still need to:
+    // - bump SEQ so readers observe a version change, and
+    // - release the lock so they do not hang.
+    addU32(p.u32, p.seqIndex, 1);
     addU32(p.u32, p.lockIndex, 1);
     throw e;
   }
@@ -232,22 +186,12 @@ export function publish<T>(p: SeqPair, fn: () => T): T {
  * Best-effort coherent read with bounded spinning and retries.
  *
  * @typeParam T Value type produced by the reader function.
- * @param p Seqlock pair to sample from.
- * @param reader Function that samples the underlying shared state.
- * @param options Budgets controlling spin and retry behaviour.
- *
- * @returns A {@link TryReadResult} containing the sampled value and status.
- *
- * @throws {@link import('../errors').SeqlokError}
- * Throws with code `"primitives.seqlockTimeout"` if budgets are exhausted
- * (spins or retries) without obtaining a coherent snapshot.
+ * @param pair
+ * @param reader
+ * @param options
  *
  * @remarks
- * This primitive is primarily used by primitives tests to exercise and
- * validate the seqlock behaviour. Production bindings currently use a
- * simpler single-pass read.
- *
- * Behaviour summary:
+ * Summary:
  *
  * - Spins on the LOCK word until it appears even, up to `spinBudget`.
  * - Reads `SEQ` (`seq0`), then calls `reader()`, then reads `SEQ` again (`seq1`).
@@ -257,7 +201,7 @@ export function publish<T>(p: SeqPair, fn: () => T): T {
  *   - A structured timeout error (`primitives.seqlockTimeout`) is thrown.
  */
 export function tryRead<T>(
-  p: SeqPair,
+  pair: SeqPair,
   reader: () => T,
   options?: TryReadOptions,
 ): TryReadResult<T> {
@@ -278,7 +222,9 @@ export function tryRead<T>(
     'Spin budget must be non-negative integer',
     {
       where: 'primitives.seqlock.tryRead',
-      detail: `spinBudget=${String(spinBudgetOption)}, retryBudget=${String(retryBudgetOption)}`,
+      detail: `spinBudget=${String(
+        spinBudgetOption,
+      )}, retryBudget=${String(retryBudgetOption)}`,
     },
   );
 
@@ -290,7 +236,7 @@ export function tryRead<T>(
 
   // Attempt 0 + up to `retryBudget` additional retries.
   while (retriesUsed <= retryBudget) {
-    const spinResult = spinUntilEven(p.u32, p.lockIndex, spinBudget);
+    const spinResult = spinUntilEven(pair.u32, pair.lockIndex, spinBudget);
 
     if (!spinResult) {
       // Never observed an even LOCK within spin budget.
@@ -305,10 +251,10 @@ export function tryRead<T>(
 
     totalSpins += spinResult.spins;
 
-    const seq0 = loadU32(p.u32, p.seqIndex);
+    const seq0 = loadU32(pair.u32, pair.seqIndex);
     const value = reader();
-    const seq1 = loadU32(p.u32, p.seqIndex);
-    const lockNow = loadU32(p.u32, p.lockIndex);
+    const seq1 = loadU32(pair.u32, pair.seqIndex);
+    const lockNow = loadU32(pair.u32, pair.lockIndex);
 
     if (seq0 === seq1 && (lockNow & 1) === 0) {
       const status: ReadStatus = {
@@ -326,7 +272,9 @@ export function tryRead<T>(
   // the sense of the primitives domain; we surface it as a structured error.
   const details = {
     where: 'primitives.seqlock.tryRead',
-    detail: `spinBudget=${String(spinBudget)}, retryBudget=${String(retryBudget)}, spins=${String(totalSpins)}, retriesUsed=${String(retriesUsed)}`,
+    detail: `spinBudget=${String(spinBudget)}, retryBudget=${String(
+      retryBudget,
+    )}, spins=${String(totalSpins)}, retriesUsed=${String(retriesUsed)}`,
     spinBudget,
     actualSpins: totalSpins,
   } as const satisfies PrimitivesSeqlockTimeoutDetails;

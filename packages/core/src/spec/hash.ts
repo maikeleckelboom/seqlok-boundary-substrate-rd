@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Hashing utilities for spec definitions.
+ *
+ * @remarks
+ * - Implements FNV-1a 64-bit hashing for spec fingerprints.
+ * - Provides canonicalization for deterministic hashing of equivalent specs.
+ * - Used for versioning, cache keys, and change detection.
+ */
+
 import type { MeterDef, ParamDef, SpecHash, SpecInput } from './types';
 
 /**
@@ -78,7 +88,7 @@ function canonicalizeMeter(def: MeterDef) {
 }
 
 /**
- * Returns sorted `[key, value]` tuples without generics or non-null assertions.
+ * Returns sorted `[key, value]` tuples without relying on object property order.
  */
 function sortedEntries(
   obj?: Readonly<Record<string, unknown>>,
@@ -98,28 +108,77 @@ function sortedEntries(
 }
 
 /**
- * Canonical structural representation of a spec.
+ * Deterministic stringification for canonical spec / plan structures.
+ *
+ * @remarks
+ * - Recursively sorts object keys to avoid engine-dependent ordering.
+ * - Preserves array order.
+ * - Assumes input is a plain data tree (no functions, Symbols, etc.).
+ */
+function stableStringify(value: unknown): string {
+  if (value === null) {
+    return 'null';
+  }
+
+  const t = typeof value;
+
+  if (t === 'number' || t === 'boolean') {
+    return JSON.stringify(value);
+  }
+
+  if (t === 'string') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    const inner = value.map((item) => stableStringify(item));
+    return `[${inner.join(',')}]`;
+  }
+
+  if (t === 'object') {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    const parts: string[] = [];
+
+    for (const key of keys) {
+      const v = record[key];
+      parts.push(`${JSON.stringify(key)}:${stableStringify(v)}`);
+    }
+
+    return `{${parts.join(',')}}`;
+  }
+
+  // Fallback – should not be reached for well-formed SpecInput trees.
+  return 'null';
+}
+
+/**
+ * Canonical structural representation of a spec as a pure data tree.
  *
  * @remarks
  * - Ignores `spec.id` on purpose.
  * - Includes:
  *   - param keys and canonical param shape (kind, min/max, length, enum values)
  *   - meter keys and canonical meter shape (kind, length)
- * - Order of object properties is normalized via sorted keys.
  */
-function canonicalizeSpec(spec: SpecInput): string {
-  const params = sortedEntries(spec.params).map(([key, value]) => [
-    key,
-    canonicalizeParam(value as ParamDef),
-  ]);
+function canonicalizeSpecObject(spec: SpecInput): {
+  params: Record<string, unknown>;
+  meters: Record<string, unknown>;
+} {
+  const params: Record<string, unknown> = {};
+  const meters: Record<string, unknown> = {};
 
-  const meters = sortedEntries(spec.meters).map(([key, value]) => [
-    key,
-    canonicalizeMeter(value as MeterDef),
-  ]);
+  const paramEntries = sortedEntries(spec.params);
+  for (const [key, value] of paramEntries) {
+    params[key] = canonicalizeParam(value as ParamDef);
+  }
 
-  // Note: we deliberately do *not* include `spec.id` here.
-  return JSON.stringify({ params, meters });
+  const meterEntries = sortedEntries(spec.meters);
+  for (const [key, value] of meterEntries) {
+    meters[key] = canonicalizeMeter(value as MeterDef);
+  }
+
+  return { params, meters };
 }
 
 /**
@@ -132,6 +191,19 @@ function canonicalizeSpec(spec: SpecInput): string {
  * - FNV-1a 64 over canonical JSON, encoded as base36.
  */
 export function hashSpec(spec: SpecInput): SpecHash {
-  const canonical = canonicalizeSpec(spec);
+  const tree = canonicalizeSpecObject(spec);
+  const canonical = stableStringify(tree);
   return fnv1aHash(canonical);
+}
+
+/**
+ * Canonical spec source for dev-mode diagnostics and handoff debugging.
+ *
+ * @remarks
+ * Intended for use in `_debugSource` fields on handoff payloads and for
+ * deep structural comparisons in development builds.
+ */
+export function getCanonicalSpecSource(spec: SpecInput): string {
+  const tree = canonicalizeSpecObject(spec);
+  return stableStringify(tree);
 }

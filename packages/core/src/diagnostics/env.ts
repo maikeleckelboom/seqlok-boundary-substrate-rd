@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Environment classification and SharedArrayBuffer support checks.
+ *
+ * @remarks
+ * - Used to gate SAB-dependent features before allocating backings.
+ * - Exposes pure helpers so tests and tooling can run against faked globals.
+ * - All throwing helpers surface typed `env.*` Seqlok errors.
+ */
+
 import { createError } from '../errors/error';
 
 import type { EnvCoopCoepDetails, EnvUnsupportedDetails } from '../errors/codes/env';
@@ -44,7 +54,7 @@ export type EnvGlobal = typeof globalThis & {
  * @remarks
  * - This is the main entry point for tests; it does not touch real globals.
  */
-export function summarizeEnvFrom(globalLike: EnvGlobal): EnvSummary {
+export function summarizeEnv(globalLike: EnvGlobal): EnvSummary {
   const hasSharedArrayBuffer = typeof globalLike.SharedArrayBuffer === 'function';
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
@@ -88,8 +98,21 @@ export function summarizeEnvFrom(globalLike: EnvGlobal): EnvSummary {
 /**
  * Lightweight, side-effect free probe of the current runtime.
  */
-export function probeEnvironment(): EnvSummary {
-  return summarizeEnvFrom(globalThis as EnvGlobal);
+export function probeEnv(): EnvSummary {
+  return summarizeEnv(globalThis as EnvGlobal);
+}
+
+/**
+ * Assert that SharedArrayBuffer can be safely used from this environment.
+ *
+ * Throws a typed SeqlokError on failure:
+ *  - `env.unsupported`      → no SharedArrayBuffer support at all.
+ *  - `env.coopCoepRequired` → browser/worker without COOP/COEP headers
+ *                             (`crossOriginIsolated === false`).
+ */
+export function assertSabSupport(where: string): EnvSummary {
+  const summary = probeEnv();
+  return assertSabSupportFromSummary(where, summary);
 }
 
 /**
@@ -98,7 +121,7 @@ export function probeEnvironment(): EnvSummary {
  * @remarks
  * - Main test hook: no global access, fully deterministic.
  */
-export function assertSharedArrayBufferSupportFromSummary(
+export function assertSabSupportFromSummary(
   where: string,
   summary: EnvSummary,
 ): EnvSummary {
@@ -135,17 +158,4 @@ export function assertSharedArrayBufferSupportFromSummary(
   }
 
   return summary;
-}
-
-/**
- * Assert that SharedArrayBuffer can be safely used from this environment.
- *
- * Throws a typed SeqlokError on failure:
- *  - `env.unsupported`      → no SharedArrayBuffer support at all.
- *  - `env.coopCoepRequired` → browser/worker without COOP/COEP headers
- *                             (`crossOriginIsolated === false`).
- */
-export function assertSharedArrayBufferSupport(where: string): EnvSummary {
-  const summary = probeEnvironment();
-  return assertSharedArrayBufferSupportFromSummary(where, summary);
 }

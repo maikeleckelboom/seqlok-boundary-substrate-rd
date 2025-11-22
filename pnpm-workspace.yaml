@@ -1,6 +1,5 @@
 packages:
   - packages/*
-  - examples/*
 
 catalog:
   '@commitlint/cli': ^20.1.0
@@ -18,11 +17,9 @@ catalog:
   rimraf: ^6.1.0
   simple-git-hooks: ^2.13.1
   tsx: ^4.20.6
-  typescript: 5.8.2
+  typescript: ^5.9.3
   typescript-eslint: ^8.46.2
   vite: ^7.1.12
-  vite-plugin-dts: ^4.5.4
-  vitepress: ^1.6.4
   vitest: 4.0.6
 
 catalogMode: prefer
@@ -30,4 +27,6 @@ catalogMode: prefer
 cleanupUnusedCatalogs: true
 
 onlyBuiltDependencies:
+  - esbuild
   - simple-git-hooks
+  - unrs-resolver

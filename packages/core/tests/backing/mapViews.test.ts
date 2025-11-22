@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 
 import { allocateShared } from '../../src/backing/allocate-shared';
 import { mapViews } from '../../src/backing/map-views';
+import { type SeqlokError } from '../../src/errors/error';
 import { planLayout } from '../../src/plan/layout';
 import { defineSpec } from '../../src/spec/define';
 
-import type { SeqlokError } from '../../src/errors/error';
-
+/**
+ * Type guard to identify Seqlok specific errors.
+ * Validates the presence of `name`, `message`, and `code` properties.
+ */
 export function isSeqlokError(x: unknown): x is SeqlokError {
   if (typeof x !== 'object' || x === null) {
     return false;
@@ -15,10 +18,10 @@ export function isSeqlokError(x: unknown): x is SeqlokError {
   return obj.name === 'SeqlokError' && typeof obj.message === 'string' && 'code' in obj;
 }
 
-describe('mapViews (runtime)', () => {
-  it('maps a small contiguous backing and returns plane-typed arrays', () => {
+describe('Map Views: Runtime Behavior & Validation', () => {
+  it('maps contiguous backing memory to typed arrays matching the planned layout', () => {
     const spec = defineSpec(({ param, meter }) => ({
-      id: 'demo',
+      id: 'demo-mapping',
       params: {
         table: param.f32.array(8),
         flags: param.bool.array(3),
@@ -27,42 +30,51 @@ describe('mapViews (runtime)', () => {
         peak: meter.f32(),
       },
     }));
+
     const plan = planLayout(spec);
     const backing = allocateShared(plan);
-
     const views = mapViews(plan, backing);
 
-    /* Basic shape checks (no unsafe access) */
+    // Verify that views are instantiated as the correct TypedArray subclasses
     expect(views.params.PF32).toBeInstanceOf(Float32Array);
     expect(views.params.PB).toBeInstanceOf(Uint8Array);
     expect(views.meters.MF32).toBeInstanceOf(Float32Array);
 
-    /* Sizes consistent with plan */
-    expect(views.params.PF32.length * 4).toBe(plan.planes.PF32);
+    // Verify that view sizes (in elements/bytes) are consistent with the plan
+    expect(views.params.PF32.length * Float32Array.BYTES_PER_ELEMENT).toBe(
+      plan.planes.PF32,
+    );
     expect(views.params.PB.length).toBe(plan.planes.PB);
   });
 
-  it('throws typed SeqlokError on undersized SAB (contiguous/WASM path)', () => {
+  it('throws backing.allocUndersized when the provided SharedArrayBuffer is smaller than the plan requires', () => {
     const spec = defineSpec(({ param }) => ({
-      id: 'undersized',
+      id: 'undersized-validation',
       params: {
         table: param.f32.array(16),
       },
     }));
+
     const plan = planLayout(spec);
 
+    // Create a buffer that is intentionally too small (short by 8 bytes)
     const sab = new SharedArrayBuffer(Math.max(0, plan.bytesTotal - 8));
     const backing = { kind: 'shared' as const, sab };
 
+    let thrown: unknown;
     try {
       mapViews(plan, backing);
-      throw new Error('expected mapViews to throw on undersized SAB');
     } catch (e: unknown) {
-      expect(isSeqlokError(e)).toBe(true);
-      if (isSeqlokError(e)) {
-        expect(e.code).toBe('backing.allocUndersized');
-        expect(e.message).toMatch(/smaller than required|undersized/i);
-      }
+      thrown = e;
+    }
+
+    expect(isSeqlokError(thrown)).toBe(true);
+
+    if (isSeqlokError(thrown)) {
+      expect(thrown.code).toBe('backing.allocUndersized');
+      expect(thrown.message).toMatch(/smaller than required|undersized/i);
+    } else {
+      throw new Error('Expected mapViews to throw a SeqlokError');
     }
   });
 });

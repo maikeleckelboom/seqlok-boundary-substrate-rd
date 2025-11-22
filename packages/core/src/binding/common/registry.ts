@@ -1,6 +1,18 @@
-import { invariant } from '../errors/invariant';
+/**
+ * @fileoverview
+ * Binding registry for tracking controller/processor lifetimes per backing.
+ *
+ * @remarks
+ * - Records active bindings per backing and role (controller vs processor).
+ * - Enforces exclusive controller bindings when requested.
+ * - Used by bindings to prevent inconsistent or conflicting attachment patterns.
+ *
+ * @internal
+ */
 
-import type { Backing } from '../backing/types';
+import { invariant } from '../../errors/invariant';
+
+import type { Backing } from '../../backing/types';
 
 export type BindRole = 'controller' | 'processor';
 

@@ -2,9 +2,9 @@ import { describe, it, expectTypeOf } from 'vitest';
 
 import type {
   IntoForParams,
-  Snapshot,
+  ParamsSnapshot,
   SnapshotParamsObject,
-} from '../../src/binding/types';
+} from '../../src/binding/common/types';
 import type { SpecInput } from '../../src/spec/types';
 
 interface S extends SpecInput {
@@ -21,33 +21,49 @@ interface S extends SpecInput {
 }
 
 describe('ControllerParams.snapshot typing', () => {
-  it('mapping: all params', () => {
-    type R = Snapshot<
-      SnapshotParamsObject<S, readonly ['gain', 'mode', 'curve', 'states']>
-    >;
-    type Expected = Snapshot<{
+  it('mapping: all params via ParamsSnapshot', () => {
+    type R = ParamsSnapshot<S>;
+    type Expected = Readonly<{
       readonly gain: number;
       readonly mode: 'normal' | 'granular';
       readonly curve: Readonly<Float32Array>;
       readonly states: Readonly<Uint8Array>;
     }>;
+
+    expectTypeOf<R>().toExtend<Expected>();
+    expectTypeOf<Expected>().toExtend<R>();
+  });
+
+  it('mapping: all params via SnapshotParamsObject with full key set', () => {
+    type R = SnapshotParamsObject<S, readonly ['gain', 'mode', 'curve', 'states']>;
+    type Expected = Readonly<{
+      readonly gain: number;
+      readonly mode: 'normal' | 'granular';
+      readonly curve: Readonly<Float32Array>;
+      readonly states: Readonly<Uint8Array>;
+    }>;
+
     expectTypeOf<R>().toExtend<Expected>();
     expectTypeOf<Expected>().toExtend<R>();
   });
 
   it('mapping: single-key subset stays scalar', () => {
-    type R = Snapshot<SnapshotParamsObject<S, readonly ['gain']>>;
-    type Expected = Snapshot<{ readonly gain: number }>;
+    type R = SnapshotParamsObject<S, readonly ['gain']>;
+    type Expected = Readonly<{
+      readonly gain: number;
+    }>;
+
     expectTypeOf<R>().toExtend<Expected>();
     expectTypeOf<Expected>().toExtend<R>();
   });
 
   it('mapping: mixed subset stays precise per property', () => {
-    type R = Snapshot<SnapshotParamsObject<S, readonly ['mode', 'curve']>>;
-    type Expected = Snapshot<{
+    type R = SnapshotParamsObject<S, readonly ['mode', 'curve']>;
+    type Expected = Readonly<{
       readonly mode: 'normal' | 'granular';
       readonly curve: Readonly<Float32Array>;
     }>;
+
     expectTypeOf<R>().toExtend<Expected>();
     expectTypeOf<Expected>().toExtend<R>();
   });
@@ -58,12 +74,14 @@ describe('ControllerParams.snapshot typing', () => {
       curve?: Float32Array;
       states?: Uint8Array;
     }>;
+
     expectTypeOf<Good>().toExtend<GoodExpected>();
     expectTypeOf<GoodExpected>().toExtend<Good>();
 
-    // Prove scalar keys produce no properties in into.
     type BadScalar = IntoForParams<S, readonly ['gain']>;
-    expectTypeOf<BadScalar>().toExtend<Readonly<Record<never, never>>>();
-    expectTypeOf<Readonly<Record<never, never>>>().toExtend<BadScalar>();
+    type Empty = Readonly<Record<never, never>>;
+
+    expectTypeOf<BadScalar>().toExtend<Empty>();
+    expectTypeOf<Empty>().toExtend<BadScalar>();
   });
 });

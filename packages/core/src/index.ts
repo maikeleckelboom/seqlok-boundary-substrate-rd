@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Core module for Seqlok - Shared memory synchronization for real-time applications.
+ *
+ * @remarks
+ * - Re-exports all public APIs for the @seqlok/core package.
+ * - Organized into logical sections: SPEC, PLAN, BACKING, BINDING, HANDOFF, and ERRORS.
+ * - This is the main entry point for consumers of the library.
+ */
+
 // SPEC
 export { defineSpec, type ParamBuilders, type MeterBuilders } from './spec/define';
 export type { SpecInput } from './spec/types';
@@ -45,7 +55,7 @@ export type {
   ControllerOptions,
   ProcessorOptions,
   RangePolicy,
-} from './binding/types';
+} from './binding/common/types';
 
 // HANDOFF
 export { buildHandoff, receiveHandoff, verifyHandoff } from './handoff/handoff';
@@ -108,7 +118,3 @@ export type {
   SwsrRingConsumer,
   SwsrRingStats,
 } from './primitives/swsr-ring';
-
-// DIAGNOSTICS
-export { describeViews } from './diagnostics/describe-views';
-export { probeEnvironment, assertSharedArrayBufferSupport } from './diagnostics/env';

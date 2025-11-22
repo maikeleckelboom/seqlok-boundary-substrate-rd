@@ -1,10 +1,10 @@
-import type {
-  ErrorPayload,
-  TypedArrayName,
-  HandoffSpecHashMismatchDetails,
-} from '../../src/errors';
+import { describe, expectTypeOf, it } from 'vitest';
 
-describe('errors: payload shapes', () => {
+import type { HandoffSpecHashMismatchDetails } from '../../src/errors/codes/handoff';
+import type { TypedArrayName } from '../../src/errors/registry';
+import type { ErrorPayload } from 'packages/core/src';
+
+describe('Error Payload Shapes (Typed Contracts)', () => {
   it('binding.snapshotIntoTypeMismatch payload', () => {
     type P = ErrorPayload<'binding.snapshotIntoTypeMismatch'>;
     interface Required {
@@ -31,8 +31,6 @@ describe('errors: payload shapes', () => {
 
   it('handoff.specHashMismatch payload', () => {
     type P = ErrorPayload<'handoff.specHashMismatch'>;
-    // P should be the strongly-typed payload for this code
-    // (we only care that it’s assignable to the published detail type)
     expectTypeOf<P>().toExtend<HandoffSpecHashMismatchDetails>();
   });
 });

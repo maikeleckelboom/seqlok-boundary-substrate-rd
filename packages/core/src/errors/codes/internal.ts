@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Error codes and detail types for internal invariants.
+ *
+ * @remarks
+ * - Models `internal.*` failures surfaced via `invariant(...)`.
+ * - Reserved for "this should never happen" situations in core code.
+ * - Registered into the global error registry as the `internal.*` domain.
+ */
+
 import type { ErrorDetails, ErrorMeta } from '../registry';
 
 export type InternalErrorCode =

@@ -1,3 +1,16 @@
+/**
+ * @fileoverview
+ * Diagnostics counters for monitoring and introspection.
+ *
+ * @remarks
+ * - Tracks operational metrics and performance counters.
+ * - Provides thread-safe counter management for diagnostics.
+ * - Used by debug overlays, metrics exporters, and test harnesses.
+ *
+ * Note: These counters are not part of the core data path and are
+ * designed for observability and debugging purposes only.
+ */
+
 import { createError } from '../errors/error';
 
 import type { DiagnosticsCounterDetails } from '../errors/codes/diagnostics';
@@ -85,10 +98,7 @@ function assertValidCounterValue(name: DiagnosticsCounterName, value: number): v
  * diagnostics error if the new value is invalid. Designed for use in
  * cold paths (debug overlays, test harnesses, metrics exporters).
  */
-export function incrementDiagnosticsCounter(
-  name: DiagnosticsCounterName,
-  delta = 1,
-): void {
+export function incrementCounter(name: DiagnosticsCounterName, delta = 1): void {
   const current = counters[name];
   const next = current + delta;
 
@@ -103,7 +113,7 @@ export function incrementDiagnosticsCounter(
  * Primarily useful in tests or when resetting counters. This validates
  * the value and will throw a diagnostics error if it is not sane.
  */
-export function setDiagnosticsCounter(name: DiagnosticsCounterName, value: number): void {
+export function setCounter(name: DiagnosticsCounterName, value: number): void {
   assertValidCounterValue(name, value);
   counters[name] = value;
 }
@@ -115,7 +125,7 @@ export function setDiagnosticsCounter(name: DiagnosticsCounterName, value: numbe
  * The returned object is a shallow copy and can be safely exposed to
  * callers without risking accidental mutation of internal state.
  */
-export function snapshotDiagnosticsCounters(): DiagnosticsCountersSnapshot {
+export function snapshotCounters(): DiagnosticsCountersSnapshot {
   return {
     degradedSnapshots: counters.degradedSnapshots,
     spinBudgetExhausted: counters.spinBudgetExhausted,
@@ -130,7 +140,7 @@ export function snapshotDiagnosticsCounters(): DiagnosticsCountersSnapshot {
  * Intended for use in test setups or when resetting a long-running
  * diagnostics session.
  */
-export function resetDiagnosticsCounters(): void {
+export function resetCounters(): void {
   counters.degradedSnapshots = 0;
   counters.spinBudgetExhausted = 0;
   counters.retryBudgetExhausted = 0;

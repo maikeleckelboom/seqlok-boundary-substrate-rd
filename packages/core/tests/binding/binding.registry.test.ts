@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import {
   claimBinding,
@@ -6,13 +6,15 @@ import {
   getBindingState,
   noteBinding,
   releaseBinding,
-} from '../../src/binding/registry';
+} from '../../src/binding/common/registry';
 
 import type { Backing } from '../../src/backing/types';
 
+/**
+ * Creates a minimal Backing stub for registry identity testing.
+ * The registry relies on object identity, so full structural compliance is not required.
+ */
 function backingStub(label: string): Backing {
-  // Minimal structural stub; registry only uses identity, not fields.
-  // If Backing grows, this stays valid.
   return {
     kind: 'shared',
     sab: new SharedArrayBuffer(8),
@@ -20,61 +22,64 @@ function backingStub(label: string): Backing {
   } as unknown as Backing;
 }
 
-describe('binding registry', () => {
+/**
+ * Tests for the binding registry which manages shared state between controllers and processors.
+ * Verifies role-based access control and lifecycle management of bindings.
+ */
+describe('Binding Registry: Global State Management', () => {
   beforeEach(() => {
     clearBindingRegistry();
   });
 
-  it('tracks noteBinding / releaseBinding for each role', () => {
-    const backing = backingStub('note-binding');
+  it('manages role lifecycle with note/release operations', () => {
+    const backing = backingStub('lifecycle-test');
 
     expect(getBindingState(backing)).toBeUndefined();
 
+    // Add controller role
     noteBinding(backing, 'controller');
-
     expect(getBindingState(backing)).toEqual({
       roles: { controller: true, processor: false },
     });
 
+    // Add processor role (dual binding)
     noteBinding(backing, 'processor');
-
     expect(getBindingState(backing)).toEqual({
       roles: { controller: true, processor: true },
     });
 
+    // Release controller
     releaseBinding(backing, 'controller');
-
     expect(getBindingState(backing)).toEqual({
       roles: { controller: false, processor: true },
     });
 
+    // Release processor (last role) -> entry cleanup
     releaseBinding(backing, 'processor');
-
-    // Last role released → entry removed
     expect(getBindingState(backing)).toBeUndefined();
   });
 
-  it('enforces exclusive claim semantics per role (not cross-role)', () => {
-    const backing = backingStub('exclusive');
+  it('enforces role exclusivity while allowing cross-role bindings', () => {
+    const backing = backingStub('exclusivity-test');
 
-    // First controller claim succeeds
+    // First claim should succeed
     claimBinding(backing, 'controller');
 
     expect(getBindingState(backing)).toEqual({
       roles: { controller: true, processor: false },
     });
 
-    // Second claim for the SAME role must fail (per-role exclusivity)
+    // Duplicate claim should fail
     expect(() => {
       claimBinding(backing, 'controller');
-    }).toThrowError(/exclusive binding already exists/i);
+    }).toThrow(/exclusive binding already exists/i);
 
-    // Registry state must be unchanged after the failed claim
+    // State remains unchanged after failed claim
     expect(getBindingState(backing)).toEqual({
       roles: { controller: true, processor: false },
     });
 
-    // Cross-role claim is allowed: processor can still bind to the same backing
+    // Cross-role binding is allowed
     claimBinding(backing, 'processor');
 
     expect(getBindingState(backing)).toEqual({
@@ -82,23 +87,24 @@ describe('binding registry', () => {
     });
   });
 
-  it('releaseBinding is idempotent and does nothing for unknown backings', () => {
-    const backing = backingStub('idempotent');
+  it('gracefully handles idempotent releases and unknown backings', () => {
+    const backing = backingStub('idempotency-test');
 
-    // Nothing registered yet → no throw
+    // Release on non-existent binding is safe
     releaseBinding(backing, 'controller');
     expect(getBindingState(backing)).toBeUndefined();
 
+    // Set up test state
     noteBinding(backing, 'processor');
     expect(getBindingState(backing)).toEqual({
       roles: { controller: false, processor: true },
     });
 
-    // First release clears processor
+    // First release removes the role
     releaseBinding(backing, 'processor');
     expect(getBindingState(backing)).toBeUndefined();
 
-    // Second release remains a no-op
+    // Additional releases are no-ops
     releaseBinding(backing, 'processor');
     expect(getBindingState(backing)).toBeUndefined();
   });

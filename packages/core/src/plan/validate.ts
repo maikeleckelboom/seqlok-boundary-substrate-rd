@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Validation and planning utilities for Seqlok memory layouts.
+ *
+ * @remarks
+ * - Validates spec definitions before planning.
+ * - Calculates memory offsets and alignments.
+ * - Handles packing of parameters and meters into memory planes.
+ */
+
 import { createError } from '../errors/error';
 import { BYTES_PER_ELEM, type PlaneKey } from '../primitives/planes';
 

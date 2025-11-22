@@ -1,6 +1,6 @@
 import { describe, it, expectTypeOf } from 'vitest';
 
-import type { ArrayParamView, ControllerParams } from '../../src/binding/types';
+import type { ArrayParamView, ControllerParams } from '../../src/binding/common/types';
 import type { SpecInput } from '../../src/spec/types';
 
 interface S extends SpecInput {

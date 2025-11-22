@@ -14,20 +14,18 @@ import type {
   ControllerParams,
   ControllerMeters,
   ProcessorBinding,
-} from '../../src/binding/types';
+} from '../../src/binding/common/types';
 
-describe('public bindController / bindProcessor inference', () => {
+describe('BindController / BindProcessor: Inference Contracts', () => {
   it('bindController returns correctly-typed params/meters', () => {
     const spec = defineSpec(({ param, meter }) => ({
       id: 'deck' as const,
       params: { rate: param.f32({ min: 0.25, max: 4 }) },
       meters: { fps: meter.f32() },
     }));
-
     const plan = planLayout(spec);
     const backing = allocateShared(plan);
-    const ctl = bindController(spec, backing);
-
+    const ctl = bindController(spec, plan, backing);
     expectTypeOf(ctl.params).toEqualTypeOf<ControllerParams<typeof spec>>();
     expectTypeOf(ctl.meters).toEqualTypeOf<ControllerMeters<typeof spec>>();
   });

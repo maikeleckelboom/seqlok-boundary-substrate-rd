@@ -20,9 +20,9 @@ In the **Processor** (Physics/Audio worker) and the **Observer** (Visualizer), y
 
 This rule applies to **hot path loops** (processor ticks, observer frames). It is still fine to allocate during setup, configuration, and other **cold-path** code (controller UI, bootstrapping, error handling, etc.).
 
-* ❌ **Bad:** `return { x: 10, y: 20 }`
+- ❌ **Bad:** `return { x: 10, y: 20 }`
   Creates a new object every frame. Causes GC stutter.
-* ✅ **Good:** `target.x = 10; target.y = 20;`
+- ✅ **Good:** `target.x = 10; target.y = 20;`
   Writes to existing memory. Zero cost.
 
 ---
@@ -49,13 +49,13 @@ export const boidSpec = defineSpec(({ param, meter }) => ({
   params: {
     // Scalars are just numbers
     separation: param.f32({ min: 0, max: 10 }),
-    alignment:  param.f32({ min: 0, max: 10 }),
+    alignment: param.f32({ min: 0, max: 10 }),
     // Arrays are fixed-length blocks
-    target:     param.f32.array({ length: 3 }), // [x, y, z]
+    target: param.f32.array({ length: 3 }), // [x, y, z]
   },
   meters: {
     // The processor writes these back to us
-    fps:   meter.f32(),
+    fps: meter.f32(),
     count: meter.u32(),
   },
 }));
@@ -75,7 +75,7 @@ controller.params.set('separation', 5.5);
 controller.params.stage('target', (view) => {
   view[0] = 10; // x
   view[1] = 20; // y
-  view[2] = 0;  // z
+  view[2] = 0; // z
 });
 ```
 
@@ -146,8 +146,8 @@ Cross-Origin-Embedder-Policy: require-corp
 
 This isolates your browser process so it cannot share memory with cross-origin popups or iframes.
 
-* **Constraint:** You cannot load images from external CDNs (e.g., `imgur.com`) unless those CDNs also send Cross-Origin headers (CORP).
-* **Requirement:** Your site **must be served over HTTPS** (except for `localhost`).
+- **Constraint:** You cannot load images from external CDNs (e.g., `imgur.com`) unless those CDNs also send Cross-Origin headers (CORP).
+- **Requirement:** Your site **must be served over HTTPS** (except for `localhost`).
 
 ### 2. The "Heisenbug" (Do Not Console Log)
 
@@ -156,8 +156,8 @@ A "Heisenbug" is a bug that disappears or changes behavior when you try to study
 **The Trap:**
 If you add `console.log()` inside a Seqlok reader loop to debug a race condition, the bug will vanish.
 
-* **Reason:** `console.log` is extremely slow (milliseconds). The Seqlock retry loop is extremely fast (nanoseconds).
-* **Result:** By logging, you artificially slow down the reader, making it "miss" the collision window with the writer. You will think the code is fixed, delete the log, and it will break again.
+- **Reason:** `console.log` is extremely slow (milliseconds). The Seqlock retry loop is extremely fast (nanoseconds).
+- **Result:** By logging, you artificially slow down the reader, making it "miss" the collision window with the writer. You will think the code is fixed, delete the log, and it will break again.
 
 **The Fix:**
 Use a **Flight Recorder** pattern. Write error codes or key state to a pre-allocated array in memory, and only inspect that array if the application crashes or pauses.
@@ -170,16 +170,16 @@ Seqlok provides built-in utilities to verify the environment before you even att
 
 ### A. Asserting Environment Support
 
-Don't wait for a crash. Fail fast during initialization using `assertSharedArrayBufferSupport`.
+Don't wait for a crash. Fail fast during initialization using `assertSabSupport`.
 
 ```ts
-import { assertSharedArrayBufferSupport } from '@seqlok/core';
+import { assertSabSupport } from '@seqlok/core';
 
 function initDevice() {
   try {
     // This throws a specific 'env.unsupported' or 'env.coopCoepRequired'
     // error if headers are missing.
-    assertSharedArrayBufferSupport('MyDeviceInit');
+    assertSabSupport('MyDeviceInit');
 
     // ... proceed to planLayout and allocateShared ...
   } catch (error) {
@@ -191,12 +191,12 @@ function initDevice() {
 
 ### B. Probing (Non-Throwing)
 
-If you want to feature-detect without crashing, use `probeEnvironment`.
+If you want to feature-detect without crashing, use `probeEnv`.
 
 ```ts
-import { probeEnvironment } from '@seqlok/core';
+import { probeEnv } from '@seqlok/core';
 
-const env = probeEnvironment();
+const env = probeEnv();
 
 if (env.kind === 'browser' && !env.crossOriginIsolated) {
   console.warn('Running in degraded mode: Seqlok disabled due to missing COOP/COEP.');
@@ -213,11 +213,7 @@ Seqlok errors are structured. Instead of parsing error strings, use the `interpr
 This is particularly useful for UI feedback ("Do I tell the user to reload, or just retry?").
 
 ```ts
-import {
-  isSeqlokError,
-  getErrorMeta,
-  interpretHealth,
-} from '@seqlok/core';
+import { isSeqlokError, getErrorMeta, interpretHealth } from '@seqlok/core';
 
 try {
   // ... seqlok operations ...
@@ -253,6 +249,6 @@ try {
 
 ## Further Reading
 
-* **Architecture – Concurrency Model and Roles** – deeper dive into Controller vs Processor vs Observer domains.
-* **Architecture – Error System and Fail-Fast Philosophy** – details on `isSeqlokError`, `interpretHealth`, and recovery strategies.
-* **From Pipe to Hub: Understanding Seqlok's Architecture** – how Seqlok composes SWSR domains, rings, hubs, and observers into system-level MWMR.
+- **Architecture – Concurrency Model and Roles** – deeper dive into Controller vs Processor vs Observer domains.
+- **Architecture – Error System and Fail-Fast Philosophy** – details on `isSeqlokError`, `interpretHealth`, and recovery strategies.
+- **From Pipe to Hub: Understanding Seqlok's Architecture** – how Seqlok composes SWSR domains, rings, hubs, and observers into system-level MWMR.

@@ -1,35 +1,42 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { SeqlokError } from '../../src/errors/error';
 import {
+  allocateSwsrRing,
+  bindSwsrRingConsumer,
+  bindSwsrRingProducer,
+  SWSR_HEADER_DROPPED,
+  SWSR_HEADER_READ_INDEX,
   SWSR_HEADER_WORDS,
   SWSR_HEADER_WRITE_INDEX,
-  SWSR_HEADER_READ_INDEX,
   SWSR_HEADER_WRITE_SEQ,
-  SWSR_HEADER_DROPPED,
-  allocateSwsrRing,
-  bindSwsrRingProducer,
-  bindSwsrRingConsumer,
 } from '../../src/primitives/swsr-ring';
 
-describe('SWSR ring primitives (runtime)', () => {
+describe('SWSR Ring Primitives: Runtime Behavior', () => {
+  /**
+   * Mock encoder strategy for testing.
+   * Writes numbers directly into the underlying Uint32Array.
+   */
   const encodeNumber = {
     encode(value: number, dst: Uint32Array, offset: number): void {
       dst[offset] = value;
     },
   };
 
+  /**
+   * Mock decoder strategy for testing.
+   * Reads numbers directly from the underlying Uint32Array.
+   */
   const decodeNumber = {
     decode(src: Uint32Array, offset: number): number {
-      if (!Object.call(src.keys(), Number.isInteger)) {
-        throw new Error(String(Object.keys(src).map((key) => Number.isInteger(key))));
-      }
+      // Simple decode without the overhead of validation logic.
+      // We assert non-null because the test setup guarantees valid offsets.
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return src[offset]!;
     },
   };
 
-  it('allocates backing with header + slots and zeroed header', () => {
+  it('allocates backing memory with correct header size and zero initialization', () => {
     const capacity = 4;
     const wordsPerSlot = 2;
 
@@ -42,18 +49,19 @@ describe('SWSR ring primitives (runtime)', () => {
     expect(backing.header.length).toBe(SWSR_HEADER_WORDS);
     expect(backing.slots.length).toBe(capacity * wordsPerSlot);
 
-    // Header is zero-initialized
+    // Ensure header is zero-initialized
     for (let i = 0; i < SWSR_HEADER_WORDS; i += 1) {
       expect(backing.header[i]).toBe(0);
     }
 
+    // Validate total byte length calculation: Header + (Capacity * SlotSize)
     const expectedWords = SWSR_HEADER_WORDS + capacity * wordsPerSlot;
     const expectedBytes = expectedWords * Uint32Array.BYTES_PER_ELEMENT;
     expect(backing.sab.byteLength).toBe(expectedBytes);
   });
 
-  it('rejects invalid layouts with primitives.swsrRingInvalidLayout', () => {
-    // capacity <= 0
+  it('rejects invalid layouts with specific error codes', () => {
+    // Case: Capacity <= 0
     expect(() => allocateSwsrRing({ capacity: 0, wordsPerSlot: 1 })).toThrow(SeqlokError);
 
     try {
@@ -65,11 +73,11 @@ describe('SWSR ring primitives (runtime)', () => {
       expect(err.details.wordsPerSlot).toBe(1);
     }
 
-    // wordsPerSlot <= 0
+    // Case: WordsPerSlot <= 0
     expect(() => allocateSwsrRing({ capacity: 1, wordsPerSlot: 0 })).toThrow(SeqlokError);
   });
 
-  it('enqueues and drains values in FIFO order and bumps writeSeq', () => {
+  it('enqueues and drains values in FIFO order while updating write sequences', () => {
     const backing = allocateSwsrRing({ capacity: 8, wordsPerSlot: 1 });
     const producer = bindSwsrRingProducer(backing, encodeNumber);
     const consumer = bindSwsrRingConsumer(backing, decodeNumber);
@@ -78,7 +86,7 @@ describe('SWSR ring primitives (runtime)', () => {
     expect(producer.enqueue(2)).toBe(true);
     expect(producer.enqueue(3)).toBe(true);
 
-    // writeSeq should track successful commits
+    // writeSeq tracks successful commits
     expect(backing.header[SWSR_HEADER_WRITE_SEQ]).toBe(3);
 
     const received: number[] = [];
@@ -88,29 +96,28 @@ describe('SWSR ring primitives (runtime)', () => {
 
     expect(received).toEqual([1, 2, 3]);
 
-    // Subsequent drain without new writes should be a no-op
+    // Subsequent drain should be a no-op (idempotent)
     consumer.drain((value) => {
       received.push(value);
     });
     expect(received).toEqual([1, 2, 3]);
 
-    // No drops in this scenario
     expect(producer.stats().dropped).toBe(0);
 
-    // readIndex should have caught up with writeIndex
+    // Read index should have synchronized with write index
     expect(backing.header[SWSR_HEADER_READ_INDEX]).toBe(
       backing.header[SWSR_HEADER_WRITE_INDEX],
     );
   });
 
-  it('drops newest value and tracks dropped count when ring is full', () => {
-    // With capacity=2, the ring can hold at most 1 in-flight element
+  it('drops the newest value when the ring is full and tracks the dropped count', () => {
+    // Capacity 2 implies at most 1 usable slot (one slot reserved for head/tail separation)
     const backing = allocateSwsrRing({ capacity: 2, wordsPerSlot: 1 });
     const producer = bindSwsrRingProducer(backing, encodeNumber);
     const consumer = bindSwsrRingConsumer(backing, decodeNumber);
 
     const first = producer.enqueue(10);
-    const second = producer.enqueue(11); // should be dropped
+    const second = producer.enqueue(11); // Should fail (drop) due to full ring
 
     expect(first).toBe(true);
     expect(second).toBe(false);
@@ -128,12 +135,12 @@ describe('SWSR ring primitives (runtime)', () => {
     expect(drained).toEqual([10]);
   });
 
-  it('handles wrap-around correctly when draining across the ring boundary', () => {
+  it('handles buffer wrap-around correctly when draining across boundary lines', () => {
     const backing = allocateSwsrRing({ capacity: 4, wordsPerSlot: 1 });
     const producer = bindSwsrRingProducer(backing, encodeNumber);
     const consumer = bindSwsrRingConsumer(backing, decodeNumber);
 
-    // Fill up to near the end
+    // Fill near capacity
     expect(producer.enqueue(1)).toBe(true);
     expect(producer.enqueue(2)).toBe(true);
     expect(producer.enqueue(3)).toBe(true);
@@ -144,7 +151,7 @@ describe('SWSR ring primitives (runtime)', () => {
     });
     expect(firstBatch).toEqual([1, 2, 3]);
 
-    // Now write values that will wrap around (slots 3, then 0)
+    // Write new values that force indices to wrap (slots 3 -> 0)
     expect(producer.enqueue(4)).toBe(true);
     expect(producer.enqueue(5)).toBe(true);
 
@@ -154,7 +161,7 @@ describe('SWSR ring primitives (runtime)', () => {
     });
     expect(secondBatch).toEqual([4, 5]);
 
-    // After draining everything, readIndex and writeIndex should match
+    // Verify synchronization after full cycle
     expect(backing.header[SWSR_HEADER_READ_INDEX]).toBe(
       backing.header[SWSR_HEADER_WRITE_INDEX],
     );

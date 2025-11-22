@@ -98,13 +98,13 @@ export type DiagnosticsCounterName =
   | 'spinBudgetExhausted'
   | 'retryBudgetExhausted';
 
-export function incrementDiagnosticsCounter(
+export function incrementCounter(
   name: DiagnosticsCounterName,
   delta: number = 1,
 ): void;
 ```
 
-Bindings import `incrementDiagnosticsCounter` and use it **only** when something is already bad.
+Bindings import `incrementCounter` and use it **only** when something is already bad.
 
 #### 2.2.1 Controller: meters snapshot
 
@@ -116,7 +116,7 @@ Canonical wrapper (shape):
 // controller.snapshot.ts (shape only)
 import { tryRead } from '../primitives/seqlock';
 import { createError } from '../errors';
-import { incrementDiagnosticsCounter } from '../diagnostics/counters';
+import { incrementCounter } from '../diagnostics/counters';
 
 interface SnapshotOptions {
   readonly spinBudget: number;
@@ -138,11 +138,11 @@ function snapshotWithSeqlock<T>(options: SnapshotOptions, reader: () => T): T {
     const { spins, retries } = result.status;
 
     if (spins >= spinBudget) {
-      incrementDiagnosticsCounter('spinBudgetExhausted');
+      incrementCounter('spinBudgetExhausted');
     }
 
     if (retries >= retryBudget) {
-      incrementDiagnosticsCounter('retryBudgetExhausted');
+      incrementCounter('retryBudgetExhausted');
     }
 
     throw createError('binding.snapshotRetryExhausted', { where });
@@ -172,15 +172,15 @@ function snapshotWithFallback<T>(
     const { spins, retries } = result.status;
 
     if (spins >= spinBudget) {
-      incrementDiagnosticsCounter('spinBudgetExhausted');
+      incrementCounter('spinBudgetExhausted');
     }
 
     if (retries >= retryBudget) {
-      incrementDiagnosticsCounter('retryBudgetExhausted');
+      incrementCounter('retryBudgetExhausted');
     }
 
     // We choose to continue in a degraded mode instead of throwing.
-    incrementDiagnosticsCounter('degradedSnapshots');
+    incrementCounter('degradedSnapshots');
 
     return degradedReader();
   }
@@ -201,7 +201,7 @@ Canonical pattern:
 // processor.impl.ts (shape only)
 import { tryRead } from '../primitives/seqlock';
 import { createError } from '../errors';
-import { incrementDiagnosticsCounter } from '../diagnostics/counters';
+import { incrementCounter } from '../diagnostics/counters';
 
 export function makeWithin<S>(
   spinBudget: number,
@@ -220,11 +220,11 @@ export function makeWithin<S>(
       const { spins, retries } = result.status;
 
       if (spins >= spinBudget) {
-        incrementDiagnosticsCounter('spinBudgetExhausted');
+        incrementCounter('spinBudgetExhausted');
       }
 
       if (retries >= retryBudget) {
-        incrementDiagnosticsCounter('retryBudgetExhausted');
+        incrementCounter('retryBudgetExhausted');
       }
 
       throw createError('binding.coherentRetryExhausted', { where });
@@ -454,7 +454,7 @@ When we come back to implement this:
 
 1. **Add hooks**:
 
-- Implement the `incrementDiagnosticsCounter` calls in:
+- Implement the `incrementCounter` calls in:
 
   - controller snapshot helpers,
 

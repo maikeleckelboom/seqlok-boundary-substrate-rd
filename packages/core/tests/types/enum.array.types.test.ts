@@ -1,12 +1,11 @@
-/* Robust structural checks (tolerant across lib DOM variants) */
 import { describe, it, expectTypeOf } from 'vitest';
 
-import type { ParamShape, ParamValueFor } from '../../src/binding/types';
+import type { ParamShape, ParamValueFor } from '../../src/binding/common/types';
 import type { SpecInput } from '../../src/spec/types';
 
 type I32RO = Readonly<Int32Array>;
 
-describe('enum.array public + processor shapes', () => {
+describe('EnumArray: Public and Processor Shapes', () => {
   interface S extends SpecInput {
     readonly id: 'x';
     readonly params: {

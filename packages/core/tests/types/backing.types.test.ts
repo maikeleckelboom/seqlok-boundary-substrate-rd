@@ -13,7 +13,7 @@ import type {
   WasmSharedBacking,
 } from '../../src/backing/types';
 
-describe('backing types (compile-time)', () => {
+describe('Backing Types (Compile-Time Contracts)', () => {
   it('discriminated union and guards narrow precisely', () => {
     const cases: Backing[] = [
       { kind: 'shared', sab: new SharedArrayBuffer(8) },

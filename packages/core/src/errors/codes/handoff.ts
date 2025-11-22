@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Error codes and detail types for handoff artifacts.
+ *
+ * @remarks
+ * - Covers invalid/mismatched plan/backing/spec combinations in handoffs.
+ * - Used when validating handoff payloads at controller/processor boundaries.
+ * - Registered into the global error registry as the `handoff.*` domain.
+ */
+
 import type { ErrorDetails, ErrorMeta } from '../registry';
 
 export type HandoffErrorCode =
@@ -19,6 +29,8 @@ export interface HandoffVersionMismatchDetails extends ErrorDetails {
 
 export interface HandoffInvalidArtifactDetails extends ErrorDetails {
   readonly detail?: string;
+  readonly expectedBytes?: number;
+  readonly receivedBytes?: number;
 }
 
 export interface HandoffSpecHashMismatchDetails extends ErrorDetails {

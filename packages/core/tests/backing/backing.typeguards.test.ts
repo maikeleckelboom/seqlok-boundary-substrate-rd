@@ -10,34 +10,45 @@ import {
   type WasmSharedBacking,
 } from '../../src/backing/types';
 
-describe('backing type guards', () => {
-  it('isSharedBacking narrows correctly', () => {
-    const b: Backing = { kind: 'shared', sab: new SharedArrayBuffer(16) };
+/**
+ * Helper to allocate a SharedArrayBuffer of a specific size.
+ * Used to populate mock backing structures.
+ */
+const allocSab = (bytes: number) => new SharedArrayBuffer(bytes);
+
+describe('Backing Type Guards: Runtime Identification', () => {
+  it('correctly identifies and narrows a standard contiguous SharedBacking', () => {
+    const b: Backing = { kind: 'shared', sab: allocSab(16) };
+
     expect(isSharedBacking(b)).toBe(true);
+
+    // Verify structural access after narrowing
     expect((b satisfies SharedBacking).sab.byteLength).toBe(16);
   });
-  it('isSharedPartitionedBacking narrows correctly', () => {
-    const sab = (n: number) => new SharedArrayBuffer(n);
+
+  it('correctly identifies and narrows a partitioned backing layout', () => {
     const b: Backing = {
       kind: 'shared-partitioned',
       planes: {
-        PF32: sab(4),
-        PI32: sab(4),
-        PB: sab(1),
-        PU: sab(8),
-        MF32: sab(4),
-        MF64: sab(8),
-        MU32: sab(4),
-        MU: sab(8),
+        PF32: allocSab(4),
+        PI32: allocSab(4),
+        PB: allocSab(1),
+        PU: allocSab(8),
+        MF32: allocSab(4),
+        MF64: allocSab(8),
+        MU32: allocSab(4),
+        MU: allocSab(8),
       },
     };
+
     expect(isSharedPartitionedBacking(b)).toBe(true);
     expect((b satisfies SharedPartitionedBacking).planes.PB.byteLength).toBe(1);
   });
 
-  it('isWasmSharedBacking narrows correctly', () => {
+  it('correctly identifies and narrows a WebAssembly shared memory backing', () => {
     const mem = new WebAssembly.Memory({ initial: 1, maximum: 1, shared: true });
     const b: Backing = { kind: 'wasm-shared', memory: mem };
+
     expect(isWasmSharedBacking(b)).toBe(true);
     expect(
       (b satisfies WasmSharedBacking).memory.buffer instanceof SharedArrayBuffer,

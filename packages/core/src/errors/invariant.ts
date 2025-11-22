@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Runtime assertion utilities for Seqlok.
+ *
+ * @remarks
+ * - Provides type-safe invariant checks for runtime validation.
+ * - Throws standardized SeqlokError with proper error codes and details.
+ * - Used for internal assertions and preconditions throughout the codebase.
+ */
+
 import { createError } from './error';
 
 import type { ErrorCode, ErrorPayload } from './types';

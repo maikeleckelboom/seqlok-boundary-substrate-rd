@@ -1,4 +1,5 @@
 /**
+ * @fileoverview
  * Run scenarios under a Seqlok diagnostics + health envelope.
  *
  * @remarks
@@ -15,7 +16,7 @@
  * Core primitives/bindings/backing do not depend on this module.
  */
 
-import { resetDiagnosticsCounters, snapshotDiagnosticsCounters } from './counters';
+import { resetCounters, snapshotCounters } from './counters';
 import { exportDiagnosticsCounters } from './export';
 import { endDiagnosticsSession, startDiagnosticsSession } from './session';
 import { isSeqlokError } from '../errors/error';
@@ -296,7 +297,7 @@ function buildRunResult<T>(args: BuildResultArgs<T>): RunWithDiagnosticsResult<T
     health,
   } = args;
 
-  const diagnosticsCounters = snapshotDiagnosticsCounters();
+  const diagnosticsCounters = snapshotCounters();
   const diagnosticsExportJson = exportDiagnosticsCounters(diagnosticsCounters, {
     format: 'json',
     includeTimestamp: true,
@@ -341,7 +342,7 @@ export async function runWithDiagnostics<T>(
     onUnknownError,
   } = options;
 
-  resetDiagnosticsCounters();
+  resetCounters();
 
   const startedSession = startDiagnosticsSession(scenarioId, {
     ...metadata,
@@ -397,7 +398,7 @@ export function runWithDiagnosticsSync<T>(
     onUnknownError,
   } = options;
 
-  resetDiagnosticsCounters();
+  resetCounters();
 
   const startedSession = startDiagnosticsSession(scenarioId, {
     ...metadata,

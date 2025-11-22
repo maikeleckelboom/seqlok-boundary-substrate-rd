@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import { createError } from '../../src/errors/error';
 
-describe('errors/error runtime composition', () => {
-  it('composes message and preserves cause (backing.wasmNotShared)', () => {
+describe('SeqlokError Factory: Runtime Composition', () => {
+  it('correctly composes error messages and preserves the underlying cause', () => {
     const cause = new TypeError('shared memory not supported');
+
     const se = createError(
       'backing.wasmMemoryNotShared',
       'Allocated WebAssembly.Memory is not shared',
@@ -22,7 +23,7 @@ describe('errors/error runtime composition', () => {
     expect(se.cause).toBe(cause);
   });
 
-  it('handles env.unsupported shape (feature + reason)', () => {
+  it('constructs "env.unsupported" errors with structured feature details', () => {
     const se = createError('env.unsupported', 'Feature unavailable', {
       feature: 'SharedArrayBuffer',
       reason: 'Missing COOP/COEP',

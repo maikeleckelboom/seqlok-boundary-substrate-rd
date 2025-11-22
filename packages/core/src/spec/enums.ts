@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Enum utilities for spec definitions.
+ *
+ * @remarks
+ * - Provides type-safe operations for enum params and meters.
+ * - Includes conversion between labels and indices, bounds checking, and validation.
+ * - Offers UI-friendly helpers for dropdowns, cycling, and palette generation.
+ */
+
 import { createError } from '../errors/error';
 
 import type { SpecInput } from './types';

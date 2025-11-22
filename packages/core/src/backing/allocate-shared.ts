@@ -1,10 +1,15 @@
 /**
- * Shared memory allocator for Seqlok backings (contiguous SAB only).
+ * @fileoverview
+ * Allocates a single contiguous SharedArrayBuffer backing for a plan.
  *
  * @remarks
- * - `allocateShared` creates a single contiguous `SharedArrayBuffer` sized for the plan.
- * - For shared WebAssembly.Memory, use {@link allocateWasmShared}.
- * - For per-plane SABs, use {@link allocateSharedPartitioned}.
+ * - Computes a contiguous layout for all planes and locks from the Plan.
+ * - Returns a shared backing that can be mapped into typed views via `mapViews`.
+ * - Throws structured errors when SAB allocation or support fails.
+ *
+ * @see {@link ../../docs/architecture/11-backing-and-plane-layout.md} for layout details
+ *
+ * @internal
  */
 
 import { createError } from '../errors/error';
@@ -15,8 +20,21 @@ import type { Plan } from '../plan/types';
 import type { SpecInput } from '../spec/types';
 
 /**
- * Allocate a single contiguous SharedArrayBuffer for the entire plan.
- * @throws When SAB is unavailable in the environment or allocation fails.
+ * Allocates a contiguous SharedArrayBuffer for the entire layout.
+ *
+ * @typeParam S - Layout spec type
+ * @param plan - Memory layout specification
+ * @returns SharedBacking with a single SAB
+ *
+ * @throws {Error}
+ * - If SharedArrayBuffer is unsupported in the environment
+ * - If allocation fails due to memory constraints
+ *
+ * @example
+ * ```typescript
+ * const backing = allocateShared(plan);
+ * // backing.sab contains all planes contiguously
+ * ```
  */
 export function allocateShared<S extends SpecInput>(plan: Plan<S>): SharedBacking {
   if (typeof SharedArrayBuffer === 'undefined') {
@@ -45,8 +63,14 @@ export function allocateShared<S extends SpecInput>(plan: Plan<S>): SharedBackin
 }
 
 /**
- * Convenience: compute the total byte length of a backing without mapping views.
- * Only meaningful for 'shared' and 'wasm-shared'.
+ * Gets the total byte length of a non-partitioned backing.
+ *
+ * @remarks
+ * Only works with 'shared' and 'wasm-shared' backings.
+ * For 'shared-partitioned', use the plan's `bytesTotal` directly.
+ *
+ * @param backing - Backing to measure (must not be partitioned)
+ * @returns Size in bytes
  */
 export function backingByteLength(
   backing:

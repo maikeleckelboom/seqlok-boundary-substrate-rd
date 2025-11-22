@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Core error handling for Seqlok.
+ *
+ * @remarks
+ * - Defines the main `SeqlokError` class for all library errors.
+ * - Provides type-safe error creation and checking utilities.
+ * - Integrates with the error registry for consistent error handling.
+ */
+
 import type { ErrorCode, ErrorPayload } from './registry';
 
 /**

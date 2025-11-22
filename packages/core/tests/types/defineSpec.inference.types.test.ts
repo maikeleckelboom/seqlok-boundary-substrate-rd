@@ -4,7 +4,7 @@ import { defineSpec } from '../../src/spec/define';
 
 import type { SpecInput } from '../../src/spec/types';
 
-describe('defineSpec: strengthened inference', () => {
+describe('DefineSpec: Strengthened Inference Contracts', () => {
   it('preserves literals for scalar ranges, enum values, and array lengths', () => {
     const spec = defineSpec(({ param, meter }) => ({
       id: 'audioProcessor' as const,
@@ -21,10 +21,8 @@ describe('defineSpec: strengthened inference', () => {
 
     const { id, params, meters } = spec;
 
-    // id literal
     expectTypeOf(id).toEqualTypeOf<'audioProcessor'>();
 
-    // scalar ranges
     expectTypeOf(params.gain).toEqualTypeOf<{
       readonly kind: 'f32';
       readonly min: 0;
@@ -37,19 +35,16 @@ describe('defineSpec: strengthened inference', () => {
       readonly max: 20_000;
     }>();
 
-    // scalar enum
     expectTypeOf(params.filterType).toEqualTypeOf<{
       readonly kind: 'enum';
       readonly values: readonly ['lowpass', 'highpass', 'bandpass'];
     }>();
 
-    // scalar array
     expectTypeOf(params.bands).toEqualTypeOf<{
       readonly kind: 'f32.array';
       readonly length: 8;
     }>();
 
-    // meter array
     expectTypeOf(meters.samples).toEqualTypeOf<{
       readonly kind: 'f32.array';
       readonly length: 128;
@@ -115,10 +110,8 @@ describe('defineSpec: strengthened inference', () => {
 
     const spec = defineSpec(input);
 
-    // plain-object overload: defineSpec is type-identity on the input
     expectTypeOf(spec).toEqualTypeOf<typeof input>();
 
-    // and the resulting spec is still a valid SpecInput (extends it)
     expectTypeOf(spec).toExtend<SpecInput>();
   });
 

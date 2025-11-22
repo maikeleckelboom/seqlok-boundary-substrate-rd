@@ -17,10 +17,10 @@ import type {
   MeterWriter,
   ParamValueFor,
   ProcessorParams,
-} from '../../src/binding/types';
+} from '../../src/binding/common/types';
 import type { SpecInput } from '../../src/spec/types';
 
-describe('Backing union type guards (signatures)', () => {
+describe('Backing Union Type Guards (Signatures)', () => {
   it('isSharedBacking(b: Backing): b is SharedBacking', () => {
     expectTypeOf(isSharedBacking).parameter(0).toEqualTypeOf<Backing>();
     expectTypeOf(isSharedBacking).guards.toEqualTypeOf<SharedBacking>();
@@ -39,7 +39,7 @@ describe('Backing union type guards (signatures)', () => {
   });
 });
 
-describe('Backing union discriminants (Extract<> mapping)', () => {
+describe('Backing Union Discriminants (Extract<> Mapping)', () => {
   it('maps discriminants to exact backing shapes', () => {
     type C = Extract<Backing, { kind: 'shared' }>;
     type S = Extract<Backing, { kind: 'shared-partitioned' }>;
@@ -49,14 +49,14 @@ describe('Backing union discriminants (Extract<> mapping)', () => {
     expectTypeOf<S>().toEqualTypeOf<SharedPartitionedBacking>();
     expectTypeOf<W>().toEqualTypeOf<WasmSharedBacking>();
 
-    // Key property types
+    // Key property types.
     expectTypeOf<C['sab']>().toEqualTypeOf<SharedArrayBuffer>();
     expectTypeOf<S['planes']['PF32']>().toEqualTypeOf<SharedArrayBuffer>();
     expectTypeOf<W['memory']>().toEqualTypeOf<WebAssembly.Memory>();
   });
 });
 
-describe('Control-flow narrowing against real values (non-deprecated checks)', () => {
+describe('Control-Flow Narrowing: Real-Value Runtime Checks', () => {
   it('narrows correctly in each branch', () => {
     const cases: Backing[] = [
       { kind: 'shared', sab: new SharedArrayBuffer(8) },
@@ -81,7 +81,7 @@ describe('Control-flow narrowing against real values (non-deprecated checks)', (
 
     for (const b of cases) {
       if (isSharedBacking(b)) {
-        // Exact equality is safe post-narrow
+        // Exact equality is safe post-narrow.
         expectTypeOf(b).toEqualTypeOf<SharedBacking>();
       } else if (isSharedPartitionedBacking(b)) {
         expectTypeOf(b).toEqualTypeOf<SharedPartitionedBacking>();
@@ -94,7 +94,7 @@ describe('Control-flow narrowing against real values (non-deprecated checks)', (
   });
 });
 
-// TS 5.4+ typed array alias (keeps assertions stable across lib variations)
+// TS 5.4+ typed array alias to keep assertions stable across library variations.
 type F32RO = Readonly<Float32Array>;
 
 describe('binding (compile-time contracts)', () => {
@@ -116,15 +116,15 @@ describe('binding (compile-time contracts)', () => {
   it('ControllerParams.update accepts only scalar params by key, with correct value types', () => {
     type UpdateArg = Parameters<ControllerParams<S>['update']>[0];
 
-    // AFTER (robust; no deprecations; no MISMATCH)
+    // Verified robust types without deprecations or mismatches.
     type UpdateKeys = keyof UpdateArg;
     type ScalarKeys = 'rate' | 'enabled' | 'mode';
 
-    // Keys are exactly the scalar keys (no arrays allowed like "coeffs")
+    // Keys are exactly the scalar keys (no arrays allowed like "coeffs").
     expectTypeOf<UpdateKeys>().toExtend<ScalarKeys>();
     expectTypeOf<ScalarKeys>().toExtend<UpdateKeys>();
 
-    // Value types (optional-or-undefined semantics tolerated)
+    // Value types (optional-or-undefined semantics tolerated).
     expectTypeOf<UpdateArg['rate']>().toExtend<number | undefined>();
     expectTypeOf<number | undefined>().toExtend<UpdateArg['rate']>();
 
@@ -143,13 +143,13 @@ describe('binding (compile-time contracts)', () => {
     type StageCb = StageParams[1];
     type StageArg0 = Parameters<StageCb>[0];
 
-    // literal key
+    // Literal key.
     expectTypeOf<StageKey>().toEqualTypeOf<'spectrum'>();
 
-    // callback uses Ephemeral<Float32Array>
+    // Callback uses Ephemeral<Float32Array>.
     expectTypeOf<StageCb>().toExtend<(dst: Ephemeral<Float32Array>) => void>();
 
-    // ephemeral view is still usable as a Float32Array in the body
+    // Ephemeral view is still usable as a Float32Array in the body.
     expectTypeOf<StageArg0>().toExtend<Float32Array>();
   });
 
@@ -157,26 +157,26 @@ describe('binding (compile-time contracts)', () => {
     type Snap = ReturnType<ControllerMeters<S>['snapshot']>;
     expectTypeOf<Snap['rms']>().toEqualTypeOf<number>();
     expectTypeOf<Snap['frame']>().toEqualTypeOf<number>();
-    // Use assignability for typed arrays (TS/lib stability)
+    // Use assignability for typed arrays (TS/lib stability).
     expectTypeOf<Snap['spectrum']>().toExtend<F32RO>();
   });
 
   it('ProcessorParams.within exposes readonly values with correct shapes', () => {
-    // ProcessorParams.within exposes readonly values with correct shapes
+    // ProcessorParams.within exposes readonly values with correct shapes.
     type Within = Parameters<ProcessorParams<S>['within']>[0];
     type ReadView = Parameters<Within>[0];
 
     expectTypeOf<ReadView['rate']>().toExtend<number>();
 
-    // Processor arrays are scratch views (mutable), not Readonly<>
+    // Processor arrays are scratch views (mutable), not Readonly<>.
     expectTypeOf<ReadView['coeffs']>().toExtend<Float32Array>();
 
     expectTypeOf<ReadView['enabled']>().toExtend<boolean>();
 
-    // Processor enum scalar is a numeric index (not label union)
+    // Processor enum scalar is a numeric index (not label union).
     expectTypeOf<ReadView['mode']>().toExtend<number>();
 
-    // Compile-time Check
+    // Compile-time check.
     type ModeCtl = ParamValueFor<S, 'mode'>;
     expectTypeOf<ModeCtl>().toExtend<'a' | 'b' | 'c'>();
   });

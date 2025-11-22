@@ -16,6 +16,9 @@
     "**/*.spec.ts",
     "tests/**/*",
     "examples/**/*",
-    "vitest.config.*"
+    "bench/**/*",
+    "scripts/**/*",
+    "vitest.config.*",
+    "docs/**/*"
   ]
 }

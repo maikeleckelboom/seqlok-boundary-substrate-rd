@@ -1,4 +1,5 @@
 /**
+ * @fileOverview
  * Thin wrappers around Atomics for U32 planes.
  *
  * These helpers centralize error handling so that failures can be surfaced

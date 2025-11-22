@@ -1,8 +1,13 @@
 /**
- * Central error registry with metadata.
- * - Type-safe mapping of codes to detail shapes
- * - Metadata for telemetry, UI, and recovery
- * - Navigable via symbolic constants
+ * @fileoverview
+ * Central error registry with metadata for Seqlok.
+ *
+ * @remarks
+ * - Type-safe mapping of error codes to their detail shapes
+ * - Centralized metadata for telemetry, UI, and recovery
+ * - Organizes errors by domain (backing, binding, diagnostics, etc.)
+ * - Provides type-safe error message and metadata lookups
+ * - Enables consistent error handling across the codebase
  */
 
 import {
@@ -48,11 +53,6 @@ import {
   type InternalErrorCode,
 } from './codes/internal';
 import {
-  ORCHESTRATION_ERRORS,
-  type OrchestrationDetails,
-  type OrchestrationErrorCode,
-} from './codes/orchestration';
-import {
   PLAN_ERRORS,
   type PlanErrorCode,
   type PlanFailedDetails,
@@ -73,6 +73,8 @@ import {
   type SpecEnumDetails,
   type SpecRangeDetails,
 } from './codes/spec';
+
+import type { CoherentDetails, SnapshotRetryDetails } from './details';
 
 /**
  * Base details common to all errors.
@@ -119,7 +121,6 @@ export type ErrorCode =
   | BindingErrorCode
   | HandoffErrorCode
   | PlanErrorCode
-  | OrchestrationErrorCode
   | DiagnosticsErrorCode
   | InternalErrorCode;
 
@@ -165,8 +166,8 @@ export interface CodeToPayload {
   'binding.shapeInvalid': BindingShapeDetails;
   'binding.snapshotIntoTypeMismatch': BindingSnapshotIntoTypeMismatchDetails;
   'binding.snapshotIntoLengthMismatch': BindingSnapshotIntoLengthMismatchDetails;
-  'binding.snapshotRetryExhausted': ErrorDetails;
-  'binding.coherentRetryExhausted': ErrorDetails;
+  'binding.snapshotRetryExhausted': SnapshotRetryDetails;
+  'binding.coherentRetryExhausted': CoherentDetails;
 
   // handoff.*
   'handoff.versionMismatch': HandoffVersionMismatchDetails;
@@ -177,9 +178,6 @@ export interface CodeToPayload {
   // plan.*
   'plan.failed': PlanFailedDetails;
   'plan.overflowRisk': PlanOverflowRiskDetails;
-
-  // orchestration.*
-  'orchestration.createFailed': OrchestrationDetails;
 
   // diagnostics.*
   'diagnostics.counterInvalid': DiagnosticsCounterDetails;
@@ -251,9 +249,6 @@ const RAW_META = {
   [PLAN_ERRORS.failed.code]: PLAN_ERRORS.failed.meta,
   [PLAN_ERRORS.overflowRisk.code]: PLAN_ERRORS.overflowRisk.meta,
 
-  // orchestration.*
-  [ORCHESTRATION_ERRORS.createFailed.code]: ORCHESTRATION_ERRORS.createFailed.meta,
-
   // diagnostics.*
   [DIAGNOSTICS_ERRORS.counterInvalid.code]: DIAGNOSTICS_ERRORS.counterInvalid.meta,
   [DIAGNOSTICS_ERRORS.featureInvalid.code]: DIAGNOSTICS_ERRORS.featureInvalid.meta,
@@ -316,9 +311,6 @@ const RAW_MESSAGES = {
   // plan.*
   [PLAN_ERRORS.failed.code]: PLAN_ERRORS.failed.message,
   [PLAN_ERRORS.overflowRisk.code]: PLAN_ERRORS.overflowRisk.message,
-
-  // orchestration.*
-  [ORCHESTRATION_ERRORS.createFailed.code]: ORCHESTRATION_ERRORS.createFailed.message,
 
   // diagnostics.*
   [DIAGNOSTICS_ERRORS.counterInvalid.code]: DIAGNOSTICS_ERRORS.counterInvalid.message,

@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Memory layout planning for Seqlok shared state.
+ *
+ * @remarks
+ * - Transforms a high-level spec into a concrete memory layout plan.
+ * - Handles alignment, padding, and isolation of shared memory regions.
+ * - Ensures thread-safe access patterns through proper memory barriers.
+ */
+
 import {
   assertValidSpecForPlanning,
   composePlaneLengths,

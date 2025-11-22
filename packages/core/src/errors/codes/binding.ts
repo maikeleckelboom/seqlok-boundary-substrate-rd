@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Error codes and detail types for binding-level failures.
+ *
+ * @remarks
+ * - Covers controller/processor param validation and range violations.
+ * - Includes snapshot/hydrate/stage and snapshotInto buffer mismatches.
+ * - Registered into the global error registry as the `binding.*` domain.
+ */
+
 import type { BufferDetails, RangeDetails, UnknownKeyDetails } from '../details';
 import type { ErrorDetails, ErrorMeta } from '../registry';
 
@@ -172,10 +182,6 @@ export const BINDING_ERRORS: BindingErrorsMap = {
   },
 } as const;
 
-/**
- * Optional compatibility map (same shape as your old BINDING_CODES).
- * If nobody imports this, you can delete it later.
- */
 export const BINDING_CODES: Record<BindingErrorCode, string> = {
   'binding.unknownKey': 'Unknown binding key',
   'binding.paramRange': 'Param out of range',
@@ -187,7 +193,6 @@ export const BINDING_CODES: Record<BindingErrorCode, string> = {
   'binding.coherentRetryExhausted': 'Coherent retries exhausted',
 } as const;
 
-// Sanity check that union and descriptors stay in sync.
 type _CodesFromDescriptors = BindingErrorsMap[BindingErrorKey]['code'];
 type _CodesExact = BindingErrorCode;
 export type _BindingCodesMatch = _CodesFromDescriptors extends _CodesExact
@@ -196,6 +201,5 @@ export type _BindingCodesMatch = _CodesFromDescriptors extends _CodesExact
     : never
   : never;
 
-// If you want it to *fail* the build when things drift:
-export const _bindingCodesMatch: _BindingCodesMatch = true;
+const _bindingCodesMatch: _BindingCodesMatch = true;
 void _bindingCodesMatch;

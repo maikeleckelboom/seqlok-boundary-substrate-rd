@@ -1,18 +1,28 @@
+/**
+ * @fileoverview
+ * Error codes and detail types for diagnostics and introspection.
+ *
+ * @remarks
+ * - Covers invalid counters/metrics and unknown diagnostics features.
+ * - Intended for debug/observability paths, not normal API misuse.
+ * - Registered into the global error registry as the `diagnostics.*` domain.
+ */
+
 import type { ErrorDetails, ErrorMeta } from '../registry';
 
 /**
  * Diagnostics error codes.
  *
  * @remarks
- * This domain is intentionally narrow and focused on the *introspection layer*:
+ * This domain is intentionally narrow and focused on the introspection layer:
  *
  * - Counters / metrics that should never contain NaN, Infinity, or
  *   out-of-range values.
  * - Diagnostics / debug feature flags that are unknown or invalid in
  *   the current runtime.
  *
- * These errors are **not** for normal user or API misuse; those belong
- * in `spec.*`, `binding.*`, `backing.*`, etc.
+ * These errors are not for normal user or API misuse; those belong in
+ * `spec.*`, `binding.*`, `backing.*`, etc.
  *
  * Typical call sites:
  * - Debug HUD adapters
@@ -20,7 +30,7 @@ import type { ErrorDetails, ErrorMeta } from '../registry';
  * - Dev / CLI feature toggles for diagnostics
  *
  * All diagnostics errors are modeled as recoverable warnings and are
- * generally **not safe to expose** across trust boundaries.
+ * generally not safe to expose across trust boundaries.
  */
 export type DiagnosticsErrorCode =
   | 'diagnostics.counterInvalid'
@@ -39,8 +49,8 @@ export type DiagnosticsErrorKey = 'counterInvalid' | 'featureInvalid';
  * - "this should have been a non-negative, finite integer"
  * - "this counter exceeded an internal safety bound"
  *
- * This is a signal that the diagnostics subsystem is misbehaving, not
- * that the core engine state is corrupt.
+ * This is a signal that the diagnostics subsystem is misbehaving,
+ * not that the core engine state is corrupt.
  */
 export interface DiagnosticsCounterDetails extends ErrorDetails {
   /**
@@ -94,7 +104,9 @@ interface DiagnosticsErrorDescriptor<C extends DiagnosticsErrorCode> {
  * @remarks
  * - This is the single source of truth for code + message + metadata.
  * - The central registry consumes this map and enforces alignment with
- *   `DiagnosticsErrorCode` via compile-time checks below.
+ *   `DiagnosticsErrorCode` via the compile-time check below.
+ * - Both diagnostics errors are modeled as `warning` + `recoverable: true`
+ *   to reflect that they degrade observability, not core engine safety.
  */
 interface DiagnosticsErrorsMap {
   readonly counterInvalid: DiagnosticsErrorDescriptor<'diagnostics.counterInvalid'>;
@@ -110,7 +122,6 @@ const DIAGNOSTICS_ERRORS_DEF = {
     code: 'diagnostics.counterInvalid',
     message: 'Diagnostics counter invalid',
     meta: {
-      // Introspection degraded, but core engine remains healthy.
       severity: 'warning',
       recoverable: true,
       boundarySafe: false,
@@ -120,7 +131,6 @@ const DIAGNOSTICS_ERRORS_DEF = {
     code: 'diagnostics.featureInvalid',
     message: 'Diagnostics feature invalid',
     meta: {
-      // Misconfigured debug feature; safe to ignore or fix in dev.
       severity: 'warning',
       recoverable: true,
       boundarySafe: false,
@@ -134,14 +144,12 @@ const DIAGNOSTICS_ERRORS_DEF = {
 export const DIAGNOSTICS_ERRORS: DiagnosticsErrorsMap = DIAGNOSTICS_ERRORS_DEF;
 
 /* Sanity check: ensure DiagnosticsErrorCode union matches DIAGNOSTICS_ERRORS.*.code */
-
 type _CodesFromDescriptors = DiagnosticsErrorsMap[DiagnosticsErrorKey]['code'];
-
 type _DiagnosticsCodesMatch = DiagnosticsErrorCode extends _CodesFromDescriptors
   ? _CodesFromDescriptors extends DiagnosticsErrorCode
     ? true
     : never
   : never;
 
-export const _diagnosticsCodesMatch: _DiagnosticsCodesMatch = true;
+const _diagnosticsCodesMatch: _DiagnosticsCodesMatch = true;
 void _diagnosticsCodesMatch;

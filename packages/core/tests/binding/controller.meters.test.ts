@@ -11,6 +11,10 @@ import {
   receiveHandoff,
 } from '../../src';
 
+/**
+ * Creates a comprehensive specification with mixed scalar and array types
+ * for both parameters and meters to validate controller binding logic.
+ */
 function makeSpec() {
   return defineSpec(({ param, meter }) => ({
     id: 'controller-binding-tests',
@@ -28,6 +32,10 @@ function makeSpec() {
   }));
 }
 
+/**
+ * Wires up a shared memory environment, establishing the connection between
+ * a Controller and a Processor for testing.
+ */
 function setupController(
   options: ControllerOptions = { params: { rangePolicy: 'reject' } },
 ) {
@@ -38,31 +46,31 @@ function setupController(
   const handoff = buildHandoff(plan, backing);
   const received = receiveHandoff(handoff);
 
-  const ctl = bindController(spec, backing, options);
+  const ctl = bindController(spec, plan, backing, options);
   const proc = bindProcessor(received);
 
   return { spec, plan, backing, handoff, received, ctl, proc };
 }
 
-describe('Controller meters: version reflects processor MU publishes', () => {
-  it('proc.meters.publish() → controller.meters.version() increments by 1', () => {
+describe('Controller Meters: Versioning & Synchronization', () => {
+  it('increments the version counter exactly once per processor publish', () => {
     const { ctl, proc } = setupController();
-    const start = ctl.meters.version();
+    const startVersion = ctl.meters.version();
 
     proc.meters.publish((w) => {
       w.rms(0.42);
     });
 
-    const v1 = ctl.meters.version();
-    expect(v1).toBe(start + 1);
+    const nextVersion = ctl.meters.version();
+    expect(nextVersion).toBe(startVersion + 1);
 
-    const snap = ctl.meters.snapshot({ keys: ['rms'] as const });
+    const snap = ctl.meters.snapshot({ keys: ['rms'] });
     expect(snap.rms).toBeCloseTo(0.42, 6);
   });
 
-  it('single publish with multiple writes is one bump', () => {
+  it('treats multiple writes within a single publish block as atomic (one version bump)', () => {
     const { ctl, proc } = setupController();
-    const start = ctl.meters.version();
+    const startVersion = ctl.meters.version();
 
     proc.meters.publish((w) => {
       w.rms(0.1);
@@ -73,8 +81,8 @@ describe('Controller meters: version reflects processor MU publishes', () => {
       });
     });
 
-    const v1 = ctl.meters.version();
-    expect(v1).toBe(start + 1);
+    const nextVersion = ctl.meters.version();
+    expect(nextVersion).toBe(startVersion + 1);
 
     const snap = ctl.meters.snapshot({ keys: ['rms', 'spectrum'] });
     expect(snap.rms).toBeCloseTo(0.1, 6);
@@ -84,11 +92,11 @@ describe('Controller meters: version reflects processor MU publishes', () => {
   });
 });
 
-describe('Controller meters: snapshot into() identity and key validation', () => {
-  it('meters.snapshot({keys, into}) reuses provided buffer (identity)', () => {
+describe('Controller Meters: Snapshot Identity & Validation', () => {
+  it('writes meter snapshots directly into the provided buffer', () => {
     const { ctl, proc } = setupController();
 
-    // write some data
+    // Populate initial data
     proc.meters.publish((w) => {
       w.stage('spectrum', (vec) => {
         vec.fill(0);
@@ -97,19 +105,23 @@ describe('Controller meters: snapshot into() identity and key validation', () =>
       });
     });
 
-    const into = { spectrum: new Float32Array(16) };
+    const targetBuffer = new Float32Array(16);
+    const into = { spectrum: targetBuffer };
+
     const snap = ctl.meters.snapshot({ keys: ['spectrum'], into });
 
-    // identity + content checks
-    expect(snap.spectrum).toBe(into.spectrum);
+    // Verify reference identity to ensure no new allocation occurred
+    expect(snap.spectrum).toBe(targetBuffer);
+
+    // Verify data integrity
     expect(snap.spectrum[2]).toBeCloseTo(1.25, 6);
     expect(snap.spectrum[10]).toBeCloseTo(0.5, 6);
   });
 
-  it('unknown key in meters.snapshot() throws', () => {
+  it('throws when snapshotting a non-existent meter key', () => {
     const { ctl } = setupController();
     expect(() => {
-      // @ts-expect-error intentional invalid key to test guard
+      // @ts-expect-error Intentional invalid key to test runtime guard
       ctl.meters.snapshot({ keys: ['nope'] });
     }).toThrow();
   });

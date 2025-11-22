@@ -2,8 +2,8 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 
 import {
-  computeBackingPlaneBases,
   BACKING_PLANE_PACK_ORDER_V1,
+  computeBackingPlaneBases,
 } from '../../src/backing/map-views';
 
 import type { PlaneByteLengths } from '../../src/plan/types';
@@ -16,12 +16,14 @@ const align4 = [
   'MU32',
   'PU',
 ] as const satisfies readonly PlaneKey[];
+
 const align8 = ['MF64'] as const satisfies readonly PlaneKey[];
 const align1 = ['PB'] as const satisfies readonly PlaneKey[];
 
-describe('computeBackingPlaneBases alignment invariants', () => {
-  it('respects natural alignment and full coverage (contiguous, pack-order)', () => {
-    /* PER-PLANE BYTE LENGTHS already aligned for their element width */
+describe('Backing Plane Layout: Alignment & Contiguity Invariants', () => {
+  it('maintains natural alignment and strictly contiguous packing order across random layouts', () => {
+    // Generate valid PlaneByteLengths where each plane size is a multiple of its element width.
+    // This simulates the guarantees provided by the planner before layout calculation.
     const arb = fc.record<PlaneByteLengths>({
       PF32: fc.nat(1 << 24).map((n) => n * 4),
       PI32: fc.nat(1 << 24).map((n) => n * 4),
@@ -37,7 +39,8 @@ describe('computeBackingPlaneBases alignment invariants', () => {
       fc.property(arb, (lens) => {
         const bases = computeBackingPlaneBases(lens);
 
-        /* Alignment per plane */
+        // Invariant 1: Alignment
+        // Each plane must start at an offset divisible by its element size.
         for (const k of align4) {
           expect(bases[k] % 4).toBe(0);
         }
@@ -48,15 +51,19 @@ describe('computeBackingPlaneBases alignment invariants', () => {
           expect(bases[k] % 1).toBe(0);
         }
 
-        /* Contiguity in BACKING_PLANE_PACK_ORDER_V1: base[next] === base[prev] + len[prev] */
+        // Invariant 2: Contiguity & V1 Pack Order
+        // The start of the current plane must equal the start of the previous plane + its length.
         for (let i = 1; i < BACKING_PLANE_PACK_ORDER_V1.length; i++) {
           // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
           const prev = BACKING_PLANE_PACK_ORDER_V1[i - 1]!;
           // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
           const curr = BACKING_PLANE_PACK_ORDER_V1[i]!;
+
           expect(bases[curr]).toBe(bases[prev] + lens[prev]);
         }
 
+        // Invariant 3: Total Coverage
+        // The end of the last plane must match the sum of all plane lengths.
         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
         const last = BACKING_PLANE_PACK_ORDER_V1[BACKING_PLANE_PACK_ORDER_V1.length - 1]!;
         const endLast = bases[last] + lens[last];
@@ -64,6 +71,7 @@ describe('computeBackingPlaneBases alignment invariants', () => {
           (acc, k) => acc + lens[k],
           0,
         );
+
         expect(endLast).toBe(sum);
       }),
     );

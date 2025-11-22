@@ -1,14 +1,18 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
+  getDocsUrl,
   interpretHealth,
   isBoundarySafe,
   isRecoverable,
-  getDocsUrl,
 } from '../../src/errors/health';
 
 import type { ErrorMeta } from '../../src/errors/registry';
 
+/**
+ * Helper factory to construct partial ErrorMeta objects for testing purposes.
+ * Provides safe defaults for required fields.
+ */
 function meta(
   overrides: Partial<ErrorMeta> & { severity: ErrorMeta['severity'] },
 ): ErrorMeta {
@@ -21,8 +25,8 @@ function meta(
   } as ErrorMeta;
 }
 
-describe('interpretHealth', () => {
-  it('maps fatal + non-recoverable', () => {
+describe('interpretHealth: Error Status Interpretation', () => {
+  it('maps non-recoverable fatal errors to critical status with correct flags', () => {
     const m = meta({ severity: 'fatal', recoverable: false, boundarySafe: false });
     const h = interpretHealth(m);
 
@@ -30,17 +34,19 @@ describe('interpretHealth', () => {
     expect(h.label).toBe('Critical');
     expect(h.recoverable).toBe(false);
     expect(h.boundarySafe).toBe(false);
+    // Ensure a user-facing hint string is generated
     expect(typeof h.hint).toBe('string');
   });
 
-  it('maps fatal + recoverable', () => {
+  it('preserves recoverable flags even for fatal severity definitions', () => {
     const m = meta({ severity: 'fatal', recoverable: true, boundarySafe: false });
     const h = interpretHealth(m);
+
     expect(h.recoverable).toBe(true);
     expect(h.boundarySafe).toBe(false);
   });
 
-  it('maps error + recoverable/non-recoverable and warning', () => {
+  it('distinguishes between standard errors, recoverable errors, and warnings', () => {
     const errRecoverable = interpretHealth(
       meta({ severity: 'error', recoverable: true, boundarySafe: true }),
     );
@@ -57,7 +63,7 @@ describe('interpretHealth', () => {
     expect(typeof warn.hint).toBe('string');
   });
 
-  it('delegates to meta for boundarySafe/recoverable/docsUrl helpers', () => {
+  it('delegates utility checks (isBoundarySafe, isRecoverable, getDocsUrl) directly to metadata', () => {
     const m: ErrorMeta = {
       severity: 'warning',
       recoverable: true,

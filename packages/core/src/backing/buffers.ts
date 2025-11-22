@@ -1,23 +1,17 @@
 /**
  * @fileoverview
- * Backing buffer access helpers.
+ * Unified access to backing storage buffers.
  *
- * These helpers normalize access to the underlying SharedArrayBuffer(s)
- * behind a {@link Backing} so callers do not have to repeat branching on
- * `backing.kind`:
+ * @remarks
+ * - Abstracts away differences between backing types
+ * - Provides type-safe access to underlying SharedArrayBuffer(s)
+ * - Used by allocators, mappers, and tests
  *
- * - `getSharedBuffer`:
- *   - `kind: 'shared'`        → contiguous SharedArrayBuffer
- *   - `kind: 'wasm-shared'`   → `WebAssembly.Memory.buffer` (validated as shared)
- *   - `kind: 'shared-partitioned'` → throws (no single SAB exists)
+ * @see {@link getSharedBuffer} - For single-buffer backings
+ * @see {@link getBufferForPlane} - For plane-specific access
+ * @see {@link ../../docs/architecture/11-backing-and-plane-layout.md} for design
  *
- * - `getBufferForPlane`:
- *   - `kind: 'shared-partitioned'` → per-plane SharedArrayBuffer
- *   - `kind: 'shared' | 'wasm-shared'` → the single backing buffer
- *
- * Higher-level code (allocators, `mapViews`, tests) should use these
- * helpers instead of switching on `backing.kind` directly when they only
- * care about “which SAB to use?” rather than layout details.
+ * @internal
  */
 
 import { createError } from '../errors/error';
@@ -26,21 +20,24 @@ import type { Backing } from './types';
 import type { PlaneKey } from '../primitives/planes';
 
 /**
- * Return the single SharedArrayBuffer backing when it exists.
+ * Gets the single SharedArrayBuffer for a non-partitioned backing.
  *
  * @remarks
- * - For `kind: 'shared'` this is the contiguous SAB created by `allocateShared()`.
- * - For `kind: 'wasm-shared'` this is `WebAssembly.Memory.buffer`, which has
- *   already been validated as a `SharedArrayBuffer` by the allocator.
+ * - `shared`: Returns the contiguous SAB
+ * - `wasm-shared`: Returns the WebAssembly.Memory buffer
+ * - `shared-partitioned`: Throws (use {@link getBufferForPlane} instead)
  *
- * This helper is intentionally *not* exposed at the top-level public API;
- * it is used by backing internals and tests.
+ * @throws {SeqlokError<'internal.assertionFailed'>}
+ * If called with a partitioned backing
  *
- * @throws
- * A `SeqlokError<'internal.assertionFailed'>` when called with a
- * `kind: 'shared-partitioned'` backing, because there is no single SAB in
- * that configuration. Callers in that case should use
- * {@link getBufferForPlane}.
+ * @example
+ * ```typescript
+ * // For non-partitioned backings
+ * const buf = getSharedBuffer(backing);
+ * const view = new Float32Array(buf);
+ * ```
+ *
+ * @internal
  */
 export function getSharedBuffer(backing: Backing): SharedArrayBuffer {
   switch (backing.kind) {
@@ -74,14 +71,20 @@ export function getSharedBuffer(backing: Backing): SharedArrayBuffer {
 }
 
 /**
- * Plane-aware buffer accessor.
+ * Gets the buffer for a specific plane, handling all backing types.
  *
  * @remarks
- * - For `kind: 'shared-partitioned'` this returns the per-plane
- *   `SharedArrayBuffer` for the requested plane.
- * - For `kind: 'shared' | 'wasm-shared'` this returns the single backing
- *   buffer; plane-local byte offsets are handled by the planner / mappers
- *   (e.g. in `mapViews`).
+ * - `shared-partitioned`: Returns the plane's dedicated SAB
+ * - `shared`/`wasm-shared`: Returns the main buffer (offsets handled by mappers)
+ *
+ * @example
+ * ```typescript
+ * // Works with any backing type
+ * const buf = getBufferForPlane(backing, 'PF32');
+ * const view = new Float32Array(buf);
+ * ```
+ *
+ * @see {@link mapViews} For creating typed array views
  */
 export function getBufferForPlane(backing: Backing, plane: PlaneKey): SharedArrayBuffer {
   if (backing.kind === 'shared-partitioned') {

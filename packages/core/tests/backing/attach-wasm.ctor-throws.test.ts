@@ -9,7 +9,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('allocateWasmShared — Memory ctor failure path', () => {
+describe('Allocate Wasm Shared: Memory Constructor Failure Path', () => {
   it('throws a typed SeqlokError when WebAssembly.Memory constructor throws', () => {
     // Arrange
     const spec = defineSpec(({ param, meter }) => ({

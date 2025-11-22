@@ -141,7 +141,7 @@ Shape of the controller snapshot wrapper:
 ```ts
 import { tryRead } from '../primitives/seqlock';
 import { createError } from '../errors/error';
-import { incrementDiagnosticsCounter } from '../diagnostics/counters';
+import { incrementCounter } from '../diagnostics/counters';
 
 interface SnapshotOptions {
   readonly spinBudget: number;
@@ -166,18 +166,18 @@ function snapshotWithPolicy<T>(
   const { spins, retries } = result.status;
 
   if (spins >= spinBudget) {
-    incrementDiagnosticsCounter('spinBudgetExhausted');
+    incrementCounter('spinBudgetExhausted');
   }
 
   if (retries >= retryBudget) {
-    incrementDiagnosticsCounter('retryBudgetExhausted');
+    incrementCounter('retryBudgetExhausted');
   }
 
   if (degrade === 'never') {
     throw createError('binding.snapshotRetryExhausted', { where });
   }
 
-  incrementDiagnosticsCounter('degradedSnapshots');
+  incrementCounter('degradedSnapshots');
 
   return getDegradedSnapshot();
 }

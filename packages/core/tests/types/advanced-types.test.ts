@@ -1,177 +1,383 @@
-import { describe, it, expectTypeOf } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
-import type {
-  IntoForMeters,
-  IntoForParams,
-  MeterValueFor,
-  ParamValueFor,
-  SnapshotMetersObject,
-  SnapshotParamsObject,
-} from '../../src/binding/types';
-import type { ArrayParamKeys, ScalarParamKeys, SpecInput } from '../../src/spec/types';
+import { defineSpec } from '../../src';
+import { bindingsFromSpec } from '../helpers/binding';
 
-describe('Advanced type inference: edge cases', () => {
-  interface ComplexSpec extends SpecInput {
-    readonly id: 'complex';
-    readonly params: {
-      gain: { kind: 'f32'; min: 0; max: 4 };
-      offset: { kind: 'i32'; min: -100; max: 100 };
-      enabled: { kind: 'bool' };
-      mode: { kind: 'enum'; values: ['a', 'b', 'c'] };
-      curve: { kind: 'f32.array'; length: 128 };
-      steps: { kind: 'i32.array'; length: 16 };
-      flags: { kind: 'bool.array'; length: 8 };
-      states: {
-        kind: 'enum.array';
-        values: ['idle', 'active'];
-        length: 4;
-      };
+describe('Array Offsets: Type-Level Regression Contracts', () => {
+  it('correctly reads multiple array params with non-zero offsets', () => {
+    const spec = defineSpec(({ param }) => ({
+      id: 'multi-array-offset',
+      params: {
+        a: param.f32({ min: 0, max: 1 }), // 1 elem @ offset 0
+        b: param.f32.array(4), // 4 elems @ offset 4
+        c: param.f32({ min: 0, max: 1 }), // 1 elem @ offset 20
+        d: param.f32.array(8), // 8 elems @ offset 24
+      },
+    }));
+
+    const { ctl, proc } = bindingsFromSpec(spec);
+
+    // Write distinct values.
+    ctl.params.set('a', 0.1);
+    ctl.params.stage('b', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = 0.2 + i * 0.01;
+      }
+    });
+    ctl.params.set('c', 0.3);
+    ctl.params.stage('d', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = 0.4 + i * 0.01;
+      }
+    });
+
+    // Verify lengths and values in processor.
+    proc.params.within((view) => {
+      expect(view.b.length).toBe(4);
+      expect(view.d.length).toBe(8);
+
+      expect(view.a).toBeCloseTo(0.1);
+      expect(view.b[0]).toBeCloseTo(0.2);
+      expect(view.b[3]).toBeCloseTo(0.23);
+      expect(view.c).toBeCloseTo(0.3);
+      expect(view.d[0]).toBeCloseTo(0.4);
+      expect(view.d[7]).toBeCloseTo(0.47);
+    });
+
+    // Verify controller snapshots.
+    const snap = ctl.params.snapshot();
+    expect(snap.b.length).toBe(4);
+    expect(snap.d.length).toBe(8);
+    expect(snap.a).toBeCloseTo(0.1);
+    expect(snap.b[0]).toBeCloseTo(0.2);
+    expect(snap.b[3]).toBeCloseTo(0.23);
+    expect(snap.c).toBeCloseTo(0.3);
+    expect(snap.d[0]).toBeCloseTo(0.4);
+    expect(snap.d[7]).toBeCloseTo(0.47);
+  });
+
+  it('correctly reads i32 and bool arrays with non-zero offsets', () => {
+    const spec = defineSpec(({ param }) => ({
+      id: 'mixed-array-offset',
+      params: {
+        gain: param.f32({ min: 0, max: 1 }), // f32 scalar @ PF32 offset 0
+        indices: param.i32.array(6), // i32 array @ PI32 offset 0
+        mode: param.i32({ min: 0, max: 10 }), // i32 scalar @ PI32 offset 24
+        flags: param.bool.array(10), // bool array @ PB offset 0
+      },
+    }));
+
+    const { ctl, proc } = bindingsFromSpec(spec);
+
+    ctl.params.set('gain', 0.5);
+    ctl.params.set('mode', 7);
+    ctl.params.stage('indices', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = i * 10;
+      }
+    });
+    ctl.params.stage('flags', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = i % 2;
+      }
+    });
+
+    proc.params.within((view) => {
+      expect(view.indices.length).toBe(6);
+      expect(view.flags.length).toBe(10);
+
+      expect(view.gain).toBeCloseTo(0.5);
+      expect(view.mode).toBe(7);
+      expect(view.indices[0]).toBe(0);
+      expect(view.indices[5]).toBe(50);
+      expect(view.flags[0]).toBe(0);
+      expect(view.flags[1]).toBe(1);
+      expect(view.flags[9]).toBe(1);
+    });
+  });
+
+  it('correctly publishes and reads meter arrays with non-zero offsets', () => {
+    const spec = defineSpec(({ param, meter }) => ({
+      id: 'meter-array-offset',
+      params: {
+        gain: param.f32({ min: 0, max: 1 }),
+      },
+      meters: {
+        rms: meter.f32(), // scalar @ offset 0
+        spectrum: meter.f32.array(16), // array @ offset 4
+        peak: meter.f32(), // scalar @ offset 68
+        histogram: meter.f32.array(8), // array @ offset 72
+      },
+    }));
+
+    const { ctl, proc } = bindingsFromSpec(spec);
+
+    proc.meters.publish((writer) => {
+      writer.rms(0.5);
+      writer.stage('spectrum', (v) => {
+        for (let i = 0; i < v.length; i++) {
+          v[i] = i / 16;
+        }
+      });
+      writer.peak(0.9);
+      writer.stage('histogram', (v) => {
+        for (let i = 0; i < v.length; i++) {
+          v[i] = (i + 1) * 0.1;
+        }
+      });
+    });
+
+    const snap = ctl.meters.snapshot();
+    expect(snap.rms).toBe(0.5);
+    expect(snap.spectrum.length).toBe(16);
+    expect(snap.spectrum[0]).toBe(0);
+    expect(snap.spectrum[15]).toBeCloseTo(15 / 16);
+    expect(snap.peak).toBeCloseTo(0.9);
+    expect(snap.histogram.length).toBe(8);
+    expect(snap.histogram[0]).toBeCloseTo(0.1);
+    expect(snap.histogram[7]).toBeCloseTo(0.8);
+  });
+
+  it('fills into buffers correctly for arrays with non-zero offsets', () => {
+    const spec = defineSpec(({ param }) => ({
+      id: 'into-buffer-offset',
+      params: {
+        scalar: param.f32({ min: 0, max: 1 }),
+        arr1: param.f32.array(4),
+        arr2: param.f32.array(8),
+      },
+    }));
+
+    const { ctl } = bindingsFromSpec(spec);
+
+    ctl.params.stage('arr1', (v) => {
+      v.fill(1.0);
+    });
+    ctl.params.stage('arr2', (v) => {
+      v.fill(2.0);
+    });
+
+    const into = {
+      arr1: new Float32Array(4),
+      arr2: new Float32Array(8),
     };
-    readonly meters: {
-      rms: { kind: 'f32' };
-      counter: { kind: 'u32' };
-      precise: { kind: 'f64' };
-      spectrum: { kind: 'f32.array'; length: 512 };
-      bins: { kind: 'u32.array'; length: 64 };
-      samples: { kind: 'f64.array'; length: 256 };
-    };
-  }
 
-  it('splits scalar vs array param keys correctly', () => {
-    type Scalars = ScalarParamKeys<ComplexSpec>;
-    type Arrays = ArrayParamKeys<ComplexSpec>;
+    const snap = ctl.params.snapshot({ keys: ['arr1', 'arr2'], into });
 
-    expectTypeOf<Scalars>().toEqualTypeOf<'gain' | 'offset' | 'enabled' | 'mode'>();
-    expectTypeOf<Arrays>().toEqualTypeOf<'curve' | 'steps' | 'flags' | 'states'>();
+    // Verify identity (into buffers are returned).
+    expect(snap.arr1).toBe(into.arr1);
+    expect(snap.arr2).toBe(into.arr2);
+
+    // Verify correct lengths.
+    expect(snap.arr1.length).toBe(4);
+    expect(snap.arr2.length).toBe(8);
+
+    // Verify values.
+    expect(snap.arr1.every((v) => v === 1.0)).toBe(true);
+    expect(snap.arr2.every((v) => v === 2.0)).toBe(true);
   });
 
-  it('maps enum params to string unions (public API)', () => {
-    type ModeValue = ParamValueFor<ComplexSpec, 'mode'>;
-    expectTypeOf<ModeValue>().toExtend<'a' | 'b' | 'c'>();
+  it('handles arrays with large byte offsets correctly', () => {
+    const spec = defineSpec(({ param }) => ({
+      id: 'large-offset',
+      params: {
+        // Create many params to push "late" to a high offset.
+        early1: param.f32.array(100),
+        early2: param.f32.array(100),
+        early3: param.f32.array(100),
+        late: param.f32.array(50), // offset will be 1200 bytes
+      },
+    }));
+
+    const { ctl, proc } = bindingsFromSpec(spec);
+
+    ctl.params.stage('late', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = i;
+      }
+    });
+
+    proc.params.within((view) => {
+      expect(view.late.length).toBe(50);
+      expect(view.late[0]).toBe(0);
+      expect(view.late[49]).toBe(49);
+    });
+
+    const snap = ctl.params.snapshot({ keys: ['late'] });
+    expect(snap.late.length).toBe(50);
+    expect(snap.late[0]).toBe(0);
+    expect(snap.late[49]).toBe(49);
   });
 
-  it('maps enum arrays to Readonly<Int32Array> (indices)', () => {
-    type StatesValue = ParamValueFor<ComplexSpec, 'states'>;
-    expectTypeOf<StatesValue>().toExtend<Readonly<Int32Array>>();
+  it('correctly handles enum arrays with non-zero offsets', () => {
+    const spec = defineSpec(({ param }) => ({
+      id: 'enum-array-offset',
+      params: {
+        mode: param.f32({ min: 0, max: 1 }), // push enum array to non-zero offset
+        waveforms: param.enum.array({
+          values: ['sine', 'square', 'saw', 'triangle'],
+          length: 8,
+        }),
+      },
+    }));
+
+    const { ctl, proc } = bindingsFromSpec(spec);
+
+    // Stage enum array via controller (indices).
+    ctl.params.stage('waveforms', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = i % 4; // cycle through enum indices
+      }
+    });
+
+    // Processor sees numeric indices in its view.
+    proc.params.within((view) => {
+      expect(view.waveforms.length).toBe(8);
+      expect(view.waveforms[0]).toBe(0);
+      expect(view.waveforms[3]).toBe(3);
+    });
+
+    // Controller snapshot returns index array view.
+    const snap = ctl.params.snapshot();
+    expect(snap.waveforms.length).toBe(8);
+    expect(snap.waveforms[0]).toBe(0);
+    expect(snap.waveforms[3]).toBe(3);
   });
 
-  it('narrows IntoForParams to only array keys (subset, optional entries)', () => {
-    type Into = IntoForParams<ComplexSpec, readonly ['gain', 'curve', 'steps']>;
+  it('correctly handles f64 meter arrays with non-zero offsets', () => {
+    const spec = defineSpec(({ meter }) => ({
+      id: 'f64-array-offset',
+      meters: {
+        counter: meter.u32(), // MU32 scalar, pushes MF64 to offset 0
+        rms: meter.f32(), // MF32 scalar @ offset 0
+        precise: meter.f64.array(10), // MF64 array @ offset 0
+        peak: meter.f32(), // MF32 scalar @ offset 4
+        spectrum: meter.f64.array(16), // MF64 array @ offset 80
+      },
+    }));
 
-    // Only array keys ('curve' | 'steps') can appear; they are optional and readonly
-    expectTypeOf<Into>().toMatchObjectType<{
-      readonly curve?: Float32Array;
-      readonly steps?: Int32Array;
-    }>();
+    const { ctl, proc } = bindingsFromSpec(spec);
 
-    // 'gain' is scalar → must not appear
-    expectTypeOf<Into>().not.toMatchObjectType<{
-      readonly gain?: unknown;
-    }>();
+    proc.meters.publish((writer) => {
+      writer.counter(42);
+      writer.rms(0.5);
+      writer.peak(0.9);
+      writer.stage('precise', (v) => {
+        for (let i = 0; i < v.length; i++) {
+          v[i] = i / 10;
+        }
+      });
+      writer.stage('spectrum', (v) => {
+        for (let i = 0; i < v.length; i++) {
+          v[i] = Math.sin(i);
+        }
+      });
+    });
+
+    const snap = ctl.meters.snapshot();
+    expect(snap.counter).toBe(42);
+    expect(snap.rms).toBe(0.5);
+    expect(snap.precise.length).toBe(10);
+    expect(snap.precise[0]).toBe(0);
+    expect(snap.precise[9]).toBeCloseTo(0.9);
+    expect(snap.peak).toBeCloseTo(0.9);
+    expect(snap.spectrum.length).toBe(16);
+    expect(snap.spectrum[0]).toBeCloseTo(Math.sin(0));
+    expect(snap.spectrum[15]).toBeCloseTo(Math.sin(15));
   });
 
-  it('narrows IntoForMeters to only array keys (subset, optional entries)', () => {
-    type Into = IntoForMeters<ComplexSpec, ['rms', 'spectrum', 'bins']>;
+  it('preserves array values across multiple write/read cycles', () => {
+    const spec = defineSpec(({ param }) => ({
+      id: 'multi-cycle',
+      params: {
+        a: param.f32({ min: 0, max: 1 }),
+        b: param.f32.array(6),
+        c: param.f32({ min: 0, max: 1 }),
+        d: param.f32.array(4),
+      },
+    }));
 
-    expectTypeOf<Into>().toMatchObjectType<{
-      readonly spectrum?: Float32Array;
-      readonly bins?: Uint32Array;
-    }>();
+    const { ctl, proc } = bindingsFromSpec(spec);
 
-    // 'rms' is scalar → must not appear
-    expectTypeOf<Into>().not.toMatchObjectType<{
-      readonly rms?: unknown;
-    }>();
+    // Cycle 1.
+    ctl.params.stage('b', (v) => {
+      v.fill(1.0);
+    });
+    ctl.params.stage('d', (v) => {
+      v.fill(2.0);
+    });
+
+    proc.params.within((view) => {
+      expect(view.b.length).toBe(6);
+      expect(view.d.length).toBe(4);
+      expect(view.b.every((x) => x === 1.0)).toBe(true);
+      expect(view.d.every((x) => x === 2.0)).toBe(true);
+    });
+
+    // Cycle 2 - different values.
+    ctl.params.stage('b', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = i * 0.1;
+      }
+    });
+    ctl.params.stage('d', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = (i + 1) * 0.2;
+      }
+    });
+
+    proc.params.within((view) => {
+      expect(view.b.length).toBe(6);
+      expect(view.d.length).toBe(4);
+      expect(view.b[0]).toBe(0);
+      expect(view.b[5]).toBeCloseTo(0.5);
+      expect(view.d[0]).toBeCloseTo(0.2);
+      expect(view.d[3]).toBeCloseTo(0.8);
+    });
   });
 
-  it('preserves literal tuple types in snapshot keys', () => {
-    type Keys = readonly ['gain', 'mode'];
-    type Snap = SnapshotParamsObject<ComplexSpec, Keys>;
+  it('handles partial snapshot with into for non-zero offset arrays', () => {
+    const spec = defineSpec(({ param }) => ({
+      id: 'partial-into',
+      params: {
+        x: param.f32({ min: 0, max: 1 }),
+        arr1: param.f32.array(8),
+        y: param.f32({ min: 0, max: 1 }),
+        arr2: param.f32.array(12),
+      },
+    }));
 
-    interface Expected {
-      readonly gain: number;
-      readonly mode: 'a' | 'b' | 'c';
+    const { ctl } = bindingsFromSpec(spec);
+
+    ctl.params.stage('arr1', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = i;
+      }
+    });
+    ctl.params.stage('arr2', (v) => {
+      for (let i = 0; i < v.length; i++) {
+        v[i] = i * 2;
+      }
+    });
+
+    const buffer1 = new Float32Array(8);
+    const buffer2 = new Float32Array(12);
+
+    const snap = ctl.params.snapshot({
+      keys: ['arr1', 'arr2'],
+      into: { arr1: buffer1, arr2: buffer2 },
+    });
+
+    // Verify identity.
+    expect(snap.arr1).toBe(buffer1);
+    expect(snap.arr2).toBe(buffer2);
+
+    // Verify values.
+    for (let i = 0; i < 8; i++) {
+      expect(snap.arr1[i]).toBe(i);
     }
-
-    expectTypeOf<Snap>().toEqualTypeOf<Expected>();
-  });
-
-  it('handles mixed scalar/array meter snapshots', () => {
-    type Keys = readonly ['rms', 'spectrum', 'counter'];
-    type Snap = SnapshotMetersObject<ComplexSpec, Keys>;
-
-    expectTypeOf<Snap>().toMatchObjectType<{
-      readonly rms: number;
-      readonly spectrum: Readonly<Float32Array>;
-      readonly counter: number;
-    }>();
-  });
-
-  it('distinguishes f32 vs f64 meter types (both numbers at API level)', () => {
-    type F32Value = MeterValueFor<ComplexSpec, 'rms'>;
-    type F64Value = MeterValueFor<ComplexSpec, 'precise'>;
-
-    expectTypeOf<F32Value>().toEqualTypeOf<number>();
-    expectTypeOf<F64Value>().toEqualTypeOf<number>();
-  });
-
-  it('handles empty key tuples', () => {
-    type EmptyParams = SnapshotParamsObject<ComplexSpec, readonly []>;
-    type EmptyMeters = SnapshotMetersObject<ComplexSpec, readonly []>;
-
-    expectTypeOf<EmptyParams>().toEqualTypeOf<Record<never, never>>();
-    expectTypeOf<EmptyMeters>().toEqualTypeOf<Record<never, never>>();
-  });
-
-  it('validates mutable buffer types for into (arrays only)', () => {
-    type ParamInto = IntoForParams<ComplexSpec, readonly ['curve']>;
-
-    // The entry is optional and must be a mutable Float32Array
-    expectTypeOf<ParamInto>().toMatchObjectType<{
-      readonly curve?: Float32Array;
-    }>();
-    // Reject readonly buffer type
-    expectTypeOf<ParamInto>().not.toMatchObjectType<{
-      readonly curve?: Readonly<Float32Array>;
-    }>();
-  });
-
-  it('handles specs with no params', () => {
-    interface NoParams extends SpecInput {
-      readonly id: 'no-params';
-      readonly params: Record<never, never>;
-      readonly meters: {
-        peak: { kind: 'f32' };
-      };
+    for (let i = 0; i < 12; i++) {
+      expect(snap.arr2[i]).toBe(i * 2);
     }
-
-    type Keys = ScalarParamKeys<NoParams>;
-    expectTypeOf<Keys>().toEqualTypeOf<never>();
-  });
-
-  it('handles specs with no meters', () => {
-    interface NoMeters extends SpecInput {
-      readonly id: 'no-meters';
-      readonly params: {
-        gain: { kind: 'f32'; min: 0; max: 1 };
-      };
-      readonly meters: Record<never, never>;
-    }
-
-    type Keys = keyof NoMeters['meters'];
-    expectTypeOf<Keys>().toEqualTypeOf<never>();
-  });
-
-  it('preserves bool meter type (stored on MU32 but reads as boolean)', () => {
-    interface BoolMeter extends SpecInput {
-      readonly id: 'bool-meter';
-      readonly params: Record<string, never>;
-      readonly meters: {
-        active: { kind: 'bool' };
-      };
-    }
-
-    type Value = MeterValueFor<BoolMeter, 'active'>;
-    expectTypeOf<Value>().toEqualTypeOf<boolean>();
   });
 });

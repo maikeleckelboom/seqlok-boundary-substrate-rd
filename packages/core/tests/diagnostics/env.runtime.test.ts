@@ -1,26 +1,29 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
-  summarizeEnvFrom,
-  assertSharedArrayBufferSupportFromSummary,
+  assertSabSupportFromSummary,
+  summarizeEnv,
   type EnvGlobal,
 } from '../../src/diagnostics/env';
 import { SeqlokError } from '../../src/errors/error';
 
-describe('env diagnostics', () => {
-  it('classifies node-like environment', () => {
-    const env = summarizeEnvFrom({
+describe('Environment Diagnostics & Compatibility', () => {
+  it('correctly identifies a Node.js-like environment based on process globals', () => {
+    // Mock a Node.js environment with SAB support
+    const env = summarizeEnv({
       process: { versions: { node: '20.0.0' } },
       SharedArrayBuffer: (() => undefined) as unknown as typeof SharedArrayBuffer,
     } as EnvGlobal);
 
     expect(env.kind).toBe('node');
     expect(env.hasSharedArrayBuffer).toBe(true);
+    // Node environments typically do not rely on crossOriginIsolated for SABs
     expect(env.crossOriginIsolated).toBeUndefined();
   });
 
-  it('classifies browser main thread with COI + SAB', () => {
-    const env = summarizeEnvFrom({
+  it('identifies a browser main thread with active Cross-Origin Isolation and SharedArrayBuffer support', () => {
+    // Mock a secured Browser environment
+    const env = summarizeEnv({
       document: {},
       crossOriginIsolated: true,
       SharedArrayBuffer: (() => undefined) as unknown as typeof SharedArrayBuffer,
@@ -31,11 +34,10 @@ describe('env diagnostics', () => {
     expect(env.crossOriginIsolated).toBe(true);
   });
 
-  it('throws env.unsupported when SAB is missing', () => {
-    // Simulate a browser-like host without SharedArrayBuffer.
-    const summary = summarizeEnvFrom({
+  it('throws env.unsupported when SharedArrayBuffer is completely absent from the global scope', () => {
+    const summary = summarizeEnv({
       document: {},
-      // no SharedArrayBuffer property → hasSharedArrayBuffer === false
+      // Intentionally omitting SharedArrayBuffer
     } as EnvGlobal);
 
     expect(summary.kind).toBe('browser');
@@ -43,7 +45,7 @@ describe('env diagnostics', () => {
 
     let thrown: unknown;
     try {
-      assertSharedArrayBufferSupportFromSummary('test.env.unsupported', summary);
+      assertSabSupportFromSummary('test.env.unsupported', summary);
     } catch (error) {
       thrown = error;
     }
@@ -56,9 +58,9 @@ describe('env diagnostics', () => {
     expect(err.details.where).toBe('test.env.unsupported');
   });
 
-  it('throws env.coopCoepRequired when SAB is present but crossOriginIsolated is false', () => {
-    // Browser-like host with SAB but missing COOP/COEP (crossOriginIsolated === false).
-    const summary = summarizeEnvFrom({
+  it('throws env.coopCoepRequired in browsers when SharedArrayBuffer is present but Cross-Origin Isolation is inactive', () => {
+    // Mock a browser environment where SAB constructor exists, but headers are missing (insecure context)
+    const summary = summarizeEnv({
       document: {},
       crossOriginIsolated: false,
       SharedArrayBuffer: (() => undefined) as unknown as typeof SharedArrayBuffer,
@@ -70,7 +72,7 @@ describe('env diagnostics', () => {
 
     let thrown: unknown;
     try {
-      assertSharedArrayBufferSupportFromSummary('test.env.coop-coep', summary);
+      assertSabSupportFromSummary('test.env.coop-coep', summary);
     } catch (error) {
       thrown = error;
     }

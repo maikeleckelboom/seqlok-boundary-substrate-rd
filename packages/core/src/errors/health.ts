@@ -1,4 +1,5 @@
 /**
+ * @fileoverview
  * Health interpretation for Seqlok errors.
  *
  * @remarks

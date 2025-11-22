@@ -1,32 +1,33 @@
 # @seqlok/core
 
-**Zero-copy, lock-free state synchronization for real-time systems.**
+**Seqlok**
+Lock-free shared-memory sync for real-time audio, workers, and WebAssembly.
 
-A typed shared-memory layer between a **Controller** (main/UI thread) and a **Processor** (Worker / AudioWorklet).
-The Controller writes **params**, the Processor writes **meters** — both with atomic, coherent reads via a seqlock
-protocol.
+---
 
-## Why Seqlok?
+## Status: v0.1.0 · SWMR core
 
-- **Zero allocations** – direct typed-array access over `SharedArrayBuffer`
-- **Type-safe** – full TypeScript inference from spec through plan, backing, and bindings
-- **Coherent reads** – readers never observe torn/partial state
-- **Predictable** – deterministic memory layout, no hidden orchestration
+Seqlok v0.1.0 ships the **single-writer, multi-reader (SWMR)** seqlock core:
 
-```ts
-// Define once, use everywhere
-import { defineSpec } from '@seqlok/core';
+- One writer, many readers over a shared backing (`SharedArrayBuffer`).
+- Controller ↔ processor bindings with coherent `within` reads and `publish` writes.
+- Typed-plane layout for params (PF32 / PI32 / PB) and meters (MF32 / MU32 / MF64 / MU).
+- Range-only v1 DSL: numeric scalars, fixed-length arrays, and enum / enum.array.
+- Decoupled mode only (JS + SAB); future MWMR/compose modes live in the design docs.
+- Diagnostics surface (`@seqlok/core/diagnostics`) for counters, env probing, and debug tools.
 
-export const spec = defineSpec(({ param, meter }) => ({
-  id: 'synth',
-  params: {
-    cutoff: param.f32({ min: 20, max: 20_000 }),
-  },
-  meters: {
-    level: meter.f32(),
-  },
-}));
-```
+**Zero-copy, seqlock-based state synchronization for real-time systems.**
+
+A typed shared-memory layer between a **Controller** (main/UI thread) and a **Processor** (Worker / AudioWorklet):
+
+- **Controller** writes **params** (what you want the engine to do).
+- **Processor** writes **meters** (what the engine is actually doing).
+- Both use coherent snapshots guarded by a seqlock so no one ever sees torn state.
+
+- **Zero allocations** – direct typed-array access over `SharedArrayBuffer`.
+- **Type-safe** – full TypeScript inference from spec → plan → backing → bindings.
+- **Coherent reads** – readers never observe partial writes.
+- **Predictable** – deterministic memory layout, no hidden orchestration or sugar in the core.
 
 ---
 
@@ -36,47 +37,90 @@ export const spec = defineSpec(({ param, meter }) => ({
 pnpm add @seqlok/core
 ```
 
-**Requirements:** ESM-only (Browser ≈2022+ / Node 20+), with `SharedArrayBuffer` enabled
-(e.g. COOP/COEP headers in the browser, or a compatible runtime embedding).
+### Runtime requirements
+
+- ESM-only: modern browsers (≈2022+) or Node 20+.
+- `SharedArrayBuffer` must be available:
+
+  - **Browser**: correct COOP/COEP headers and `crossOriginIsolated === true`.
+  - **Worker / AudioWorklet**: same process, SAB enabled by the host.
+  - **Node**: recent Node with `SharedArrayBuffer` support (e.g. Node 20+).
 
 ---
 
-## Quick Start
+## Core concept: Spec → Plan → Backing → Handoff → Bindings
 
-This example is shaped like a small audio engine:
+Seqlok's API is shaped like the underlying protocol. There is **one golden flow** and the core does not provide shortcuts.
 
-- Controller lives on the main/UI thread.
-- Processor lives in a Worker (or AudioWorklet) and reads params / writes meters.
+1. **Spec** – what exists
 
-### Step 1: Define your spec — `src/spec.ts`
+   ```ts
+   const spec = defineSpec(/* params + meters schema */);
+   ```
+
+2. **Plan** – how it is laid out in memory
+
+   ```ts
+   const plan = planLayout(spec);
+   ```
+
+3. **Backing** – where it lives (actual shared memory)
+
+   ```ts
+   const backing = allocateShared(plan);
+   ```
+
+4. **Handoff** – how layout + backing cross a trust boundary
+
+   ```ts
+   const handoff = buildHandoff(plan, backing);
+   ```
+
+5. **ReceivedHandoff + bindings** – how the other side sees it
+
+   ```ts
+   const received = receiveHandoff(handoff);
+   const controller = bindController(spec, plan, backing);
+   const processor = bindProcessor(received);
+   ```
+
+The important rule:
+
+> `planLayout` is called exactly once at the **Spec → Plan** boundary.
+> Backing and binding **consume** `Plan` — they never recompute it.
+
+There is **no** `bindController(spec, backing)` sugar in core.
+If you want shortcuts, you build them _on top_ of this flow.
+
+---
+
+## Quick sketch: controller ↔ processor
+
+This is the minimal shape of a typical setup.
+
+### 1. Define a spec
 
 ```ts
 import { defineSpec } from '@seqlok/core';
 
-export const spec = defineSpec(({ param, meter }) => ({
+export const deckSpec = defineSpec(({ param, meter }) => ({
   id: 'deck',
   params: {
-    // Playback rate / time stretching
     timeRatio: param.f32({ min: 0.25, max: 4 }),
-
-    // EQ bands / filter coefficients
     eqBands: param.f32.array({ length: 8 }),
-
-    // Engine mode (e.g. normal vs granular time-stretch)
-    mode: param.enum({ values: ['normal', 'granular'] }),
+    mode: param.enum(['normal', 'granular']),
   },
   meters: {
     rms: meter.f32(),
     peak: meter.f32(),
-    spectrum: meter.f32.array({ length: 1024 }),
     framesProcessed: meter.u32(),
   },
 }));
 
-export type DeckSpec = typeof spec;
+export type DeckSpec = typeof deckSpec;
 ```
 
-### Step 2: Bind the controller — `src/main.ts`
+### 2. Owner thread: spec → plan → backing → controller + handoff
 
 ```ts
 import {
@@ -86,54 +130,32 @@ import {
   bindController,
   type Handoff,
 } from '@seqlok/core';
-import { spec, type DeckSpec } from './spec';
+import { deckSpec, type DeckSpec } from './spec';
 
-const plan = planLayout(spec);
+const plan = planLayout(deckSpec);
 const backing = allocateShared(plan);
-const controller = bindController(spec, backing);
+const controller = bindController(deckSpec, plan, backing);
 
 const handoff: Handoff<DeckSpec> = buildHandoff(plan, backing);
 
-// Worker; for AudioWorklet you would post `handoff` to the worklet instead.
-const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+// handoff is what you post to a Worker / AudioWorklet
 worker.postMessage({ type: 'handoff', handoff });
 
-// Example: update playback params from UI
-controller.params.update({
-  timeRatio: 1.5,
-  mode: 'granular',
-});
+// Example controller usage
+controller.params.set('timeRatio', 1.5);
+controller.params.update({ mode: 'granular' });
 
 controller.params.stage('eqBands', (view) => {
-  for (let i = 0; i < view.length; i++) {
-    view[i] = i < 4 ? -3 : +3; // simple low/high shelf sketch
+  for (let i = 0; i < view.length; i += 1) {
+    view[i] = i < 4 ? -3 : 3;
   }
 });
 
-let lastVersion = 0;
-
-function pollMeters() {
-  const v = controller.meters.version();
-  if (v !== lastVersion) {
-    const { rms, peak, framesProcessed } = controller.meters.snapshot(
-      'rms',
-      'peak',
-      'framesProcessed',
-    );
-
-    // Use meters for UI: deck HUD, level meters, debug overlays, etc.
-    console.log('rms', rms, 'peak', peak, 'frames', framesProcessed);
-
-    lastVersion = v;
-  }
-
-  requestAnimationFrame(pollMeters);
-}
-
-pollMeters();
+const meters = controller.meters.snapshot('rms', 'peak', 'framesProcessed');
+console.log(meters);
 ```
 
-### Step 3: Bind the processor — `src/worker.ts`
+### 3. Worker / processor side: receive handoff → bind processor
 
 ```ts
 import {
@@ -158,36 +180,23 @@ self.onmessage = (ev: MessageEvent<InitMessage>) => {
   processor = bindProcessor(received);
 };
 
-// In a real audio engine this would be called from your audio loop or
-// from an AudioWorklet's process() callback. Here it's just a sketch.
-function processAudioBlock() {
+// Somewhere in your audio loop / worker loop
+function processBlock() {
   if (!processor) return;
 
   processor.params.within((params) => {
-    const { timeRatio, eqBands, mode } = params;
-
-    // Tiny fake "DSP" use of params: mode and EQ influence a gain factor.
-    const lowShelf = eqBands[0] ?? 0;
-    const highShelf = eqBands[7] ?? 0;
-
-    const modeGain = mode === 'granular' ? 0.8 : 1.0;
-    const eqGain = 1 + (lowShelf + highShelf) * 0.01;
-    const gain = modeGain * eqGain;
-
+    const { timeRatio, eqBands } = params;
     const framesForBlock = Math.floor(128 * timeRatio);
 
     processor.meters.publish((writer) => {
-      writer.rms(0.42 * gain);
-      writer.peak(0.71 * gain);
+      writer.rms(0.5);
+      writer.peak(0.9);
 
-      writer.stage('spectrum', (buf) => {
-        for (let i = 0; i < buf.length; i++) {
-          // Fake spectrum: alternate low/high magnitude scaled by gain.
-          buf[i] = (i & 1 ? 0.25 : 1.0) * gain;
-        }
+      writer.stage('framesProcessed', () => {
+        // could be a scalar or array depending on the spec
       });
 
-      writer.framesProcessed(framesForBlock);
+      // etc.
     });
   });
 }
@@ -195,175 +204,138 @@ function processAudioBlock() {
 
 ---
 
-## Memory Layout
+## Future JS pipes (host-side helpers)
 
-Seqlok organizes memory into **planes** by type. Each plane is a typed view over a shared backing.
+Seqlok core intentionally does **not** ship orchestration helpers or pipe utilities.
+But the protocol is designed so that, when JS gets a pipe operator, host code can look like this:
 
-### Param planes
+```ts
+// Host-side helpers (not part of @seqlok/core)
+const withPlan = (spec: DeckSpec) => ({
+  spec,
+  plan: planLayout(spec),
+});
 
-| Plane  | Types                                             | Usage                                        |
-| :----- | :------------------------------------------------ | :------------------------------------------- |
-| `PF32` | `param.f32`, `param.f32.array({ length })`        | Float32 params                               |
-| `PI32` | `param.i32`, `param.i32.array({ length })`, enums | Int32 params + enum indices                  |
-| `PB`   | `param.bool`, `param.bool.array({ length })`      | Boolean params as `0/1` bytes (`Uint8Array`) |
-| `PU`   | —                                                 | Param seqlock control `[LOCK, SEQ]`          |
+const withBacking = (ctx: { spec: DeckSpec; plan: Plan<DeckSpec> }) => ({
+  ...ctx,
+  backing: allocateShared(ctx.plan),
+});
 
-### Meter planes
+const withController = (ctx: {
+  spec: DeckSpec;
+  plan: Plan<DeckSpec>;
+  backing: Backing;
+}) => ({
+  ...ctx,
+  controller: bindController(ctx.spec, ctx.plan, ctx.backing),
+});
 
-| Plane  | Types                                      | Usage                                       |
-| :----- | :----------------------------------------- | :------------------------------------------ |
-| `MF32` | `meter.f32`, `meter.f32.array({ length })` | Float32 meters                              |
-| `MF64` | `meter.f64`, `meter.f64.array({ length })` | Float64 meters                              |
-| `MU32` | `meter.u32`, `meter.bool`                  | Uint32 meters, bool meters as `0/1` numbers |
-| `MU`   | —                                          | Meter seqlock control `[LOCK, SEQ]`         |
+const withHandoff = (ctx: { plan: Plan<DeckSpec>; backing: Backing }) => ({
+  ...ctx,
+  handoff: buildHandoff(ctx.plan, ctx.backing),
+});
+```
 
-Bindings precompute indices from byte offsets; normal user code never touches raw offsets.
+With a future pipeline operator, the **owner flow** could read:
+
+```ts
+const full =
+  { spec: deckSpec }
+    |> withPlan
+    |> withBacking
+    |> withController
+    |> withHandoff;
+```
+
+The important part: this still calls the **same core functions** in the same order:
+
+```
+defineSpec → planLayout → allocateShared → buildHandoff → bindController
+```
+
+Core stays "just truth"; pipes and helpers are pure composition on top.
 
 ---
 
 ## Benchmarks
 
-Seqlok ships with micro- and scenario-level benchmarks:
+Seqlok ships micro- and scenario-level benchmarks for both primitives (seqlock) and end-to-end param/meter flows.
+
+Run the raw suite:
 
 ```bash
 pnpm bench
 ```
 
-This runs Vitest benchmarks for primitives (seqlock) and real-world parameter operations and writes a JSON report to:
+This executes all Vitest benches with a JSON reporter and writes the raw report to:
 
 ```text
-packages/core/bench-results.json
+bench-results.json
 ```
 
-These are intended as **internal guardrails** for regressions (e.g. seqlock tweaks, backing layout changes), not as
-marketing numbers.
+For a human-readable summary suitable for docs:
+
+```bash
+pnpm bench:report
+```
+
+This is equivalent to:
+
+```bash
+pnpm bench && pnpm bench:format
+```
+
+- `bench` produces `bench-results.json`.
+- `bench:format` (`tsx scripts/format-bench.ts`) reads `bench-results.json` and prints a Markdown-ready summary
+  (ASCII charts for hot-path ops and parameter writes) to stdout.
+
+You can use that output directly in documentation (for example by refreshing a `bench-results.generated.md` file),
+and treat the numbers as **regression guardrails**, not marketing claims.
 
 ---
 
-## Diagnostics & Health
+## Diagnostics
 
-Seqlok has a dedicated diagnostics lane and a health lens on top of the error registry. This layer is **optional** and \*
-\*edge-only\*\*: it is meant for stress tests, soak runs, CLIs, and dev tools, not for hot paths.
-
-Key pieces:
-
-- `errors/registry` – domain-scoped codes + `ErrorMeta` (severity, recoverable, safeToExpose, docsUrl)
-- `errors/health` – `interpretHealth(meta)` → `HealthInterpretation` (`fatal` / `error` / `warning` + label + hint)
-- `diagnostics/*` – counters, sessions, export, and helpers
-- `diagnostics/run-with-health` – wraps a scenario in a diagnostics + health envelope
-
-### Golden pattern: run a stress scenario with diagnostics
+Diagnostics live on a separate entry point:
 
 ```ts
-// Internal helper; not exported from the public @seqlok/core API surface.
-import { runWithDiagnostics } from './src/diagnostics/run-with-health';
-
-async function runDeckLoadAndScrubScenario(): Promise<void> {
-  // Real bindings, real spec/plan/backing, real work.
-  // e.g. load two decks, scrub, rate-ramp, etc.
-}
-
-async function main(): Promise<void> {
-  const result = await runWithDiagnostics(
-    async () => {
-      await runDeckLoadAndScrubScenario();
-    },
-    {
-      scenarioId: 'stress:deck-load-and-scrub',
-      metadata: {
-        decks: 2,
-        durationMs: 30_000,
-      },
-      thresholds: {
-        degradedSnapshots: 100,
-        spinBudgetExhausted: 1_000,
-        retryBudgetExhausted: 100,
-      },
-    },
-  );
-
-  // 1) Health view over any SeqlokError
-  if (result.error !== undefined && result.health !== undefined) {
-    // result.health.status: 'fatal' | 'error' | 'warning'
-    // result.health.label / result.health.hint: operator-facing summary
-    if (!result.boundarySafe) {
-      // Keep this inside the current trust boundary (no remote logs).
-      console.error('[seqlok][internal]', result.error, result.health);
-      return;
-    }
-  }
-
-  // 2) Threshold violations over diagnostics counters
-  if (result.thresholdViolations.length > 0) {
-    for (const violation of result.thresholdViolations) {
-      console.warn(
-        `[seqlok][diagnostics] ${violation.metric} = ${violation.actual} (max ${violation.threshold})`,
-      );
-    }
-  }
-
-  // 3) Exportable snapshot for logs / bug reports / tooling
-  // Includes a timestamp and all diagnostics counters.
-  console.log(result.diagnosticsExportJson);
-}
-
-void main();
+import {
+  snapshotCounters,
+  resetCounters,
+  type DiagnosticsCountersSnapshot,
+} from '@seqlok/core/diagnostics';
 ```
 
-This pattern gives you, in one call:
+Use this surface for:
 
-- a **typed error + health view** (`result.error`, `result.health`, `result.boundarySafe`),
-- a **diagnostics snapshot** (`result.diagnosticsCounters`, `result.thresholdViolations`),
-- and an **exportable artefact** (`result.diagnosticsExportJson`) you can send to logs, CLIs, or external tools —
+- Environment probing and SAB/COOP/COEP checks.
+- Binding / seqlock counters in stress harnesses.
+- Dev overlays and HUDs.
 
-without wiring diagnostics or health into the core hot path.
+It's designed so diagnostics can be tree-shaken out of production builds when unused.
 
 ---
 
 ## Documentation
 
-Seqlok's design is documented in depth. This is the recommended reading order.
+Full design docs live under `packages/core/docs`.
 
-### Core concepts (start here)
+Recommended entry points:
 
-- [E2E Flow – Visual Guide](docs/architecture/16-seqlok-e2e-flow-visual-guide.md)
-  High-level mental model of the `spec → plan → backing → handoff → bindings` pipeline.
-- [Concurrency Model & Roles](./docs/architecture/03-seqlok-concurrency-model-and-roles.md)
-  Controller vs Processor, params vs meters, and coherence guarantees.
-- [DSL Overview & Rationale](./docs/architecture/04-seqlok-dsl-overview-and-rationale.md)
-  How to define state with `defineSpec`.
-- [API Reference](./docs/architecture/09-seqlok-api-reference.md)
-  Canonical reference for all public functions and types.
+- [`docs/INDEX.md`](./docs/INDEX.md) – map of all architecture docs and ADRs.
+- Concurrency model, seqlock rationale, planes layout, and architecture diagrams.
+- API reference for the explicit golden flow:
 
-### Architectural rationale (the "why")
-
-- [Origin & Design History](./docs/architecture/00-seqlok-origin-and-design-history.md)
-- [Goals & Non-Goals](./docs/architecture/01-seqlok-goals-and-non-goals.md)
-- [Intellectual Heritage](./docs/architecture/02-seqlok-intellectual-heritage.md)
-- [Object Model Rationale](./docs/architecture/06-object-model-rationale.md)
-- [API Shape Rationale](./docs/architecture/07-seqlok-api-shape-rationale.md)
-- [API & Naming Rationale](./docs/architecture/08-seqlok-api-and-naming-rationale)
-
-### Coherence & memory model
-
-- [Primitives & Seqlock](./docs/architecture/10-seqlok-primitives-and-seqlock.md)
-- [Backing & Plane Layout](./docs/architecture/11-seqlok-backing-and-plane-layout.md)
-- [Coherent Reads & Planes](./docs/architecture/12-coherent-reads-and-planes.md)
-- [Implementation Notes (Kernel)](./docs/architecture/13-implementation-notes-kernel.md)
-
-### Deep dives
-
-- [Enum Arrays – Schema vs Runtime](./docs/architecture/05-enum-arrays-runtime-behavior.md)
-- [ABA/Wraparound: Not a Bug](./docs/architecture/14-seqlok-aba-wraparound-not-a-bug.md)
-- [Error System & Fail-Fast Philosophy](./docs/architecture/15-seqlok-error-system-and-fail-fast-philosophy.md)
-
-### Reference & ADRs
-
-- [API Reference](./docs/architecture/09-seqlok-api-reference.md)
-- [ADR-2025-11-12 — Meter Writes & Snapshot `into`](docs/adr/ADR-00C-meter-writes-and-snapshot-into.md)
+  - `defineSpec`
+  - `planLayout`
+  - `allocateShared`
+  - `buildHandoff`
+  - `receiveHandoff`
+  - `bindController` (spec + plan + backing)
+  - `bindProcessor`
 
 ---
 
 ## License
 
-MIT
+See the LICENSE file in this repository for current licensing terms.

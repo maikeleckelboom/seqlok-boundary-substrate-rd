@@ -4,98 +4,125 @@ import { describe, expect, it } from 'vitest';
 
 import { createSeqPair, tryRead } from '../../src/primitives/seqlock';
 
-describe('seqlock cross-thread coherence (worker)', () => {
-  it('observes monotone progression with MU commits and exits cleanly', async () => {
-    // plan: [LOCK, SEQ, VALUE]
+describe('Seqlock Cross-Thread Coherence', () => {
+  /**
+   * Verifies that the seqlock mechanism maintains data consistency (safety)
+   * and allows progress (liveness) across thread boundaries using SharedArrayBuffer.
+   *
+   * The test spawns a writer worker that performs updates using the seqlock protocol.
+   * The main thread concurrently attempts to read the value. We assert:
+   * 1. Monotonicity: We never observe a value 'going backwards', which ensures we don't see
+   * stale values or torn writes mixed with new sequences.
+   * 2. Progress: We eventually observe values greater than 0.
+   */
+  it('observes monotone progression and exits cleanly under concurrent load', async () => {
+    // Memory Layout: [LOCK_WORD, SEQUENCE_WORD, DATA_WORD]
+    // All 32-bit unsigned integers.
     const sab = new SharedArrayBuffer(3 * 4);
     const u32 = new Uint32Array(sab);
-    const LOCK = 0;
-    const SEQ = 1;
-    const VALUE = 2;
+    const INDICES = {
+      LOCK: 0,
+      SEQ: 1,
+      VALUE: 2,
+    } as const;
 
-    const pair = createSeqPair(u32, LOCK, SEQ);
-    const WRITES = 100_000;
+    const pair = createSeqPair(u32, INDICES.LOCK, INDICES.SEQ);
+    const WRITE_COUNT = 100_000;
 
-    const worker = new Worker(
-      `
-        const { parentPort, workerData } = require('node:worker_threads');
-        const u32 = new Uint32Array(workerData.sab);
-        const LOCK = workerData.lockIndex >>> 0;
-        const SEQ = workerData.seqIndex >>> 0;
-        const VALUE = workerData.valueIndex >>> 0;
-        const WRITES = workerData.writes >>> 0;
+    const workerScript = `
+      const { parentPort, workerData } = require('node:worker_threads');
 
-        let i = 0;
-        function tick() {
-          if (i >= WRITES) {
-            parentPort.postMessage({ type: 'done' });
-            return;
-          }
-          // beginWrite: odd lock
-          Atomics.add(u32, LOCK, 1);
-          // payload
-          Atomics.store(u32, VALUE, i >>> 0);
-          // endWrite: even lock
-          Atomics.add(u32, LOCK, 1);
-          // commit: bump SEQ
-          Atomics.add(u32, SEQ, 1);
-          i++;
-          setImmediate(tick);
+      const u32 = new Uint32Array(workerData.sab);
+      const LOCK = workerData.indices.LOCK;
+      const SEQ = workerData.indices.SEQ;
+      const VALUE = workerData.indices.VALUE;
+      const LIMIT = workerData.writes;
+
+      let i = 0;
+
+      function tick() {
+        if (i >= LIMIT) {
+          parentPort.postMessage({ type: 'done' });
+          return;
         }
-        tick();
-      `,
-      {
-        eval: true,
-        workerData: {
-          sab,
-          lockIndex: LOCK,
-          seqIndex: SEQ,
-          valueIndex: VALUE,
-          writes: WRITES,
-        },
-      },
-    );
 
-    let last = 0;
-    let progressed = false;
-    let done = false;
+        // 1. Acquire: Increment LOCK (transitions to odd/locked state)
+        Atomics.add(u32, LOCK, 1);
+
+        // 2. Critical Section: Write payload
+        Atomics.store(u32, VALUE, i);
+
+        // 3. Release: Increment LOCK (transitions to even/unlocked state)
+        Atomics.add(u32, LOCK, 1);
+
+        // 4. Commit: Increment Sequence
+        Atomics.add(u32, SEQ, 1);
+
+        i++;
+
+        // Yield to event loop to allow realistic interleaving
+        setImmediate(tick);
+      }
+
+      tick();
+    `;
+
+    const worker = new Worker(workerScript, {
+      eval: true,
+      workerData: {
+        sab,
+        indices: INDICES,
+        writes: WRITE_COUNT,
+      },
+    });
+
+    let lastObservedValue = 0;
+    let hasProgressed = false;
+    let workerFinished = false;
 
     worker.on('message', (msg: unknown) => {
       if (
-        msg != null &&
         typeof msg === 'object' &&
+        msg !== null &&
         'type' in msg &&
-        msg.type === 'done'
+        (msg as { type: string }).type === 'done'
       ) {
-        done = true;
+        workerFinished = true;
       }
     });
 
+    // Observe for a fixed duration (500ms) or until completion logic dictates.
     const start = Date.now();
+
     while (Date.now() - start < 500) {
-      const r = tryRead(pair, () => Atomics.load(u32, VALUE) >>> 0, {
+      const readResult = tryRead(pair, () => Atomics.load(u32, INDICES.VALUE) >>> 0, {
         spinBudget: 512,
         retryBudget: 4,
       });
-      if (!r.ok) {
+
+      if (!readResult.ok) {
         continue;
       }
-      const v = r.value >>> 0;
-      if (v > 0) {
-        progressed = true;
+
+      const currentValue = readResult.value >>> 0;
+
+      if (currentValue > 0) {
+        hasProgressed = true;
       }
-      expect(v).toBeGreaterThanOrEqual(last);
-      last = v;
+
+      // Invariant: Value must be Monotonically Increasing.
+      // If we read a value smaller than last, we read a torn write or stale data.
+      expect(currentValue).toBeGreaterThanOrEqual(lastObservedValue);
+      lastObservedValue = currentValue;
     }
 
+    // Ensure worker shuts down cleanly
     const exitCode = await new Promise<number>((resolve) => {
-      worker.on('exit', (code) => {
-        resolve(code);
-      });
+      worker.on('exit', resolve);
     });
 
     expect(exitCode).toBe(0);
-    expect(progressed).toBe(true);
-    expect(done).toBe(true);
+    expect(hasProgressed).toBe(true);
+    expect(workerFinished).toBe(true);
   }, 20_000);
 });

@@ -8,15 +8,12 @@ import {
   type ControllerOptions,
   defineSpec,
   planLayout,
-  type RangePolicy,
   receiveHandoff,
 } from '../../src';
 
 /**
- * Spec used across tests:
- * - Scalars: rate (f32, [0.5, 2]), mode (enum), enabled (bool)
- * - Array param: coeffs (f32[8])
- * - Meters: rms (f32), spectrum (f32[16]), flags (u32[8]) — used in other file
+ * Defines a comprehensive test specification covering all supported parameter types.
+ * Includes scalars (f32, bool, enum) and arrays to validate serialization paths.
  */
 function makeSpec() {
   return defineSpec(({ param, meter }) => ({
@@ -35,6 +32,10 @@ function makeSpec() {
   }));
 }
 
+/**
+ * Wires up a complete shared memory environment for testing.
+ * Establishes the Controller <-> Processor link via a local handoff.
+ */
 function setupController(
   options: ControllerOptions = { params: { rangePolicy: 'reject' } },
 ) {
@@ -45,49 +46,49 @@ function setupController(
   const handoff = buildHandoff(plan, backing);
   const received = receiveHandoff(handoff);
 
-  const ctl = bindController(spec, backing, options);
+  const ctl = bindController(spec, plan, backing, options);
   const proc = bindProcessor(received);
 
   return { spec, plan, backing, handoff, received, ctl, proc };
 }
 
-describe('Controller params: version bumps exactly once per successful commit', () => {
-  it('set(): single scalar write → exactly one PU bump', () => {
+describe('Controller Parameters: Versioning & Atomicity', () => {
+  it('increments version exactly once for a single scalar set()', () => {
     const { ctl } = setupController();
-    const start = ctl.params.version();
+    const initialVersion = ctl.params.version();
 
     ctl.params.set('rate', 1.25);
-    const v1 = ctl.params.version();
-    expect(v1).toBe(start + 1);
 
-    // sanity for stored value
+    const updatedVersion = ctl.params.version();
+    expect(updatedVersion).toBe(initialVersion + 1);
+
     const snap = ctl.params.snapshot({ keys: ['rate'] });
     expect(snap.rate).toBeCloseTo(1.25, 6);
   });
 
-  it('update(): multiple scalars in one call → exactly one PU bump', () => {
+  it('increments version exactly once for a multi-parameter update()', () => {
     const { ctl } = setupController();
-    const start = ctl.params.version();
+    const initialVersion = ctl.params.version();
 
+    // Batch update acts as a single atomic commit
     ctl.params.update({
       rate: 1.5,
       enabled: true,
       mode: 'b',
     });
 
-    const v1 = ctl.params.version();
-    expect(v1).toBe(start + 1);
+    const updatedVersion = ctl.params.version();
+    expect(updatedVersion).toBe(initialVersion + 1);
 
     const snap = ctl.params.snapshot({ keys: ['rate', 'enabled', 'mode'] });
     expect(snap.rate).toBeCloseTo(1.5, 6);
     expect(snap.enabled).toBe(true);
-    // enum PI32 scalar relabeled to string on snapshot
     expect(snap.mode).toBe('b');
   });
 
-  it('stage(): array edit is one commit → exactly one PU bump', () => {
+  it('increments version exactly once for an array stage() operation', () => {
     const { ctl } = setupController();
-    const start = ctl.params.version();
+    const initialVersion = ctl.params.version();
 
     ctl.params.stage('coeffs', (view) => {
       view.fill(0);
@@ -95,8 +96,8 @@ describe('Controller params: version bumps exactly once per successful commit', 
       view[7] = 0.33;
     });
 
-    const v1 = ctl.params.version();
-    expect(v1).toBe(start + 1);
+    const updatedVersion = ctl.params.version();
+    expect(updatedVersion).toBe(initialVersion + 1);
 
     const snap = ctl.params.snapshot({ keys: ['coeffs'] });
     expect(snap.coeffs).toBeInstanceOf(Float32Array);
@@ -105,60 +106,62 @@ describe('Controller params: version bumps exactly once per successful commit', 
   });
 });
 
-describe('Controller params: range policy behavior with default reject', () => {
-  it('default policy is reject: out-of-range set() throws and version does not bump', () => {
-    const { ctl } = setupController(); // default: reject
-    const start = ctl.params.version();
+describe('Controller Parameters: Range Policy Behavior', () => {
+  it('throws on out-of-range values when policy is "reject" (default) and preserves version', () => {
+    const { ctl } = setupController(); // defaults to reject
+    const initialVersion = ctl.params.version();
 
     expect(() => {
-      ctl.params.set('rate', 999); // > max=2.0
-    }).toThrow(); // Typed SeqlokError with binding.paramRange
+      ctl.params.set('rate', 999); // Exceeds max=2.0
+    }).toThrow();
 
-    const v1 = ctl.params.version();
-    expect(v1).toBe(start); // no bump on failure
+    // Version must not change if the write was rejected
+    const updatedVersion = ctl.params.version();
+    expect(updatedVersion).toBe(initialVersion);
   });
 
-  it('clamp policy: out-of-range values clamp and commit (one bump)', () => {
+  it('clamps out-of-range values when policy is "clamp" and commits the change', () => {
     const { ctl } = setupController({ params: { rangePolicy: 'clamp' } });
-    const start = ctl.params.version();
+    const initialVersion = ctl.params.version();
 
-    ctl.params.set('rate', -10); // < min=0.5 ⇒ clamps to 0.5
-    const v1 = ctl.params.version();
-    expect(v1).toBe(start + 1);
+    ctl.params.set('rate', -10); // Below min=0.5, should clamp
+
+    const updatedVersion = ctl.params.version();
+    expect(updatedVersion).toBe(initialVersion + 1);
 
     const snap = ctl.params.snapshot({ keys: ['rate'] });
     expect(snap.rate).toBeCloseTo(0.5, 6);
   });
 });
 
-describe('Controller params: snapshot into() identity and key validation', () => {
-  it('params.snapshot({keys, into}) reuses provided buffer (identity)', () => {
+describe('Controller Parameters: Snapshot Identity & Validation', () => {
+  it('reuses the provided "into" buffer (identity preserved)', () => {
     const { ctl } = setupController();
-    // Ensure some content exists first
+
+    // Pre-fill some data
     ctl.params.stage('coeffs', (view) => {
-      view[0] = 0.1;
-      view[1] = 0.2;
+      view.fill(0);
       view[2] = 0.3;
-      view[3] = 0.4;
-      view[4] = 0.5;
-      view[5] = 0.6;
-      view[6] = 0.7;
       view[7] = 0.8;
     });
 
-    const into = { coeffs: new Float32Array(8) };
+    const targetBuffer = new Float32Array(8);
+    const into = { coeffs: targetBuffer };
+
     const snap = ctl.params.snapshot({ keys: ['coeffs'], into });
-    // identity check
-    expect(snap.coeffs).toBe(into.coeffs);
-    // content check (couple of elements)
+
+    // Verify the returned object is strictly the one we provided
+    expect(snap.coeffs).toBe(targetBuffer);
+
+    // Verify content was written correctly
     expect(snap.coeffs[2]).toBeCloseTo(0.3, 6);
     expect(snap.coeffs[7]).toBeCloseTo(0.8, 6);
   });
 
-  it('unknown key in params.snapshot() throws', () => {
+  it('throws when snapshotting a non-existent parameter key', () => {
     const { ctl } = setupController();
     expect(() => {
-      // @ts-expect-error intentional invalid key to test guard
+      // @ts-expect-error Intentional invalid key access for runtime test
       ctl.params.snapshot({ keys: ['doesNotExist'] });
     }).toThrow();
   });

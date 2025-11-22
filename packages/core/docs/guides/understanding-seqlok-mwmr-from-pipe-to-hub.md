@@ -84,8 +84,8 @@ sequenceDiagram
 
 The SWSR model works perfectly for `UI ↔ Audio`. But complex apps (like the Flocking Simulation or Dekzer) look like this:
 
-* **Writers:** Mouse, MIDI Keyboard, Network Multiplayer, AI Script.
-* **Readers:** React UI (DOM), WebGPU Visualizer (Canvas), Telemetry Logger.
+- **Writers:** Mouse, MIDI Keyboard, Network Multiplayer, AI Script.
+- **Readers:** React UI (DOM), WebGPU Visualizer (Canvas), Telemetry Logger.
 
 If we let the MIDI worker and the Mouse write to the **Params** memory at the same time, they overwrite each other (**Corruption**). If the WebGPU thread reads while the Physics thread writes, it sees a "torn frame" (**Visual Glitches**).
 
@@ -103,12 +103,12 @@ We realized we didn't need to change the low-level memory (which is fast because
 
 To handle multiple inputs (MIDI, UI, AI), we don't let them touch the shared memory directly. Instead, they put **Commands** into a queue.
 
-* **The Ring Primitive:** A lock-free circular buffer. It acts like a mailbox.
-* **The Hub:** One specific thread (usually the Controller) acts as the "Hub." It opens the mailboxes, decides what to do, and is the **only one allowed to write** to the Params memory.
+- **The Ring Primitive:** A lock-free circular buffer. It acts like a mailbox.
+- **The Hub:** One specific thread (usually the Controller) acts as the "Hub." It opens the mailboxes, decides what to do, and is the **only one allowed to write** to the Params memory.
 
 In Seqlok, fan-in is built from **SWSR rings**: each ring is still single-writer / single-reader, but the system uses many rings (one per writer or per channel) feeding into a single hub. The hub pulls from those rings and remains the **only writer** to the shared Params domain, so the memory itself never leaves SWSR.
 
-**Result:** The memory still sees only one writer (The Hub), but the *system* accepts inputs from everywhere.
+**Result:** The memory still sees only one writer (The Hub), but the _system_ accepts inputs from everywhere.
 
 ```mermaid
 flowchart LR
@@ -154,9 +154,9 @@ flowchart LR
 
 To handle multiple visualizations (UI, WebGPU), we introduced the **Observer**.
 
-* **The Problem:** The Controller reads are "Best Effort" (lazy). Great for UI, bad for high-speed graphics which need 60 fps coherence.
-* **The Observer:** A specialized **Hot Path** reader. It uses the Seqlock protocol strictly. It spins/retries until it gets a perfect frame.
-* **Safety:** An Observer is **Read-Only**. You can spawn many of them. They never interfere with the physics engine.
+- **The Problem:** The Controller reads are "Best Effort" (lazy). Great for UI, bad for high-speed graphics which need 60 fps coherence.
+- **The Observer:** A specialized **Hot Path** reader. It uses the Seqlock protocol strictly. It spins/retries until it gets a perfect frame.
+- **Safety:** An Observer is **Read-Only**. You can spawn many of them. They never interfere with the physics engine.
 
 In concrete terms, the Observer is wired using the `bindObserver` API: it binds into the same shared memory as the Controller and Processor, but exposes a read-only, hot-path-optimized view dedicated to visualizers and other consumers that need stricter coherence.
 
@@ -228,7 +228,7 @@ flowchart TD
 The key takeaway is that complexity is handled at the topology level, allowing the memory level to remain simple and fast.
 
 | Concept        | Phase    | Explanation                                   | Use Case                               |
-|:---------------|:---------|:----------------------------------------------|:---------------------------------------|
+| :------------- | :------- | :-------------------------------------------- | :------------------------------------- |
 | **Controller** | **SWSR** | The Boss. Writes rules (Params). Reads stats. | **Cold Path** (UI updates)             |
 | **Processor**  | **SWSR** | The Engine. Calculates physics. Writes stats. | **Hot Path** (Real-time Audio/Physics) |
 | **Ring**       | **MWMR** | The Mailbox. Lock-free fan-in.                | Command aggregation (MIDI/Net)         |
@@ -254,5 +254,5 @@ quadrantChart
 
 ### See Also
 
-* **ADR-00Y – MWMR Architecture** – the normative design for rings, hub, and observer roles.
-* **Onboarding: The Seqlok Mindset and Hot Path** – how the MWMR topology feels from a developer’s point of view.
+- **ADR-00Y – MWMR Architecture** – the normative design for rings, hub, and observer roles.
+- **Onboarding: The Seqlok Mindset and Hot Path** – how the MWMR topology feels from a developer’s point of view.

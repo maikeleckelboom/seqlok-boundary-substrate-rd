@@ -2,36 +2,38 @@
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {},
-    "lib": [
-      "ESNext",
-      "DOM",
-      "DOM.Iterable"
-    ],
+
     "target": "ES2022",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleDetection": "force",
-    "jsx": "react-jsx",
     "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": true,
-    "noEmit": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+
     "strict": true,
-    "skipLibCheck": true,
-    "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "noUnusedLocals": false,
-    "noUnusedParameters": false,
-    "experimentalDecorators": false,
-    "emitDecoratorMetadata": false,
-    "noPropertyAccessFromIndexSignature": false,
     "exactOptionalPropertyTypes": true,
     "noImplicitReturns": true,
     "noImplicitOverride": true,
-    "forceConsistentCasingInFileNames": true,
+    "noFallthroughCasesInSwitch": true,
+    "useUnknownInCatchVariables": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitAny": true,
+    "skipLibCheck": true,
+
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo",
+
     "isolatedDeclarations": true,
     "stripInternal": true,
-    "emitDeclarationOnly": false
+    "noEmit": true,
+    "emitDeclarationOnly": false,
+
+    "types": []
   }
 }

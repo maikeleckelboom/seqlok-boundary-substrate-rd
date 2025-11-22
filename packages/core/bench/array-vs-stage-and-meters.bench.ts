@@ -11,6 +11,17 @@ import {
 } from '../src';
 import { MICRO_BENCH_OPTS } from '../vitest.config';
 
+/**
+ * @fileoverview
+ * Micro-benchmarks for MeterWriter sugar vs the generic meter API.
+ *
+ * Compares scalar writes (`writer.level(v)` vs `writer.set('level', v)`)
+ * and array writes (`writer.stage('spectrum', cb)`).
+ *
+ * The goal is to quantify the overhead of the ergonomic MeterWriter helpers
+ * in isolation, without seqlock or controller logic in the way.
+ */
+
 describe('MeterWriter sugar: set vs stage, direct vs named', () => {
   const spec = defineSpec(({ param, meter }) => ({
     id: 'bench/meter-writer-sugar',
@@ -25,19 +36,19 @@ describe('MeterWriter sugar: set vs stage, direct vs named', () => {
 
   const plan = planLayout(spec);
   const backing = allocateShared(plan);
-  const controller = bindController(spec, backing);
+  const controller = bindController(spec, plan, backing);
   const handoff = buildHandoff(plan, backing);
   const received = receiveHandoff(handoff);
   const processor = bindProcessor(received);
 
-  // Keep meters “legit” with a dummy param write
+  // Keep meters live with a dummy param write.
   controller.params.set('dummy', 0.5);
 
-  // Shared source buffer for spectrum writes
+  // Shared source buffer for spectrum writes.
   const spectrumSource = new Float32Array(512);
   spectrumSource.fill(0.5);
 
-  // 1. Scalar meters: direct writer.key(v) vs writer.set('key', v)
+  // Scalar meter write via writer.level(v) vs writer.set('level', v).
   bench(
     'meter scalar: writer.level(0.75)',
     () => {
@@ -58,7 +69,7 @@ describe('MeterWriter sugar: set vs stage, direct vs named', () => {
     MICRO_BENCH_OPTS,
   );
 
-  // 2. Array meters: stage(key, cb) vs set(key, cb)
+  // Array meter write via writer.stage('spectrum', cb).
   bench(
     "meter array: writer.stage('spectrum', cb)",
     () => {

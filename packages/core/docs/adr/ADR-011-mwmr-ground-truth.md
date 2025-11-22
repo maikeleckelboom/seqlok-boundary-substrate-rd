@@ -51,6 +51,7 @@ This ADR **formalizes the invariants** those decisions imply and establishes nor
 `@seqlok/core` primitives are **strictly** single-writer:
 
 - **Seqlock planes** (params/meters): **SWMR**
+
   - Exactly one writer per domain (controller for params, processor for meters)
   - Any number of readers via seqlock-protected snapshots
 
@@ -97,32 +98,38 @@ No code outside these bindings writes to Seqlok planes, regardless of system com
 These rules are **hard constraints**. Any violation is an architectural defect:
 
 1. **Single writer per domain**
-  - At most one `ControllerBinding<S>` may exist for params
-  - At most one `ProcessorBinding<S>` may exist for meters
-  - Each `ControllerBinding<S>` and `ProcessorBinding<S>` instance is owned by exactly one runtime (thread/worker/process) and must only be used from that runtime
+
+- At most one `ControllerBinding<S>` may exist for params
+- At most one `ProcessorBinding<S>` may exist for meters
+- Each `ControllerBinding<S>` and `ProcessorBinding<S>` instance is owned by exactly one runtime (thread/worker/process) and must only be used from that runtime
 
 2. **Observers are strictly read-only**
-  - `ObserverBinding<S>` exposes only:
-    - `params.snapshot()`, `params.version()`
-    - `meters.snapshot()`, `meters.version()`
-  - No `set`, `update`, `stage`, `publish`, `hydrate` methods
+
+- `ObserverBinding<S>` exposes only:
+  - `params.snapshot()`, `params.version()`
+  - `meters.snapshot()`, `meters.version()`
+- No `set`, `update`, `stage`, `publish`, `hydrate` methods
 
 3. **Ring primitive is SWSR**
-  - Each ring instance (see ADR-010 for memory layout and ordering details) has exactly one producer and one consumer
-  - MPSC is achieved via **multiple SWSR rings**, not mutex on a single ring
+
+- Each ring instance (see ADR-010 for memory layout and ordering details) has exactly one producer and one consumer
+- MPSC is achieved via **multiple SWSR rings**, not mutex on a single ring
 
 4. **No blocking primitives in real-time paths**
-  - No `Mutex`, `Semaphore`, `ConditionVariable`, or blocking IPC
-  - Audio threads, GPU upload loops, particle integrators: lock-free only
-  - Seqlock reads use bounded spin/retry, not blocking waits
+
+- No `Mutex`, `Semaphore`, `ConditionVariable`, or blocking IPC
+- Audio threads, GPU upload loops, particle integrators: lock-free only
+- Seqlock reads use bounded spin/retry, not blocking waits
 
 5. **Intent flow is unidirectional**
-  - All state mutations flow: `Producer → Ring → Hub → Controller → Plane`
-  - No direct cross-thread calls to `controller.params.*` or `processor.meters.*`
+
+- All state mutations flow: `Producer → Ring → Hub → Controller → Plane`
+- No direct cross-thread calls to `controller.params.*` or `processor.meters.*`
 
 6. **Cross-process boundaries use IPC, not Seqlok**
-  - Seqlok operates within a single address space (renderer, main, worker)
-  - Electron renderer ↔ main, OS processes: use IPC/sockets, not shared Seqlok backings
+
+- Seqlok operates within a single address space (renderer, main, worker)
+- Electron renderer ↔ main, OS processes: use IPC/sockets, not shared Seqlok backings
 
 ---
 
@@ -132,10 +139,10 @@ These rules are **hard constraints**. Any violation is an architectural defect:
 
 ```ts
 // ❌ WRONG: Multiple controllers for same domain
-const ctrlUI = bindController(spec, backing);    // UI thread
-const ctrlMIDI = bindController(spec, backing);  // MIDI thread
+const ctrlUI = bindController(spec, backing); // UI thread
+const ctrlMIDI = bindController(spec, backing); // MIDI thread
 
-ctrlUI.params.set('gain', 0.8);   // RACE
+ctrlUI.params.set('gain', 0.8); // RACE
 ctrlMIDI.params.set('gain', 0.9); // RACE
 ```
 
@@ -155,12 +162,12 @@ ctrlMIDI.params.set('gain', 0.9); // RACE
 const controller = bindController(spec, backing); // Deck worker
 
 // UI thread
-onSliderChange(value => {
+onSliderChange((value) => {
   controller.params.set('gain', value); // Called from UI thread
 });
 
 // MIDI thread
-onMIDIFader(value => {
+onMIDIFader((value) => {
   controller.params.set('gain', value); // Called from MIDI thread
 });
 ```
@@ -182,7 +189,7 @@ const ring = allocateRing({ capacity: 64, wordsPerSlot: 8 });
 const mutex = new Mutex();
 
 function enqueueFromAnyThread(cmd: Command) {
-  mutex.lock();  // BLOCKS other producers
+  mutex.lock(); // BLOCKS other producers
   ring.push(cmd);
   mutex.unlock();
 }
@@ -245,7 +252,7 @@ class MPSCIntentBus {
   drainAll(): Command[] {
     const commands: Command[] = [];
     for (const consumer of this.consumers.values()) {
-      consumer.drain(cmd => commands.push(cmd));
+      consumer.drain((cmd) => commands.push(cmd));
     }
     return commands;
   }
@@ -268,8 +275,10 @@ class MPSCIntentBus {
 // ─────────────────────────────────────────────────────────
 // Domain Setup (Golden Flow)
 // ─────────────────────────────────────────────────────────
-const deckSpec = defineSpec({ /* ... */ });
-const deckPlan = planSpec(deckSpec);
+const deckSpec = defineSpec({
+  /* ... */
+});
+const deckPlan = planLayout(deckSpec);
 const deckBacking = allocateShared(deckPlan);
 const deckHandoff = buildHandoff(deckPlan, deckBacking);
 
@@ -279,7 +288,7 @@ const deckHandoff = buildHandoff(deckPlan, deckBacking);
 const deckObserver = bindObserver(deckSpec, deckHandoff);
 const uiRing = system.getRingProducer('transport', 'ui-main');
 
-slider.onInput = value => {
+slider.onInput = (value) => {
   uiRing.push({ type: 'SET_GAIN', value }); // Intent, not direct write
 };
 
@@ -295,7 +304,7 @@ function renderFrame() {
 const midiObserver = bindObserver(deckSpec, deckHandoff);
 const midiRing = system.getRingProducer('transport', 'midi-bridge');
 
-midiController.on('fader', value => {
+midiController.on('fader', (value) => {
   midiRing.push({ type: 'SET_GAIN', value }); // Intent
 });
 
@@ -312,7 +321,7 @@ const transportRing = system.getRingConsumer('transport');
 
 function deckWorkerTick() {
   // Drain ALL intent sources (UI, MIDI, network, AI, automation)
-  transportRing.drain(cmd => {
+  transportRing.drain((cmd) => {
     switch (cmd.type) {
       case 'SET_GAIN':
         deckController.params.set('gain', cmd.value);
@@ -335,12 +344,12 @@ setInterval(deckWorkerTick, 10); // 100Hz hub tick
 const deckProcessor = bindProcessor(deckSpec, deckHandoff);
 
 function audioProcess(inputs: Float32Array[], outputs: Float32Array[]) {
-  deckProcessor.params.within(params => {
+  deckProcessor.params.within((params) => {
     const { gain, rate } = params;
 
     // DSP...
 
-    deckProcessor.meters.publish(meters => {
+    deckProcessor.meters.publish((meters) => {
       meters.rms = computeRMS(outputs);
       meters.peak = computePeak(outputs);
     });
@@ -365,7 +374,7 @@ function renderParticles() {
 
 **Key properties:**
 
-- **Golden flow**: `defineSpec → planSpec → allocateShared → buildHandoff` (ADR-001)
+- **Golden flow**: `defineSpec → planLayout → allocateShared → buildHandoff` (ADR-001)
 - **Main, MIDI**: Observers + ring producers (no writes to planes)
 - **Deck worker**: Single controller + ring consumer (only params writer)
 - **AudioWorklet**: Single processor (only meter writer)
@@ -388,11 +397,13 @@ function renderParticles() {
 ### 6.2 Architectural Clarity
 
 - **Easy code review**: Violations are obvious
+
   - Multiple `bindController` calls? Reject.
   - Mutex in audio path? Reject.
   - Observer with write methods? Type error.
 
 - **Clear mental model**:
+
   - Primitives = SWMR (planes) + SWSR (rings)
   - System = MWMR via composition (rings + hubs + observers)
 
@@ -404,6 +415,7 @@ function renderParticles() {
 ### 6.3 Cross-Language Portability
 
 - **C++/Wasm interop**: Primitives are atomics + layout
+
   - No mutex/IPC semantics to translate
   - Same ABI works in JS, Wasm, native C++
   - See ADR-010 for wire layout (64-byte header + u32 slots) and memory-ordering details
@@ -415,6 +427,7 @@ function renderParticles() {
 ### 6.4 Scalability
 
 - **System complexity scales independently of primitive complexity**:
+
   - Add more domains: each is still SWMR
   - Add more observers: each reads independently
   - Add more intent sources: each gets own ring

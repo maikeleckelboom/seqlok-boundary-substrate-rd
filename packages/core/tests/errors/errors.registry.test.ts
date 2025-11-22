@@ -1,20 +1,19 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import {
-  ERROR_META,
   ERROR_MESSAGES,
-  getErrorMeta,
-  getErrorMessage,
-  isErrorCode,
+  ERROR_META,
   type ErrorCode,
   type ErrorMeta,
+  getErrorMessage,
+  getErrorMeta,
+  isErrorCode,
 } from '../../src/errors/registry';
 
 /**
- * Minimal case descriptor you fill in per error code you care about.
- *
- * This lets us pin *semantic* expectations for selected codes,
- * while structural invariants cover the full registry.
+ * Minimal test case descriptor for validating semantic contracts of error codes.
+ * Structural invariants cover the full registry; these cases pin specific
+ * expectations for selected codes where semantics are critical to system stability.
  */
 interface ErrorRegistryCase<C extends ErrorCode> {
   readonly code: C;
@@ -23,10 +22,11 @@ interface ErrorRegistryCase<C extends ErrorCode> {
 }
 
 /**
- * Curated semantic cases.
+ * Curated list of semantic anchor cases.
  *
- * These are "anchor" codes where the semantics really matter.
- * If you adjust severity/recoverability for these, tests will scream.
+ * These represent error codes where severity, recoverability, and boundary safety
+ * are part of the public design contract. Modifications to these definitions
+ * should be deliberate and reflected here.
  */
 const CASES: readonly ErrorRegistryCase<ErrorCode>[] = [
   {
@@ -54,7 +54,7 @@ const CASES: readonly ErrorRegistryCase<ErrorCode>[] = [
       recoverable: true,
       boundarySafe: true,
     },
-    messageIncludes: /WebAssembly\.Memory is not shared/i,
+    messageIncludes: /WebAssembly\.Memory.*not shared/i,
   },
   {
     code: 'binding.snapshotIntoTypeMismatch',
@@ -102,15 +102,6 @@ const CASES: readonly ErrorRegistryCase<ErrorCode>[] = [
     messageIncludes: /Unreachable code executed/i,
   },
   {
-    code: 'orchestration.createFailed',
-    expectedMeta: {
-      severity: 'error',
-      recoverable: true,
-      boundarySafe: true,
-    },
-    messageIncludes: /creation\/orchestration failed/i,
-  },
-  {
     code: 'diagnostics.counterInvalid',
     expectedMeta: {
       severity: 'warning',
@@ -119,34 +110,59 @@ const CASES: readonly ErrorRegistryCase<ErrorCode>[] = [
     },
     messageIncludes: /Diagnostics counter invalid/i,
   },
+  {
+    code: 'diagnostics.featureInvalid',
+    expectedMeta: {
+      severity: 'warning',
+      recoverable: true,
+      boundarySafe: false,
+    },
+    messageIncludes: /Diagnostics feature invalid/i,
+  },
+  {
+    code: 'plan.failed',
+    expectedMeta: {
+      severity: 'error',
+      recoverable: false,
+      boundarySafe: true,
+    },
+    messageIncludes: /plan/i,
+  },
+  {
+    code: 'primitives.atomicsFailed',
+    expectedMeta: {
+      severity: 'fatal',
+      recoverable: false,
+      boundarySafe: false,
+    },
+    messageIncludes: /atomics/i,
+  },
 ];
 
 /**
- * Helper: get all codes from the registry maps in a type-safe-ish way.
- *
- * NOTE: This reflects the runtime map, not the ErrorCode union directly.
- * The ErrorCode → map alignment is guaranteed at compile-time by registry.ts.
+ * Retrieves all error codes currently defined in the runtime registry.
+ * Used to iterate over the entire error surface for invariant checking.
  */
 function getAllCodes(): ErrorCode[] {
   return Object.keys(ERROR_META) as ErrorCode[];
 }
 
-describe('error registry – structural invariants', () => {
-  it('has matching keys between ERROR_META and ERROR_MESSAGES', () => {
+describe('Error Registry: Structural Invariants', () => {
+  it('maintains strict key parity between metadata and message registries', () => {
     const codesFromMeta = Object.keys(ERROR_META).sort();
     const codesFromMessages = Object.keys(ERROR_MESSAGES).sort();
 
     expect(codesFromMeta).toEqual(codesFromMessages);
   });
 
-  it('contains only unique codes', () => {
+  it('ensures all registered error codes are unique', () => {
     const allCodes = getAllCodes();
     const unique = new Set(allCodes);
 
     expect(unique.size).toBe(allCodes.length);
   });
 
-  it('exposes meta and messages for every registered error code', () => {
+  it('defines valid metadata and messages for every registered entry', () => {
     const allCodes = getAllCodes();
 
     for (const code of allCodes) {
@@ -163,7 +179,7 @@ describe('error registry – structural invariants', () => {
     }
   });
 
-  it('getErrorMeta/getErrorMessage and isErrorCode stay aligned with the registry', () => {
+  it('synchronizes lookup helpers and type guards with the registry content', () => {
     const allCodes = getAllCodes();
 
     for (const code of allCodes) {
@@ -172,7 +188,7 @@ describe('error registry – structural invariants', () => {
       expect(getErrorMessage(code)).toBe(ERROR_MESSAGES[code]);
     }
 
-    // A few obviously invalid values to exercise the negative branch.
+    // Negative cases: Validate that arbitrary strings are rejected
     const invalidSamples: readonly string[] = [
       'nope.not.a.code',
       'binding.unknown_code',
@@ -187,8 +203,8 @@ describe('error registry – structural invariants', () => {
   });
 });
 
-describe('error registry – semantic expectations (selected codes)', () => {
-  it.each(CASES)('matches meta and message semantics for $code', (testCase) => {
+describe('Error Registry: Semantic Contracts (Selected Codes)', () => {
+  it.each(CASES)('validates semantic contract for $code', (testCase) => {
     const { code, expectedMeta, messageIncludes } = testCase;
 
     const meta = getErrorMeta(code);
@@ -207,8 +223,8 @@ describe('error registry – semantic expectations (selected codes)', () => {
   });
 });
 
-describe('error registry – domain-level invariants by prefix', () => {
-  it('internal.* errors are always fatal, non-recoverable and not safe to expose', () => {
+describe('Error Registry: Domain-Level Policy Enforcement', () => {
+  it('enforces fatal/non-recoverable status for internal system errors (internal.*)', () => {
     for (const code of getAllCodes()) {
       if (code.startsWith('internal.')) {
         const meta = getErrorMeta(code);
@@ -219,7 +235,7 @@ describe('error registry – domain-level invariants by prefix', () => {
     }
   });
 
-  it('spec.* errors are non-recoverable (author-time validation failures)', () => {
+  it('marks author-time specification errors as non-recoverable (spec.*)', () => {
     for (const code of getAllCodes()) {
       if (code.startsWith('spec.')) {
         const meta = getErrorMeta(code);
@@ -228,7 +244,7 @@ describe('error registry – domain-level invariants by prefix', () => {
     }
   });
 
-  it('diagnostics.* errors are warnings, recoverable, and not safe to expose', () => {
+  it('classifies diagnostic errors as recoverable warnings (diagnostics.*)', () => {
     for (const code of getAllCodes()) {
       if (code.startsWith('diagnostics.')) {
         const meta = getErrorMeta(code);
@@ -239,7 +255,7 @@ describe('error registry – domain-level invariants by prefix', () => {
     }
   });
 
-  it('env.* errors are safe to expose (they are about environment setup)', () => {
+  it('permits boundary exposure for environment setup errors (env.*)', () => {
     for (const code of getAllCodes()) {
       if (code.startsWith('env.')) {
         const meta = getErrorMeta(code);
@@ -248,7 +264,7 @@ describe('error registry – domain-level invariants by prefix', () => {
     }
   });
 
-  it('binding.snapshotInto* and binding.*Retry* are not safe to expose (diagnostic detail only)', () => {
+  it('restricts boundary exposure for transient binding failures (snapshot/retry)', () => {
     for (const code of getAllCodes()) {
       if (
         code.startsWith('binding.snapshotInto') ||
@@ -261,7 +277,7 @@ describe('error registry – domain-level invariants by prefix', () => {
     }
   });
 
-  it('handoff.* errors are non-recoverable and safe to expose (handshake contract failures)', () => {
+  it('enforces strict failure contract for handoff mechanisms (handoff.*)', () => {
     for (const code of getAllCodes()) {
       if (code.startsWith('handoff.')) {
         const meta = getErrorMeta(code);

@@ -1,8 +1,24 @@
+/**
+ * @fileoverview
+ * Error codes and detail types for environment capability checks.
+ *
+ * @remarks
+ * - Covers missing SAB/COOP/COEP and other runtime prerequisites.
+ * - Used by env guards and diagnostics when probing `globalThis`.
+ * - Registered into the global error registry as the `env.*` domain.
+ */
+
 import type { ErrorDetails, ErrorMeta } from '../registry';
 
 export type EnvErrorCode = 'env.unsupported' | 'env.coopCoepRequired';
 export type EnvErrorKey = 'unsupported' | 'coopCoepRequired';
 
+/**
+ * Details for `env.unsupported` errors.
+ *
+ * @remarks
+ * - `cause` is attached on the error object itself, not in these details.
+ */
 export interface EnvUnsupportedDetails extends ErrorDetails {
   readonly feature:
     | 'SharedArrayBuffer'
@@ -58,4 +74,5 @@ type _VerifyRuntimeCodes = EnvErrorCode extends _CodesFromDescriptors
     ? true
     : never
   : never;
-export const _verifyEnvCodesMatch: _VerifyRuntimeCodes = true;
+const _verifyEnvCodesMatch: _VerifyRuntimeCodes = true;
+void _verifyEnvCodesMatch;

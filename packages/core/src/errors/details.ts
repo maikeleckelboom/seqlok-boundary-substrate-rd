@@ -1,3 +1,16 @@
+/**
+ * @fileoverview
+ * Shared, cross-domain error detail types for Seqlok.
+ *
+ * @remarks
+ * - This module defines only structural detail interfaces that are reused
+ *   across multiple error domains (spec, binding, backing, diagnostics, etc.).
+ * - It must not introduce domain-specific error codes or env/backing/plan
+ *   special cases; those belong in the corresponding `errors/codes/*` modules.
+ * - Types here are extended by concrete detail shapes and used for both
+ *   runtime error reporting and compile-time type checking.
+ */
+
 import type { ErrorDetails } from './registry';
 import type { TypedArrayName } from './types';
 
@@ -73,10 +86,8 @@ export interface CoherentDetails extends ErrorDetails {
 }
 
 /**
- * Unsupported feature details (runtime/env/domain).
+ * Coherent snapshot retry details.
  */
-export interface FeatureUnsupportedDetails extends ErrorDetails {
-  readonly feature: string;
-  readonly reason?: string;
-  readonly missing?: readonly string[];
+export interface SnapshotRetryDetails extends CoherentDetails {
+  readonly section: 'params' | 'meters';
 }

@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Human-readable description of memory views and layout.
+ *
+ * @remarks
+ * - Generates formatted descriptions of backing memory layouts.
+ * - Used for debugging and diagnostics output.
+ * - Provides clear, readable representations of memory planes.
+ */
+
 import { BACKING_PLANE_PACK_ORDER_V1 } from '../backing/map-views';
 
 import type { Plan } from '../plan/types';

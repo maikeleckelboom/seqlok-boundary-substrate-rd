@@ -1,4 +1,12 @@
-// src/diagnostics/features.ts
+/**
+ * @fileoverview
+ * Diagnostics feature flags and runtime controls.
+ *
+ * @remarks
+ * - Manages debug and introspection features that can be toggled at runtime.
+ * - Used for enabling/disabling specific diagnostics functionality.
+ * - Separate from user-facing features to avoid accidental exposure.
+ */
 
 import { createError } from '../errors/error';
 

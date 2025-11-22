@@ -4,19 +4,23 @@
 
 The Seqlok core is deliberately **not** designed as a set of stateful objects or contexts. Instead, it is built on:
 
-- Algebraic data types (`SpecInput`, `Plan<S>`, `Backing`, `Handoff`, bindings)
-- Pure or "pure-ish" functions between them
-- Explicit module boundaries (`primitives` → `spec` → `plan` → `backing` → `handoff` → `binding`)
+* Algebraic data types (`SpecInput`, `Plan<S>`, `Backing`, `Handoff`, bindings)
+* Pure or "pure-ish" functions between them
+* Explicit module boundaries (`primitives` → `spec` → `plan` → `backing` → `handoff` → `binding`)
 
 Object-oriented APIs are allowed – and expected – **on top** of this (orchestration, framework adapters, app code).
 The kernel itself stays functional for reasons of correctness, analyzability, portability, and layering.
 
 This version of the document assumes the **golden flow** is the only supported, canonical way to wire Seqlok:
 
-- **Owner / main side:** `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff` → `bindController`
-- **Worker / processor side:** `receiveHandoff` → `bindProcessor`
+* **Owner / main side:** `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff` → `bindController`
+* **Worker / processor side:** `receiveHandoff` → `bindProcessor`
 
-Everything below is written in terms of that flow.
+Everything below is written in terms of that flow, with the **plan** explicitly threaded into `bindController`:
+
+```ts
+bindController(spec, plan, backing, options?);
+```
 
 ---
 
@@ -29,25 +33,29 @@ At the kernel level, APIs are shaped like the golden flow:
 
 ```ts
 // owner / main
-const spec = defineSpec(/* ... */); // DSL → SpecInput
-const plan = planLayout(spec); // SpecInput → Plan<S>
-const backing = allocateShared(plan); // Plan<S> → Backing
-const handoff = buildHandoff(plan, backing); // Plan<S> × Backing → Handoff
-const controller = bindController(spec, backing); // SpecInput × Backing → ControllerBinding<S>
+const spec = defineSpec(/* ... */);                // DSL → SpecInput
+const plan = planLayout(spec);                     // SpecInput → Plan<S>
+const backing = allocateShared(plan);              // Plan<S> → Backing
+const handoff = buildHandoff(plan, backing);       // Plan<S> × Backing → Handoff
+const controller = bindController(
+  spec,
+  plan,
+  backing,
+);                                                 // SpecInput × Plan<S> × Backing → ControllerBinding<S>
 
 // worker / processor
-const received = receiveHandoff(handoff); // Handoff → ReceivedHandoff<S>
-const processor = bindProcessor(received); // ReceivedHandoff<S> → ProcessorBinding<S>
+const received = receiveHandoff(handoff);          // Handoff → ReceivedHandoff<S>
+const processor = bindProcessor(received);         // ReceivedHandoff<S> → ProcessorBinding<S>
 ```
 
 Higher layers (orchestration, worklet helpers, React/Vue bindings, app code) are free to wrap this into:
 
-- Factories
-- Context objects
-- Classes
-- Hooks/composables
+* Factories
+* Context objects
+* Classes
+* Hooks/composables
 
-But the **concurrency kernel** itself is _not_ expressed as:
+But the **concurrency kernel** itself is *not* expressed as:
 
 ```ts
 const ctx = new SeqlokContext(spec);
@@ -64,28 +72,28 @@ Ergonomics moves "upwards"; correctness-critical logic stays "flat and explicit"
 
 Traditional OO shines when you want:
 
-- Objects with identity
-- Encapsulated mutable state
-- Behavioral polymorphism (virtual methods, overrides)
-- “Tell, don’t ask”: send messages and let the object decide
+* Objects with identity
+* Encapsulated mutable state
+* Behavioral polymorphism (virtual methods, overrides)
+* “Tell, don’t ask”: send messages and let the object decide
 
 Seqlok's problem space is different:
 
-- `SharedArrayBuffer` + `Atomics`
-- Single-Writer / Multiple-Reader (SWMR) discipline
-- Strict, shared **plan** across threads / workers / runtimes
-- Seqlock-style coherence protocols
+* `SharedArrayBuffer` + `Atomics`
+* Single-Writer / Multiple-Reader (SWMR) discipline
+* Strict, shared **plan** across threads / workers / runtimes
+* Seqlock-style coherence protocols
 
 The questions Seqlok needs to answer are:
 
-- **Spatial:**
+* **Spatial:**
   Which bytes belong to which logical field (key → plane → offset)?
-- **Temporal:**
+* **Temporal:**
   Who is allowed to write them, and in what order (sequences, lock protocol)?
-- **Aliasing:**
+* **Aliasing:**
   How do multiple readers get coherent snapshots without torn reads?
-- **Compatibility:**
-  Does this `spec` actually match this `backing` and this `handoff`?
+* **Compatibility:**
+  Does this `spec` actually match this `plan`, this `backing`, and this `handoff`?
 
 Those are **memory-model** and **type-theory** questions, not "class hierarchy" questions.
 
@@ -100,14 +108,15 @@ In that context, "hidden mutable state behind method calls" is not a feature –
 
 ## 3. Functions + data are easier to reason about (and verify)
 
-Seqlok's core operations in the golden flow are intentionally shaped like **total functions** on immutable inputs wherever possible:
+Seqlok's core operations in the golden flow are intentionally shaped like **total functions** on immutable inputs
+wherever possible:
 
-- `planLayout(spec): Plan<S>`
-- `allocateShared(plan): Backing`
-- `buildHandoff(plan, backing): Handoff`
-- `receiveHandoff(handoff): ReceivedHandoff<S>`
-- `bindController(spec, backing): ControllerBinding<S>`
-- `bindProcessor(received): ProcessorBinding<S>`
+* `planLayout(spec): Plan<S>`
+* `allocateShared(plan): Backing`
+* `buildHandoff(plan, backing): Handoff`
+* `receiveHandoff(handoff): ReceivedHandoff<S>`
+* `bindController(spec, plan, backing, options?): ControllerBinding<S>`
+* `bindProcessor(received, options?): ProcessorBinding<S>`
 
 ### 3.1. Compositional reasoning
 
@@ -120,7 +129,7 @@ const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
 const backing = allocateShared(plan);
 const handoff = buildHandoff(plan, backing);
-const controller = bindController(spec, backing);
+const controller = bindController(spec, plan, backing);
 ```
 
 Worker / processor:
@@ -132,18 +141,18 @@ const processor = bindProcessor(received);
 
 Preconditions and postconditions are explicit:
 
-- If `planLayout(spec)` succeeds, `plan` encodes a valid, non-overlapping layout.
-- If `allocateShared(plan)` succeeds, `backing` is large enough and aligned for that plan.
-- If `buildHandoff(plan, backing)` succeeds, the handoff envelope consistently describes `plan` + `backing`.
-- If `receiveHandoff(handoff)` succeeds, the processor has a verified `ReceivedHandoff<S>` view.
-- If `bindController(spec, backing)` or `bindProcessor(received)` succeeds, Seqlok has proven that the
+* If `planLayout(spec)` succeeds, `plan` encodes a valid, non-overlapping layout.
+* If `allocateShared(plan)` succeeds, `backing` is large enough and aligned for that plan.
+* If `buildHandoff(plan, backing)` succeeds, the handoff envelope consistently describes `plan` + `backing`.
+* If `receiveHandoff(handoff)` succeeds, the processor has a verified `ReceivedHandoff<S>` view.
+* If `bindController(spec, plan, backing)` or `bindProcessor(received)` succeeds, Seqlok has proven that the
   spec/plan/backing/handoff chain is compatible for this binding.
 
 This shape is friendly to:
 
-- Property-based testing
-- Potential formalization in proof systems
-- Static checks (TypeScript types track the spec through to bindings)
+* Property-based testing
+* Potential formalization in proof systems
+* Static checks (TypeScript types track the spec through to bindings)
 
 A stateful "context" object, by contrast, accumulates hidden state:
 
@@ -155,9 +164,9 @@ const controller = ctx.createController();
 
 Correctness now depends on:
 
-- Implicit ordering (did you forget `allocate()`?)
-- Internal flags like `ctx.isAllocated`
-- Hidden caches and mutation
+* Implicit ordering (did you forget `allocate()`?)
+* Internal flags like `ctx.isAllocated`
+* Hidden caches and mutation
 
 all of which live **behind** method boundaries instead of in explicit data.
 
@@ -165,13 +174,14 @@ all of which live **behind** method boundaries instead of in explicit data.
 
 Tests can exercise the golden flow functions directly:
 
-- Planner invariants (no overlap, correct plane lengths)
-- Backing invariants (correct SAB size and alignment)
-- Handoff invariants (hashes, byte totals, identity of the plan)
-- Binding invariants (spec ↔ plan ↔ backing ↔ handoff consistency)
-- Seqlock properties (no torn reads under concurrent access)
+* Planner invariants (no overlap, correct plane lengths)
+* Backing invariants (correct SAB size and alignment)
+* Handoff invariants (hashes, byte totals, identity of the plan)
+* Binding invariants (spec ↔ plan ↔ backing ↔ handoff consistency)
+* Seqlock properties (no torn reads under concurrent access)
 
-It's much harder to specify and test invariants against a "god context" that mutates its own internals on each method call.
+It's much harder to specify and test invariants against a "god context" that mutates its own internals on each method
+call.
 
 ---
 
@@ -179,29 +189,32 @@ It's much harder to specify and test invariants against a "god context" that mut
 
 Seqlok targets:
 
-- Browsers (SAB + Workers / AudioWorklet)
-- Node / Deno (`worker_threads`)
-- Environments with shared `WebAssembly.Memory`
+* Browsers (SAB + Workers / AudioWorklet)
+* Node / Deno (`worker_threads`)
+* Environments with shared `WebAssembly.Memory`
 
 The golden flow is intentionally **portable**:
 
-- `Plan<S>` is a plain data structure describing the layout.
-- `allocateShared(plan)` constructs raw shared memory for that layout.
-- `buildHandoff(plan, backing)` serializes the plan/backing relationship into a portable envelope.
-- `receiveHandoff(handoff)` re-establishes a verified view of the same layout on the processor side.
-- `bindController` and `bindProcessor` map typed views on top of the backing according to that plan.
+* `Plan<S>` is a plain data structure describing the layout.
+* `allocateShared(plan)` constructs raw shared memory for that layout.
+* `buildHandoff(plan, backing)` serializes the plan/backing relationship into a portable envelope.
+* `receiveHandoff(handoff)` re-establishes a verified view of the same layout on the processor side.
+* `bindController(spec, plan, backing, options?)` and `bindProcessor(received, options?)` map typed views on top of the
+  backing according to that plan.
 
 Any language with:
 
-- Integer arithmetic
-- Typed arrays / slices
-- Atomics or equivalent fences
+* Integer arithmetic
+* Typed arrays / slices
+* Atomics or equivalent fences
 
 can re-implement the core behavior against the same invariants.
 
 > **Design goal.**
-> No part of Seqlok's correctness should depend on JavaScript's `class` model or method dispatch. The semantics should be
-> expressible purely as "data + functions" along the golden flow, so an equivalent implementation in another language is straightforward.
+> No part of Seqlok's correctness should depend on JavaScript's `class` model or method dispatch. The semantics should
+be
+> expressible purely as "data + functions" along the golden flow, so an equivalent implementation in another language is
+straightforward.
 
 Heavy OO in the kernel would pull in JS-specific concepts (prototype chains, subclassing) that make porting and
 verification unnecessarily harder.
@@ -212,63 +225,64 @@ verification unnecessarily harder.
 
 Seqlok enforces a strict layering:
 
-- `primitives` – atomics, seqlock
-- `spec` – DSL and spec types
-- `plan` – planning from `spec` → `Plan<S>`
-- `backing` – allocate shared memory from a plan
-- `handoff` – serialize/verify cross-thread plan + memory
-- `binding` – controller/processor bindings over backings
-- above that: **orchestration**, in separate helpers/packages
+* `primitives` – atomics, seqlock
+* `spec` – DSL and spec types
+* `plan` – planning from `spec` → `Plan<S>`
+* `backing` – allocate shared memory from a plan
+* `handoff` – serialize/verify cross-thread plan + memory
+* `binding` – controller/processor bindings over backings
+* above that: **orchestration**, in separate helpers/packages
 
 Each layer has a small, explicit API and depends on a restricted set of lower layers.
 
 The golden flow function signatures **encode those dependencies**:
 
-- `planLayout(spec)` lives in `plan`
-- `allocateShared(plan)` lives in `backing`
-- `buildHandoff(plan, backing)` lives in `handoff`
-- `receiveHandoff(handoff)` lives in `handoff`
-- `bindController(spec, backing)` and `bindProcessor(received)` live in `binding`
+* `planLayout(spec)` lives in `plan`
+* `allocateShared(plan)` lives in `backing`
+* `buildHandoff(plan, backing)` lives in `handoff`
+* `receiveHandoff(handoff)` lives in `handoff`
+* `bindController(spec, plan, backing, options?)` and `bindProcessor(received, options?)` live in `binding`
 
 They make the architecture visible in the types.
 
 A large OO `Context` or `Engine` object tends to:
 
-- Import multiple layers at once
-- Accumulate responsibilities ("plan + allocate + buildHandoff + bind + …")
-- Blur where an error actually originates (spec vs plan vs backing vs handoff vs binding)
+* Import multiple layers at once
+* Accumulate responsibilities ("plan + allocate + buildHandoff + bind + …")
+* Blur where an error actually originates (spec vs plan vs backing vs handoff vs binding)
 
 Over time, that leads to:
 
-- Tighter coupling
-- More "reach-through" (one method poking directly at multiple lower layers)
-- Weaker enforcement of layer rules
+* Tighter coupling
+* More "reach-through" (one method poking directly at multiple lower layers)
+* Weaker enforcement of layer rules
 
 > **Intent.**
 > Seqlok's kernel is closer to a well-designed C library with strong types than to a classical OO "engine" object. The
-> golden flow is expressed as a sequence of explicit module calls; their relationships are visible in the type signatures.
+> golden flow is expressed as a sequence of explicit module calls; their relationships are visible in the type
+signatures.
 
 ---
 
-## 6. Where OO _is_ welcome: orchestration and integrations
+## 6. Where OO *is* welcome: orchestration and integrations
 
 This is **not** a blanket rejection of object-orientation. It's a **scoping decision**:
 
-- Kernel: **functional, data + functions**, minimal internal state, explicit layering, golden flow only.
-- Above kernel: **use whatever abstraction is ergonomic**:
+* Kernel: **functional, data + functions**, minimal internal state, explicit layering, golden flow only.
+* Above kernel: **use whatever abstraction is ergonomic**:
 
-  - Builder/factory helpers
-  - Context objects
-  - Classes
-  - Hooks/composables (React/Vue/etc.)
-  - Framework-specific adapters
+  * Builder/factory helpers
+  * Context objects
+  * Classes
+  * Hooks/composables (React/Vue/etc.)
+  * Framework-specific adapters
 
 Examples of places where OO / context styles are perfectly fine:
 
-- `@seqlok/web` – helpers for AudioWorklet / browser orchestration
-- `@seqlok/react` – React hooks and providers
-- `@seqlok/devtools` – inspector UIs, stateful debug contexts
-- App-level "Session" / "Deck" / "Engine" classes in consumer code
+* `@seqlok/web` – helpers for AudioWorklet / browser orchestration
+* `@seqlok/react` – React hooks and providers
+* `@seqlok/devtools` – inspector UIs, stateful debug contexts
+* App-level "Session" / "Deck" / "Engine" classes in consumer code
 
 These can wrap the golden flow:
 
@@ -278,7 +292,7 @@ export function createControllerKit<S extends SpecInput>(spec: S) {
   const plan = planLayout(spec);
   const backing = allocateShared(plan);
   const handoff = buildHandoff(plan, backing);
-  const controller = bindController(spec, backing);
+  const controller = bindController(spec, plan, backing);
 
   return {
     spec,
@@ -296,10 +310,12 @@ export function initProcessor<S extends SpecInput>(handoff: Handoff<S>) {
 }
 ```
 
-The important part: this lives **on top of** the kernel and delegates to the golden flow functions. If an integration layer goes wrong, the core invariants remain intact.
+The important part: this lives **on top of** the kernel and delegates to the golden flow functions. If an integration
+layer goes wrong, the core invariants remain intact.
 
 > **Policy.**
-> “OO belongs in orchestration and integration layers, not in the concurrency kernel. The kernel stays at the golden flow level.”
+> “OO belongs in orchestration and integration layers, not in the concurrency kernel. The kernel stays at the golden
+flow level."
 
 ---
 
@@ -307,19 +323,21 @@ The important part: this lives **on top of** the kernel and delegates to the gol
 
 When reviewers ask:
 
-> “Why not have a `SeqlokContext` that hides spec/plan/backing and just gives me `.allocate()`, `.bind()`, `.handoff()`?”
+> “Why not have a `SeqlokContext` that hides spec/plan/backing and just gives me `.allocate()`, `.bind()`,
+`.handoff()`?”
 
 You can answer along these lines, in terms of the golden flow:
 
 1. **Correctness & reasoning**
 
-- Function-centric APIs make it easier to specify and test invariants about `spec → plan → backing → handoff → bindings`.
-- A context object hides critical state transitions behind method calls, making it harder to reason about correctness.
+* Function-centric APIs make it easier to specify and test invariants about
+  `spec → plan → backing → handoff → bindings`.
+* A context object hides critical state transitions behind method calls, making it harder to reason about correctness.
 
 2. **Shared-memory domain**
 
-- Implicit mutable state is hostile in SAB + Atomics + seqlock scenarios.
-- We want explicit flows:
+* Implicit mutable state is hostile in SAB + Atomics + seqlock scenarios.
+* We want explicit flows:
 
   ```ts
   defineSpec → planLayout → allocateShared → buildHandoff → receiveHandoff → bind*
@@ -327,20 +345,20 @@ You can answer along these lines, in terms of the golden flow:
 
 3. **Layering**
 
-- A big context would necessarily depend on `spec`, `plan`, `backing`, `handoff`, and `binding` all at once, collapsing
+* A big context would necessarily depend on `spec`, `plan`, `backing`, `handoff`, and `binding` all at once, collapsing
   the carefully separated domains.
-- Current function signatures encode layer dependencies directly.
+* Current function signatures encode layer dependencies directly.
 
 4. **Polyglot & portability**
 
-- A data+function kernel is easier to re-implement or verify in other languages.
-- No correctness property depends on JavaScript's class semantics.
+* A data+function kernel is easier to re-implement or verify in other languages.
+* No correctness property depends on JavaScript's class semantics.
 
 5. **Ergonomics via composition**
 
-- We provide (or endorse) higher-level helpers/factories that close over `spec`/`plan` to reduce repetition, while still
+* We provide (or endorse) higher-level helpers/factories that close over `spec`/`plan` to reduce repetition, while still
   delegating to the golden flow.
-- The kernel stays small, explicit, and predictable.
+* The kernel stays small, explicit, and predictable.
 
 A concise line you can reuse:
 
@@ -352,25 +370,27 @@ A concise line you can reuse:
 
 ## 8. Summary
 
-- The Seqlok **core** is intentionally non-OOP and organized around a single **golden flow**:
+* The Seqlok **core** is intentionally non-OOP and organized around a single **golden flow**:
 
-  - Owner / main: `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff` → `bindController`
-  - Worker / processor: `receiveHandoff` → `bindProcessor`
+  * Owner / main: `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff` →
+    `bindController(spec, plan, backing, options?)`
+  * Worker / processor: `receiveHandoff` → `bindProcessor(received, options?)`
 
-- The kernel is:
+* The kernel is:
 
-  - Data + pure-ish functions
-  - Explicit `spec → plan → backing → handoff → bindings` pipeline
-  - Strictly layered into `primitives` / `spec` / `plan` / `backing` / `handoff` / `binding`
+  * Data + pure-ish functions
+  * Explicit `spec → plan → backing → handoff → bindings` pipeline
+  * Strictly layered into `primitives` / `spec` / `plan` / `backing` / `handoff` / `binding`
 
-- This shape:
+* This shape:
 
-  - Matches the needs of shared-memory concurrency
-  - Simplifies testing and potential formal reasoning
-  - Keeps the design polyglot-friendly
-  - Preserves the strict layering enforced elsewhere in the project
+  * Matches the needs of shared-memory concurrency
+  * Simplifies testing and potential formal reasoning
+  * Keeps the design polyglot-friendly
+  * Preserves the strict layering enforced elsewhere in the project
 
-- Object-oriented abstractions are encouraged **above** the kernel, where they can improve ergonomics without
+* Object-oriented abstractions are encouraged **above** the kernel, where they can improve ergonomics without
   compromising the concurrency model or the golden flow.
 
-In other words: the core is designed like a **portable systems library** with a single, explicit golden flow; the OO “nice bits” live one layer higher.
+In other words: the core is designed like a **portable systems library** with a single, explicit golden flow; the OO
+“nice bits” live one layer higher.

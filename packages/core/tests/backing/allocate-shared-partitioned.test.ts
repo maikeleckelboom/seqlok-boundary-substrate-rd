@@ -1,5 +1,4 @@
-// packages/core/tests/backing/allocate-shared-partitioned.test.ts
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { allocateSharedPartitioned } from '../../src/backing/allocate-shared-partitioned';
 import { mapViews } from '../../src/backing/map-views';
@@ -10,78 +9,82 @@ import { specFromPlaneBytes } from '../helpers/spec-from-bytes';
 
 import type { SharedPartitionedBacking } from '../../src/backing/types';
 
-const B4 = 4;
-const B8 = 8;
+const BYTES_F32 = 4;
+const BYTES_F64 = 8;
 
+/**
+ * Truncates a value `n` to the nearest lower multiple of `q`.
+ * Used to verify TypedArray view limits (which ignore trailing partial bytes).
+ */
 const floorTo = (n: number, q: number): number => Math.trunc(n / q) * q;
 
-describe('allocateSharedPartitioned', () => {
-  it('allocates and maps split planes with correct typed view byteLengths (floor to element size)', () => {
-    // Deliberately include MF64 that can be non-multiple-of-8 in plan; we assert floored sizes.
+describe('Shared Partitioned Allocation (Split Backing)', () => {
+  it('allocates and maps partitioned planes with byte lengths correctly aligned to element sizes', () => {
+    // Define explicit plane sizes. We deliberately include an MF64 size that is
+    // not a multiple of 8 to verify that the view mapping correctly floors the size.
     const bytes = {
-      PF32: 16 * B4, // 64
-      PI32: 4 * B4, // 16
-      PB: 32, // byte plane: exact
-      PU: 2 * B4, // 8
-      MF32: 7 * B4, // 28
-      MF64: 13 * B8, // 104 (view floors to /8)
-      MU32: 5 * B4, // 20
-      MU: 2 * B4, // 8
+      PF32: 16 * BYTES_F32, // 64
+      PI32: 4 * BYTES_F32, // 16
+      PB: 32, // Byte plane: exact mapping expected
+      PU: 2 * BYTES_F32, // 8
+      MF32: 7 * BYTES_F32, // 28
+      MF64: 13 * BYTES_F64, // 104 (View floors to closest 8-byte boundary)
+      MU32: 5 * BYTES_F32, // 20
+      MU: 2 * BYTES_F32, // 8
     };
 
     const plan = planLayout(specFromPlaneBytes(bytes));
     const split = allocateSharedPartitioned(plan);
     const v = mapViews(plan, split);
 
-    // params
+    // Parameter Views
     expect(v.params.PF32.byteLength).toBe(floorTo(plan.planes.PF32, BYTES_PER_ELEM.PF32));
     expect(v.params.PI32.byteLength).toBe(floorTo(plan.planes.PI32, BYTES_PER_ELEM.PI32));
-    expect(v.params.PB.byteLength).toBe(plan.planes.PB); // PB maps exact bytes
+    expect(v.params.PB.byteLength).toBe(plan.planes.PB);
     expect(v.params.PU.byteLength).toBe(floorTo(plan.planes.PU, BYTES_PER_ELEM.PU));
 
-    // meters
+    // Meter Views
     expect(v.meters.MF32.byteLength).toBe(floorTo(plan.planes.MF32, BYTES_PER_ELEM.MF32));
     expect(v.meters.MF64.byteLength).toBe(floorTo(plan.planes.MF64, BYTES_PER_ELEM.MF64));
     expect(v.meters.MU32.byteLength).toBe(floorTo(plan.planes.MU32, BYTES_PER_ELEM.MU32));
     expect(v.meters.MU.byteLength).toBe(floorTo(plan.planes.MU, BYTES_PER_ELEM.MU));
 
-    // locks alias typed views (PU/MU)
+    // Locks (Aliases to PU/MU views)
     expect(v.locks.PU.byteLength).toBe(floorTo(plan.planes.PU, BYTES_PER_ELEM.PU));
     expect(v.locks.MU.byteLength).toBe(floorTo(plan.planes.MU, BYTES_PER_ELEM.MU));
   });
 
-  it('throws when a split plane SAB is undersized (PB too small), with a guaranteed non-zero PB', () => {
-    // Build a spec that *guarantees* PB > 0: bool array lives on PB as bytes.
+  it('throws specifically when a partitioned plane buffer is smaller than the planned requirement', () => {
+    // Define a spec that guarantees the boolean plane (PB) has size > 0
     const specPB = defineSpec(({ param }) => ({
-      id: 'split-pb',
+      id: 'split-pb-validation',
       params: {
-        flags: param.bool.array(64), // 64 bytes on PB
-        kf: param.f32.array(4), // ensure PF32 present (not required, but realistic)
+        flags: param.bool.array(64), // Occupies 64 bytes in PB
+        kf: param.f32.array(4), // Ensures PF32 presence
       },
-      meters: {},
     }));
 
     const plan = planLayout(specPB);
 
-    // Sanity: PB must be positive here by construction.
+    // Verify precondition: PB must be positive
     const plannedPB = plan.planes.PB;
     expect(plannedPB).toBeGreaterThan(0);
 
-    // Create a valid split backing and then surgically replace PB with an undersized SAB.
+    // Allocate valid backing, then surgically replace PB with an undersized buffer
     const split = allocateSharedPartitioned(plan);
 
-    // Make an undersized PB that is still a valid SAB length (multiple of 4 and > 0).
+    // Create a buffer that is valid (multiple of 4) but strictly smaller than required
     const pbUndersized = Math.max(4, floorTo(plannedPB, 4) - 4);
 
-    const bad: SharedPartitionedBacking = {
+    const badBacking: SharedPartitionedBacking = {
       kind: 'shared-partitioned',
       planes: {
         ...split.planes,
-        PB: new SharedArrayBuffer(pbUndersized), // strictly smaller than plannedPB
+        PB: new SharedArrayBuffer(pbUndersized),
       },
     };
 
-    // Should be caught by mapPartitioned -> ensure('PB') size check.
-    expect(() => mapViews(plan, bad)).toThrow(/Plane PB.*too small/i);
+    // Validation should occur during view mapping
+    expect(() => mapViews(plan, badBacking)).toThrow(/Plane PB.*too small/i);
   });
 });

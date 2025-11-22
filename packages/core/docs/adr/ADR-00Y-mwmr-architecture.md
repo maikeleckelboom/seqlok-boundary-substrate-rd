@@ -20,7 +20,7 @@ Seqlok core provides rock-solid **SWMR** primitives with seqlock-based coherence
 
 ```txt
 defineSpec
-→ planSpec
+→ planLayout
 → allocateShared
 → buildHandoff
 → receiveHandoff

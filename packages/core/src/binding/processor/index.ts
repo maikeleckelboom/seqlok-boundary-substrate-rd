@@ -1,9 +1,21 @@
-import { processorImpl } from './processor.impl';
+// File: packages/core/src/binding/processor/index.ts
 
-import type { ProcessorBinding, ProcessorOptions } from './types';
-import type { SharedBacking } from '../backing/types';
-import type { ReceivedHandoff } from '../handoff/types';
-import type { SpecInput } from '../spec/types';
+/**
+ * @fileoverview
+ * Public processor binding factory.
+ *
+ * @remarks
+ * - Bridges `ReceivedHandoff` + Backing into a typed `ProcessorBinding`.
+ * - For use in workers/worklets where the full spec is not available.
+ * - Delegates to the low-level implementation with the plan from handoff.
+ */
+
+import { processorImpl } from './impl';
+
+import type { Backing } from '../../backing/types';
+import type { ReceivedHandoff } from '../../handoff/types';
+import type { SpecInput } from '../../spec/types';
+import type { ProcessorBinding, ProcessorOptions } from '../common/types';
 
 /**
  * Public processor binding.
@@ -37,6 +49,16 @@ export function bindProcessor<const S extends SpecInput>(
   received: ReceivedHandoff<S>,
   options: ProcessorOptions = {},
 ): ProcessorBinding<S> {
-  const backing: SharedBacking = { kind: 'shared', sab: received.sab };
+  const backing: Backing =
+    received.packing === 'shared'
+      ? {
+          kind: 'shared',
+          sab: received.sab,
+        }
+      : {
+          kind: 'shared-partitioned',
+          planes: received.planes,
+        };
+
   return processorImpl(received.plan, backing, options);
 }

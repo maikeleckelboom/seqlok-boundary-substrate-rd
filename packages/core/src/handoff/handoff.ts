@@ -12,17 +12,18 @@
  * Design principles:
  *
  * - `Plan<S>` is the single source of truth for layout and spec metadata.
- * - The handoff envelope carries only `{ version, packing, sab, plan }`.
+ * - The handoff envelope carries only `{ version, packing, backingDescriptor, plan }`.
  * - No duplicated header fields, no derived lengths stored twice.
- * - Consumers bind from `ReceivedHandoff<S>` (plan + SAB), not from
- *   `(Plan<S>, SharedBacking)` directly – preserving the owner/processor
- *   authority boundary.
+ * - Consumers bind from `ReceivedHandoff<S>` (plan + backing descriptor),
+ * not from `(Plan<S>, Backing)` directly – preserving the owner/processor
+ * authority boundary.
  */
 
 import { createError } from '../errors/error';
+import { ALL_PLANES, type PlaneKey } from '../primitives/planes';
 
 import type { Handoff, ReceivedHandoff } from './types';
-import type { SharedBacking } from '../backing/types';
+import type { Backing } from '../backing/types';
 import type { Plan, PlaneByteLengths } from '../plan/types';
 import type { SpecInput } from '../spec/types';
 
@@ -33,7 +34,7 @@ import type { SpecInput } from '../spec/types';
  * - Used by `buildHandoff` as the outbound version tag.
  * - Checked by `receiveHandoff` at the boundary.
  * - Increment when introducing breaking changes to the handoff shape or
- *   interpretation semantics.
+ * interpretation semantics.
  */
 const SUPPORTED_HANDOFF_VERSION = 1 as const;
 
@@ -68,79 +69,69 @@ function isSharedArrayBuffer(x: unknown): x is SharedArrayBuffer {
 /**
  * Structural guard for `PlaneByteLengths`.
  *
- * @param v - Value to probe for `PlaneByteLengths` shape.
- * @returns `true` if `v` exposes numeric byte lengths for all planes.
- *
- * @remarks
- * This does not validate any semantics beyond the presence and type of
- * the numeric fields (`PF32`, `PI32`, `PB`, `PU`, `MF32`, `MF64`, `MU32`, `MU`).
- *
  * @internal
  */
-function isPlaneByteLengths(v: unknown): v is PlaneByteLengths {
-  if (!isPlainObject(v)) {
+function isPlaneByteLengths(value: unknown): value is PlaneByteLengths {
+  if (!isPlainObject(value)) {
     return false;
   }
-  return (
-    typeof v.PF32 === 'number' &&
-    typeof v.PI32 === 'number' &&
-    typeof v.PB === 'number' &&
-    typeof v.PU === 'number' &&
-    typeof v.MF32 === 'number' &&
-    typeof v.MF64 === 'number' &&
-    typeof v.MU32 === 'number' &&
-    typeof v.MU === 'number'
-  );
+
+  for (const v of Object.values(value)) {
+    if (typeof v !== 'number' || !Number.isFinite(v) || v < 0) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 /**
- * Minimal structural guard for `Plan<S>`.
- *
- * @typeParam S - Spec type parameter inferred from upstream `defineSpec`.
- * @param x - Value to test.
- * @returns `true` if `x` looks like a `Plan<S>` (hash + bytesTotal + planes).
- *
- * @remarks
- * This performs a shallow shape check only:
- *
- * - `hash` must be a string.
- * - `bytesTotal` must be a number.
- * - `planes` must match {@link PlaneByteLengths}.
- *
- * Deeper invariants (e.g. hash content, byte layout, offsets) are enforced
- * by the plan/backing/bindings pipeline, not here.
+ * Structural guard for `Plan<S>` used at the boundary.
  *
  * @internal
  */
-function isPlanLike<S extends SpecInput>(x: unknown): x is Plan<S> {
-  if (!isPlainObject(x)) {
+function isPlanLike<S extends SpecInput>(plan: unknown): plan is Plan<S> {
+  if (!isPlainObject(plan)) {
     return false;
   }
-  const rx = x as { hash?: unknown; bytesTotal?: unknown; planes?: unknown };
-  return (
-    typeof rx.hash === 'string' &&
-    typeof rx.bytesTotal === 'number' &&
-    isPlaneByteLengths(rx.planes)
-  );
+
+  if (typeof plan.hash !== 'string' || typeof plan.bytesTotal !== 'number') {
+    return false;
+  }
+
+  if (!isPlaneByteLengths(plan.planes)) {
+    return false;
+  }
+
+  return true;
 }
 
 /**
- * Producer-side: build a typed handoff envelope from a plan and backing.
+ * Construct a {@link Handoff} from a plan and backing.
  *
- * @typeParam S - Spec type (inferred from `plan: Plan<S>`).
- * @param plan - Typed memory layout plan (single source of truth).
- * @param backing - Shared backing for the plan (must expose a `SharedArrayBuffer`).
+ * @typeParam S - Spec type (inferred from `plan`).
+ * @param plan - Layout plan for the spec.
+ * @param backing - Backing strategy for the plan (shared or shared-partitioned).
  * @returns Typed handoff envelope (`Handoff<S>`) suitable for transfer.
  *
  * @throws {@link import('../errors').SeqlokError}
- * Throws `handoff.invalidArtifact` if `backing.sab` is not a `SharedArrayBuffer`.
+ * Throws `handoff.invalidArtifact` if the backing is incompatible with the plan,
+ * or if an unsupported backing kind is provided.
  *
  * @remarks
- * - The handoff carries only `{ version, packing, sab, plan }`. All metadata
- *   (hash, byte lengths, planes, spec shape) is derived from `plan`.
+ * - The handoff carries only `{ version, packing, backingDescriptor, plan }`.
+ * All metadata (hash, byte lengths, planes, spec shape) is derived from `plan`.
  * - This is an owner-side operation: callers must already have a `Plan<S>`
- *   and a `SharedBacking`, typically obtained via `planLayout(spec)` and
- *   `allocateShared(plan)`.
+ * and a backing, typically obtained via `planLayout(spec)` and one of the
+ * `allocate*` helpers.
+ * - **Output is Branded**: The returned object is strictly typed as `Handoff<S>`
+ * via a phantom brand to prevent accidental usage of raw objects in strict contexts.
+ *
+ * - v1 supports:
+ * - `kind: 'shared'` → `packing: 'shared'` with a single `sab`.
+ * - `kind: 'shared-partitioned'` → `packing: 'shared-partitioned'` with `planes`.
+ * - `kind: 'wasm-shared'` is currently **not** serializable via handoff and
+ * will throw a descriptive error.
  *
  * @example
  * ```ts
@@ -157,26 +148,110 @@ function isPlanLike<S extends SpecInput>(x: unknown): x is Plan<S> {
  */
 export function buildHandoff<S extends SpecInput>(
   plan: Plan<S>,
-  backing: SharedBacking,
+  backing: Backing,
 ): Handoff<S> {
-  if (!isSharedArrayBuffer(backing.sab)) {
+  if (backing.kind === 'shared') {
+    if (!isSharedArrayBuffer(backing.sab)) {
+      throw createError(
+        'handoff.invalidArtifact',
+        'Handoff requires a SharedArrayBuffer backing for kind="shared"',
+        {
+          where: 'handoff.buildHandoff',
+          detail: 'backing.sab',
+        },
+      );
+    }
+
+    const requiredBytes = plan.bytesTotal >>> 0;
+    const actualBytes = backing.sab.byteLength >>> 0;
+
+    if (actualBytes < requiredBytes) {
+      throw createError(
+        'handoff.invalidArtifact',
+        'Backing SharedArrayBuffer undersized for plan',
+        {
+          where: 'handoff.buildHandoff',
+          expectedBytes: requiredBytes,
+          receivedBytes: actualBytes,
+        },
+      );
+    }
+
+    // Cast to branded type on the way out.
+    return {
+      version: SUPPORTED_HANDOFF_VERSION,
+      packing: 'shared',
+      sab: backing.sab,
+      plan,
+    } as unknown as Handoff<S>;
+  }
+
+  if (backing.kind === 'shared-partitioned') {
+    // View plan.planes through the same key-space as the backing.
+    const planeLengths: Record<PlaneKey, number> = plan.planes as Record<
+      PlaneKey,
+      number
+    >;
+    const planes = backing.planes;
+
+    for (const plane of ALL_PLANES) {
+      const sab = planes[plane];
+
+      if (!isSharedArrayBuffer(sab)) {
+        throw createError(
+          'handoff.invalidArtifact',
+          'Plane backing is not a SharedArrayBuffer',
+          {
+            where: 'handoff.buildHandoff',
+            detail: `plane=${plane}`,
+          },
+        );
+      }
+
+      const requiredBytes = planeLengths[plane] >>> 0;
+      const actualBytes = sab.byteLength >>> 0;
+
+      if (actualBytes < requiredBytes) {
+        throw createError(
+          'handoff.invalidArtifact',
+          'Plane backing undersized for plan',
+          {
+            where: 'handoff.buildHandoff',
+            detail: `plane=${plane}`,
+            expectedBytes: requiredBytes,
+            receivedBytes: actualBytes,
+          },
+        );
+      }
+    }
+
+    // Cast to branded type on the way out.
+    return {
+      version: SUPPORTED_HANDOFF_VERSION,
+      packing: 'shared-partitioned',
+      planes,
+      plan,
+    } as unknown as Handoff<S>;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  if (backing.kind === 'wasm-shared') {
     throw createError(
       'handoff.invalidArtifact',
-      'Handoff requires a SharedArrayBuffer backing',
+      'wasm-shared backing is not yet supported by the handoff protocol',
       {
         where: 'handoff.buildHandoff',
-        detail: 'backing.sab',
+        detail: 'kind=wasm-shared',
       },
     );
   }
 
-  // Zero duplication: plan is the single source of truth
-  return {
-    version: SUPPORTED_HANDOFF_VERSION,
-    packing: 'shared',
-    sab: backing.sab,
-    plan,
-  };
+  const kind = (backing as { kind?: unknown }).kind;
+
+  throw createError('handoff.invalidArtifact', 'Unsupported backing kind for handoff', {
+    where: 'handoff.buildHandoff',
+    detail: `kind=${String(kind)}`,
+  });
 }
 
 /**
@@ -188,12 +263,12 @@ export function buildHandoff<S extends SpecInput>(
  *
  * @throws {@link import('../errors').SeqlokError}
  * Throws one of:
- * - `handoff.invalidArtifact` – wrong shape, missing plan, or invalid SAB.
+ * - `handoff.invalidArtifact` – wrong shape, missing plan, or invalid backing.
  * - `handoff.versionMismatch` – unsupported `version` field.
  *
  * @remarks
  * Use this overload when the `Handoff<S>` type is preserved across the
- * boundary (e.g. strongly-typed `postMessage` payloads).
+ * boundary (e.g. strongly-typed `postMessage` payloads in same-process checks).
  */
 export function receiveHandoff<S extends SpecInput>(
   handoff: Handoff<S>,
@@ -207,15 +282,15 @@ export function receiveHandoff<S extends SpecInput>(
  *
  * @throws {@link import('../errors').SeqlokError}
  * Throws one of:
- * - `handoff.invalidArtifact` – wrong shape, missing plan, or invalid SAB.
+ * - `handoff.invalidArtifact` – wrong shape, missing plan, or invalid backing.
  * - `handoff.versionMismatch` – unsupported `version` field.
  *
  * @remarks
  * Use this overload when the inbound value is `unknown` or not statically
  * typed as `Handoff<S>`. The resulting plan is still structurally validated
- * but typed as `Plan<SpecInput>`.
+ * but typed as `Plan<SpecInput>`. This is the standard entry point for workers.
  */
-export function receiveHandoff(handoff: unknown): ReceivedHandoff<SpecInput>;
+export function receiveHandoff(handoff: unknown): ReceivedHandoff;
 
 /**
  * Runtime implementation for both `receiveHandoff` overloads.
@@ -237,6 +312,7 @@ export function receiveHandoff<S extends SpecInput>(
     version?: unknown;
     packing?: unknown;
     sab?: unknown;
+    planes?: unknown;
     plan?: unknown;
   };
 
@@ -249,14 +325,6 @@ export function receiveHandoff<S extends SpecInput>(
     });
   }
 
-  // Validate packing strategy
-  if (hx.packing !== 'shared') {
-    throw createError('handoff.invalidArtifact', 'Unsupported handoff packing', {
-      where: 'handoff.receiveHandoff',
-      detail: `packing=${String(hx.packing)}`,
-    });
-  }
-
   // Validate plan structure (this is our metadata source)
   if (!isPlanLike<S>(hx.plan)) {
     throw createError('handoff.invalidArtifact', 'Missing or invalid plan in handoff', {
@@ -265,74 +333,76 @@ export function receiveHandoff<S extends SpecInput>(
     });
   }
 
-  // Validate SAB backing
-  if (!isSharedArrayBuffer(hx.sab)) {
-    throw createError(
-      'handoff.invalidArtifact',
-      'Handoff buffer is not SharedArrayBuffer',
-      {
-        where: 'handoff.receiveHandoff',
-        detail: 'sab',
-      },
-    );
+  const plan = hx.plan;
+
+  if (hx.packing === 'shared') {
+    if (!isSharedArrayBuffer(hx.sab)) {
+      throw createError(
+        'handoff.invalidArtifact',
+        'Handoff buffer is not SharedArrayBuffer',
+        {
+          where: 'handoff.receiveHandoff',
+          detail: 'sab',
+        },
+      );
+    }
+
+    return {
+      packing: 'shared',
+      sab: hx.sab,
+      plan,
+    } as ReceivedHandoff<S>;
   }
 
-  // Return minimal contract: plan + sab (zero duplication)
-  return { sab: hx.sab, plan: hx.plan };
+  if (hx.packing === 'shared-partitioned') {
+    if (!isPlainObject(hx.planes)) {
+      throw createError(
+        'handoff.invalidArtifact',
+        'Handoff planes map must be an object',
+        {
+          where: 'handoff.receiveHandoff',
+          detail: 'planes',
+        },
+      );
+    }
+
+    const planesObject = hx.planes;
+    const planeSabMap: Record<string, SharedArrayBuffer> = {};
+
+    for (const [key, value] of Object.entries(planesObject)) {
+      if (!isSharedArrayBuffer(value)) {
+        throw createError(
+          'handoff.invalidArtifact',
+          'Plane backing is not a SharedArrayBuffer',
+          {
+            where: 'handoff.receiveHandoff',
+            detail: `plane=${key}`,
+          },
+        );
+      }
+
+      planeSabMap[key] = value;
+    }
+
+    return {
+      packing: 'shared-partitioned',
+      planes: planeSabMap,
+      plan,
+    } as ReceivedHandoff<S>;
+  }
+
+  throw createError('handoff.invalidArtifact', 'Unsupported handoff packing', {
+    where: 'handoff.receiveHandoff',
+    detail: `packing=${String(hx.packing)}`,
+  });
 }
 
 /**
- * Compute a lightweight diff description for two hash strings.
+ * Compare two plans for compatibility.
  *
- * @param expected - Expected hash string.
- * @param received - Received hash string.
- * @returns Human-readable summary of the first difference.
- *
- * @remarks
- * - If either input is not a string, returns a simple type mismatch summary.
- * - If the strings are identical, returns `"identical"`.
- * - Otherwise, reports the first differing index, length info, and short
- *   previews around the differing region.
- *
- * This is primarily used to enrich error metadata in `verifyHandoff`.
- *
- * @internal
- */
-function computeHashDiff(expected: unknown, received: unknown): string {
-  if (typeof expected !== 'string' || typeof received !== 'string') {
-    return `types differ: expected=${typeof expected}, received=${typeof received}`;
-  }
-  if (expected === received) {
-    return 'identical';
-  }
-
-  const maxPreview = 16;
-  const minLen = Math.min(expected.length, received.length);
-
-  let i = 0;
-  while (i < minLen && expected[i] === received[i]) {
-    i++;
-  }
-
-  const prefixStart = Math.max(0, i - 8);
-  const prefix = expected.slice(prefixStart, i);
-  const expPreview = expected.slice(i, i + maxPreview);
-  const recPreview = received.slice(i, i + maxPreview);
-
-  const lenInfo =
-    expected.length === received.length
-      ? `same length ${String(expected.length)}`
-      : `expected length ${String(expected.length)}, received length ${String(received.length)}`;
-
-  return `first diff at index ${String(i)} (${lenInfo}); context="${prefix}" expected="${expPreview}" received="${recPreview}"`;
-}
-
-/**
- * Optional verification that two plans match (hash + bytesTotal).
- *
- * @typeParam S - Spec type for both plans.
- * @param localPlan - Local plan (e.g. from `planLayout(spec)` on this side).
- * @param remotePlan - Plan extracted from a received handoff.
+ * @typeParam S - Spec type (inferred from `localPlan`).
+ * @param localPlan - Locally computed plan.
+ * @param remotePlan - Plan received from a remote handoff.
  *
  * @throws {@link import('../errors').SeqlokError}
  * Throws:
@@ -349,12 +419,12 @@ function computeHashDiff(expected: unknown, received: unknown): string {
  * - or diagnostics tests that must prove spec parity.
  *
  * It does **not** perform any binding or mapping; callers still bind from
- * {@link ReceivedHandoff}, never from `(Plan, SharedBacking)` directly.
+ * {@link ReceivedHandoff}, never from `(Plan, Backing)` directly.
  *
  * @example
  * ```ts
  * // Main thread:
- * const spec = defineSpec(...);
+ * const spec = defineSpec(.);
  * const plan = planLayout(spec);
  * const backing = allocateShared(plan);
  * const handoff = buildHandoff(plan, backing);
@@ -388,4 +458,30 @@ export function verifyHandoff<S extends SpecInput>(
       remote: remotePlan.bytesTotal,
     });
   }
+}
+
+/**
+ * Compute a small diff string between two hash values.
+ *
+ * @remarks
+ * This is for diagnostics only, used in `verifyHandoff` error payloads.
+ *
+ * @internal
+ */
+function computeHashDiff(expected: string, received: string): string {
+  const len = Math.min(expected.length, received.length);
+  let firstDiff = -1;
+
+  for (let i = 0; i < len; i += 1) {
+    if (expected[i] !== received[i]) {
+      firstDiff = i;
+      break;
+    }
+  }
+
+  if (firstDiff === -1 && expected.length === received.length) {
+    return 'no-diff';
+  }
+
+  return `first-diff@${String(firstDiff)}`;
 }

@@ -1,8 +1,11 @@
 /**
- * Spec error codes with navigable descriptors (consolidated).
- * Fewer codes, more structured reasons in the detail payloads.
+ * @fileoverview
+ * Error codes and detail types for spec-time validation.
  *
- * @module errors/codes/spec
+ * @remarks
+ * - Covers invalid spec shapes, enums, ranges, and DSL misuse.
+ * - Emitted by `defineSpec` / spec validators before any plan is built.
+ * - Registered into the global error registry as the `spec.*` domain.
  */
 
 import type { EnumDetails, RangeDetails } from '../details';
@@ -122,4 +125,5 @@ type _VerifySpecCodes = SpecErrorCode extends _CodesFromDescriptors
     ? true
     : never
   : never;
-export const _specCodesMatch: _VerifySpecCodes = true;
+const _specCodesMatch: _VerifySpecCodes = true;
+void _specCodesMatch;

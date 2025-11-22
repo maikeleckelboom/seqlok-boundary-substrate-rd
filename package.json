@@ -1,6 +1,7 @@
 {
   "name": "seqlok",
   "type": "module",
+  "version": "0.0.0",
   "private": true,
   "devDependencies": {
     "@commitlint/cli": "catalog:",
@@ -17,8 +18,7 @@
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:",
-    "vitepress": "catalog:"
+    "vitest": "catalog:"
   },
   "scripts": {
     "format": "prettier --write packages/**/* examples/**/*",
@@ -27,17 +27,16 @@
     "purge": "pnpm run clean && rimraf node_modules packages/**/node_modules",
     "build": "pnpm -w run clean && pnpm -w -r -F \"@seqlok/*\" run build",
     "lint": "pnpm -w -r -F \"@seqlok/*\" run lint",
-    "lint:fix": "pnpm -w -r -F \"@seqlok/*\" run lint --fix",
+    "lint:fix": "pnpm -w -r -F \"@seqlok/*\" run lint:fix",
     "test": "pnpm -w -F \"@seqlok/core\" run test",
     "bench": "pnpm -w -F \"@seqlok/core\" run bench",
     "test:types": "pnpm -w -F \"@seqlok/core\" run test:types",
     "test:watch": "pnpm run test --watch",
     "test:cov": "pnpm -w -F \"@seqlok/core\" run test:cov",
-    "commitlint": "commitlint --color",
-    "example:01": "pnpm --filter @seqlok/core build && pnpm --filter ./examples/01-example dev"
+    "commitlint": "commitlint --color"
   },
   "simple-git-hooks": {
     "commit-msg": "pnpm commitlint --edit $1"
   },
-  "packageManager": "pnpm@10.22.0"
+  "packageManager": "pnpm@10.23.0"
 }

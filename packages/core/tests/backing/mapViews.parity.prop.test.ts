@@ -9,19 +9,24 @@ import { specFromPlaneBytes } from '../helpers/spec-from-bytes';
 import type { SharedBacking } from '../../src/backing/types';
 import type { PlaneByteLengths } from '../../src/plan/types';
 
-const B4 = 4;
-const B8 = 8;
+const BYTES_F32 = 4;
+const BYTES_F64 = 8;
 
+/**
+ * Generates arbitrary valid plane byte length configurations.
+ * Ensures alignment constraints (multiples of 4 or 8) are met and that
+ * the resulting specification is not completely empty.
+ */
 function arbPlaneBytes(): fc.Arbitrary<PlaneByteLengths> {
-  const mul4 = fc.integer({ min: 0, max: 256 }).map((n) => n * B4);
-  const mul8 = fc.integer({ min: 0, max: 128 }).map((n) => n * B8);
-  const anyB = fc.integer({ min: 0, max: 512 });
+  const mul4 = fc.integer({ min: 0, max: 256 }).map((n) => n * BYTES_F32);
+  const mul8 = fc.integer({ min: 0, max: 128 }).map((n) => n * BYTES_F64);
+  const anyByte = fc.integer({ min: 0, max: 512 });
 
   return fc
     .record<PlaneByteLengths>({
       PF32: mul4,
       PI32: mul4,
-      PB: anyB,
+      PB: anyByte,
       PU: mul4,
       MF32: mul4,
       MF64: mul8,
@@ -31,30 +36,53 @@ function arbPlaneBytes(): fc.Arbitrary<PlaneByteLengths> {
     .filter((b) => b.PF32 + b.PI32 + b.MF32 + b.MF64 > 0);
 }
 
-describe('mapViews parity (contiguous vs split) — properties', () => {
-  it('mapped views reflect identical lengths/byteLengths across backings', () => {
+describe('Map Views: Parity & Consistency (Property-Based)', () => {
+  it('ensures mapped view byte lengths are identical across contiguous and partitioned backings', () => {
     fc.assert(
       fc.property(arbPlaneBytes(), (req) => {
         const plan = planLayout(specFromPlaneBytes(req));
-        const cont: SharedBacking = {
+
+        // Strategy A: Contiguous SharedArrayBuffer
+        const contiguousBacking: SharedBacking = {
           kind: 'shared',
           sab: new SharedArrayBuffer(plan.bytesTotal),
         };
-        const split = allocateSharedPartitioned(plan);
 
-        const vc = mapViews(plan, cont);
-        const vs = mapViews(plan, split);
+        // Strategy B: Partitioned (Split) Backing
+        const partitionedBacking = allocateSharedPartitioned(plan);
 
-        expect(vs.params.PF32.byteLength).toBe(vc.params.PF32.byteLength);
-        expect(vs.params.PI32.byteLength).toBe(vc.params.PI32.byteLength);
-        expect(vs.params.PB.byteLength).toBe(vc.params.PB.byteLength);
-        expect(vs.params.PU.byteLength).toBe(vc.params.PU.byteLength);
+        const viewsContiguous = mapViews(plan, contiguousBacking);
+        const viewsPartitioned = mapViews(plan, partitionedBacking);
 
-        expect(vs.meters.MF32.byteLength).toBe(vc.meters.MF32.byteLength);
-        expect(vs.meters.MF64.byteLength).toBe(vc.meters.MF64.byteLength);
-        expect(vs.meters.MU32.byteLength).toBe(vc.meters.MU32.byteLength);
+        // Parameter Views
+        expect(viewsPartitioned.params.PF32.byteLength).toBe(
+          viewsContiguous.params.PF32.byteLength,
+        );
+        expect(viewsPartitioned.params.PI32.byteLength).toBe(
+          viewsContiguous.params.PI32.byteLength,
+        );
+        expect(viewsPartitioned.params.PB.byteLength).toBe(
+          viewsContiguous.params.PB.byteLength,
+        );
+        expect(viewsPartitioned.params.PU.byteLength).toBe(
+          viewsContiguous.params.PU.byteLength,
+        );
 
-        expect(vs.locks.MU.byteLength).toBe(vc.locks.MU.byteLength);
+        // Meter Views
+        expect(viewsPartitioned.meters.MF32.byteLength).toBe(
+          viewsContiguous.meters.MF32.byteLength,
+        );
+        expect(viewsPartitioned.meters.MF64.byteLength).toBe(
+          viewsContiguous.meters.MF64.byteLength,
+        );
+        expect(viewsPartitioned.meters.MU32.byteLength).toBe(
+          viewsContiguous.meters.MU32.byteLength,
+        );
+
+        // Lock Views
+        expect(viewsPartitioned.locks.MU.byteLength).toBe(
+          viewsContiguous.locks.MU.byteLength,
+        );
       }),
     );
   });

@@ -1,4 +1,12 @@
-// packages/core/src/errors/codes/primitives.ts
+/**
+ * @fileoverview
+ * Error codes and detail types for primitive-level failures.
+ *
+ * @remarks
+ * - Covers seqlock, SWSR ring, atomics, and plane primitive issues.
+ * - Used by low-level concurrency and memory primitives in `primitives/*`.
+ * - Registered into the global error registry as the `primitives.*` domain.
+ */
 
 import type { ErrorDetails, ErrorMeta } from '../registry';
 

@@ -4,17 +4,25 @@ import { allocateShared, planLayout } from '../../src';
 
 import type { SpecInput } from '../../src/spec/types';
 
+/**
+ * Helper to construct a specification with explicit byte-size targets for
+ * boolean (PB) and float32 (PF32) planes to test allocation sizing.
+ */
 function makeSpec(bytesPB: number, bytesPF32: number): SpecInput {
   return {
     id: 'demo',
     params: {
       flags: { kind: 'bool.array', length: bytesPB },
+      // Calculate array length to match requested byte count (f32 = 4 bytes)
       table: { kind: 'f32.array', length: Math.ceil(bytesPF32 / 4) },
     },
-    meters: {},
   };
 }
 
+/**
+ * Validates that the allocated SharedArrayBuffer exactly matches the
+ * byte size calculated by the layout planner.
+ */
 function expectBackingMatchesPlan(spec: SpecInput) {
   const plan = planLayout(spec);
   const backing = allocateShared(plan);
@@ -26,17 +34,17 @@ function expectBackingMatchesPlan(spec: SpecInput) {
   return { plan, backing };
 }
 
-describe('allocateShared (contiguous plan)', () => {
-  it('allocates a SAB whose byteLength equals plan.bytesTotal (small spec)', () => {
+describe('Allocate Shared (Contiguous Layout)', () => {
+  it('allocates a SAB matching the plan total exactly (small spec)', () => {
     expectBackingMatchesPlan(makeSpec(4, 4));
   });
 
-  it('handles non-zero planes and preserves exact total bytes', () => {
-    // 7 bools in PB, 64 bytes worth of f32 entries in PF32
+  it('handles irregular non-zero plane sizes while preserving exact total bytes', () => {
+    // 7 bytes for bools, 64 bytes for f32
     expectBackingMatchesPlan(makeSpec(7, 64));
   });
 
-  it('works at larger sizes (sanity at multiple pages total)', () => {
+  it('allocates correctly at larger sizes (multi-page sanity check)', () => {
     expectBackingMatchesPlan(makeSpec(32 * 1024, 128 * 1024));
   });
 

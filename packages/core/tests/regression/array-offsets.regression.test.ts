@@ -3,21 +3,28 @@ import { describe, expect, it } from 'vitest';
 import { defineSpec } from '../../src';
 import { bindingsFromSpec } from '../helpers/binding';
 
-describe('array offsets: regression tests', () => {
-  it('correctly reads multiple array params with non-zero offsets', () => {
+// This test ensures consistent memory layout for array parameters
+// DO NOT DELETE - this is a critical regression test for memory layout stability
+describe('Regression: Array offsets layout (do not delete)', () => {
+  it('correctly reads multiple Float32 arrays when interleaved with scalars', () => {
     const spec = defineSpec(({ param }) => ({
       id: 'multi-array-offset',
       params: {
-        a: param.f32({ min: 0, max: 1 }), // 1 elem @ offset 0
-        b: param.f32.array(4), // 4 elems @ offset 4
-        c: param.f32({ min: 0, max: 1 }), // 1 elem @ offset 20
-        d: param.f32.array(8), // 8 elems @ offset 24
+        // Layout strategy:
+        // a: scalar (offset 0)
+        // b: array[4] (offset 4)
+        // c: scalar (offset 20)
+        // d: array[8] (offset 24)
+        a: param.f32({ min: 0, max: 1 }),
+        b: param.f32.array(4),
+        c: param.f32({ min: 0, max: 1 }),
+        d: param.f32.array(8),
       },
     }));
 
     const { ctl, proc } = bindingsFromSpec(spec);
 
-    // Write distinct values
+    // Write distinct values to all fields
     ctl.params.set('a', 0.1);
     ctl.params.stage('b', (v) => {
       for (let i = 0; i < v.length; i++) {
@@ -31,7 +38,7 @@ describe('array offsets: regression tests', () => {
       }
     });
 
-    // Verify lengths and values in processor
+    // Verify values via Processor view (direct shared memory access)
     proc.params.within((view) => {
       expect(view.b.length).toBe(4);
       expect(view.d.length).toBe(8);
@@ -44,7 +51,7 @@ describe('array offsets: regression tests', () => {
       expect(view.d[7]).toBeCloseTo(0.47);
     });
 
-    // Verify controller snapshots
+    // Verify values via Controller snapshot (copy out)
     const snap = ctl.params.snapshot();
     expect(snap.b.length).toBe(4);
     expect(snap.d.length).toBe(8);
@@ -56,14 +63,17 @@ describe('array offsets: regression tests', () => {
     expect(snap.d[7]).toBeCloseTo(0.47);
   });
 
-  it('correctly reads i32 and bool arrays with non-zero offsets', () => {
+  it('resolves offsets correctly for mixed Int32 and Boolean arrays', () => {
     const spec = defineSpec(({ param }) => ({
       id: 'mixed-array-offset',
       params: {
-        gain: param.f32({ min: 0, max: 1 }), // f32 scalar @ PF32 offset 0
-        indices: param.i32.array(6), // i32 array @ PI32 offset 0
-        mode: param.i32({ min: 0, max: 10 }), // i32 scalar @ PI32 offset 24
-        flags: param.bool.array(10), // bool array @ PB offset 0
+        // PF32 Plane
+        gain: param.f32({ min: 0, max: 1 }),
+        // PI32 Plane
+        indices: param.i32.array(6), // offset 0
+        mode: param.i32({ min: 0, max: 10 }), // offset 24 (6 * 4)
+        // PB Plane
+        flags: param.bool.array(10),
       },
     }));
 
@@ -83,11 +93,15 @@ describe('array offsets: regression tests', () => {
     });
 
     proc.params.within((view) => {
+      // Verify array lengths
       expect(view.indices.length).toBe(6);
       expect(view.flags.length).toBe(10);
 
+      // Verify scalars
       expect(view.gain).toBeCloseTo(0.5);
       expect(view.mode).toBe(7);
+
+      // Verify array contents at boundaries
       expect(view.indices[0]).toBe(0);
       expect(view.indices[5]).toBe(50);
       expect(view.flags[0]).toBe(0);
@@ -96,17 +110,17 @@ describe('array offsets: regression tests', () => {
     });
   });
 
-  it('correctly publishes and reads meter arrays with non-zero offsets', () => {
+  it('publishes and snapshots meter arrays correctly with mixed scalar/array layout', () => {
     const spec = defineSpec(({ param, meter }) => ({
       id: 'meter-array-offset',
       params: {
         gain: param.f32({ min: 0, max: 1 }),
       },
       meters: {
-        rms: meter.f32(), // scalar @ offset 0
-        spectrum: meter.f32.array(16), // array @ offset 4
-        peak: meter.f32(), // scalar @ offset 68
-        histogram: meter.f32.array(8), // array @ offset 72
+        rms: meter.f32(), // Offset 0
+        spectrum: meter.f32.array(16), // Offset 4
+        peak: meter.f32(), // Offset 68
+        histogram: meter.f32.array(8), // Offset 72
       },
     }));
 
@@ -138,7 +152,7 @@ describe('array offsets: regression tests', () => {
     expect(snap.histogram[7]).toBeCloseTo(0.8);
   });
 
-  it('fills into buffers correctly for arrays with non-zero offsets', () => {
+  it('writes into user-provided buffers correctly during snapshot (identity & offset check)', () => {
     const spec = defineSpec(({ param }) => ({
       id: 'into-buffer-offset',
       params: {
@@ -164,28 +178,28 @@ describe('array offsets: regression tests', () => {
 
     const snap = ctl.params.snapshot({ keys: ['arr1', 'arr2'], into });
 
-    // Verify identity (into buffers are returned)
+    // Verify identity (the function must use the provided buffers)
     expect(snap.arr1).toBe(into.arr1);
     expect(snap.arr2).toBe(into.arr2);
 
-    // Verify correct lengths
+    // Verify correct dimensions
     expect(snap.arr1.length).toBe(4);
     expect(snap.arr2.length).toBe(8);
 
-    // Verify values
+    // Verify content correctness
     expect(snap.arr1.every((v) => v === 1.0)).toBe(true);
     expect(snap.arr2.every((v) => v === 2.0)).toBe(true);
   });
 
-  it('handles arrays with large byte offsets correctly', () => {
+  it('handles arrays positioned at large byte offsets correctly', () => {
     const spec = defineSpec(({ param }) => ({
       id: 'large-offset',
       params: {
-        // Create many params to push "late" to a high offset
+        // Create padding to push "late" array to a high offset
         early1: param.f32.array(100),
         early2: param.f32.array(100),
         early3: param.f32.array(100),
-        late: param.f32.array(50), // offset will be 1200 bytes
+        late: param.f32.array(50), // Offset will be ~1200 bytes
       },
     }));
 
@@ -209,11 +223,13 @@ describe('array offsets: regression tests', () => {
     expect(snap.late[49]).toBe(49);
   });
 
-  it('correctly handles enum arrays with non-zero offsets', () => {
+  it('maps enum arrays to numeric indices correctly at non-zero offsets', () => {
     const spec = defineSpec(({ param }) => ({
       id: 'enum-array-offset',
       params: {
-        mode: param.f32({ min: 0, max: 1 }), // push enum array to non-zero offset
+        // Offset padding
+        mode: param.f32({ min: 0, max: 1 }),
+        // Enum array at non-zero offset
         waveforms: param.enum.array({
           values: ['sine', 'square', 'saw', 'triangle'],
           length: 8,
@@ -223,36 +239,36 @@ describe('array offsets: regression tests', () => {
 
     const { ctl, proc } = bindingsFromSpec(spec);
 
-    // Stage enum array via controller (indices)
+    // Stage indices via controller
     ctl.params.stage('waveforms', (v) => {
       for (let i = 0; i < v.length; i++) {
-        v[i] = i % 4; // cycle through enum indices
+        v[i] = i % 4;
       }
     });
 
-    // Processor sees numeric indices in its view
+    // Processor sees raw numeric indices in the view
     proc.params.within((view) => {
       expect(view.waveforms.length).toBe(8);
       expect(view.waveforms[0]).toBe(0);
       expect(view.waveforms[3]).toBe(3);
     });
 
-    // Controller snapshot returns index array view
+    // Controller snapshot returns the index array
     const snap = ctl.params.snapshot();
     expect(snap.waveforms.length).toBe(8);
     expect(snap.waveforms[0]).toBe(0);
     expect(snap.waveforms[3]).toBe(3);
   });
 
-  it('correctly handles f64 meter arrays with non-zero offsets', () => {
+  it('manages 64-bit alignment and offsets for Float64 meter arrays', () => {
     const spec = defineSpec(({ meter }) => ({
       id: 'f64-array-offset',
       meters: {
-        counter: meter.u32(), // MU32 scalar, pushes MF64 to offset 0
-        rms: meter.f32(), // MF32 scalar @ offset 0
-        precise: meter.f64.array(10), // MF64 array @ offset 0
-        peak: meter.f32(), // MF32 scalar @ offset 4
-        spectrum: meter.f64.array(16), // MF64 array @ offset 80
+        counter: meter.u32(), // Pushes MF64 plane start
+        rms: meter.f32(), // MF32 @ 0
+        precise: meter.f64.array(10), // MF64 @ 0
+        peak: meter.f32(), // MF32 @ 4
+        spectrum: meter.f64.array(16), // MF64 @ 80
       },
     }));
 
@@ -277,16 +293,19 @@ describe('array offsets: regression tests', () => {
     const snap = ctl.meters.snapshot();
     expect(snap.counter).toBe(42);
     expect(snap.rms).toBe(0.5);
+
     expect(snap.precise.length).toBe(10);
     expect(snap.precise[0]).toBe(0);
     expect(snap.precise[9]).toBeCloseTo(0.9);
+
     expect(snap.peak).toBeCloseTo(0.9);
+
     expect(snap.spectrum.length).toBe(16);
     expect(snap.spectrum[0]).toBeCloseTo(Math.sin(0));
     expect(snap.spectrum[15]).toBeCloseTo(Math.sin(15));
   });
 
-  it('preserves array values across multiple write/read cycles', () => {
+  it('maintains data integrity for arrays across multiple write/read cycles', () => {
     const spec = defineSpec(({ param }) => ({
       id: 'multi-cycle',
       params: {
@@ -299,7 +318,7 @@ describe('array offsets: regression tests', () => {
 
     const { ctl, proc } = bindingsFromSpec(spec);
 
-    // Cycle 1
+    // Cycle 1: Uniform fill
     ctl.params.stage('b', (v) => {
       v.fill(1.0);
     });
@@ -314,7 +333,7 @@ describe('array offsets: regression tests', () => {
       expect(view.d.every((x) => x === 2.0)).toBe(true);
     });
 
-    // Cycle 2 - different values
+    // Cycle 2: Gradient fill (different values)
     ctl.params.stage('b', (v) => {
       for (let i = 0; i < v.length; i++) {
         v[i] = i * 0.1;
@@ -336,7 +355,7 @@ describe('array offsets: regression tests', () => {
     });
   });
 
-  it('handles partial snapshot with into for non-zero offset arrays', () => {
+  it('supports partial snapshots with "into" buffers for offset arrays', () => {
     const spec = defineSpec(({ param }) => ({
       id: 'partial-into',
       params: {

@@ -1,13 +1,16 @@
 import { describe, it, expectTypeOf } from 'vitest';
 
 import type { SpecInput } from '../../src/spec/types';
-import type { MeterValueFor, ParamValueFor } from 'packages/core/src/binding/types';
+import type {
+  MeterValueFor,
+  ParamValueFor,
+} from 'packages/core/src/binding/common/types';
 
 type F32RO = Readonly<Float32Array>;
 type I32RO = Readonly<Int32Array>;
 type U8RO = Readonly<Uint8Array>;
 
-describe('param shapes (via ParamValueFor)', () => {
+describe('Param Shapes via ParamValueFor', () => {
   it('bool → boolean', () => {
     interface S extends SpecInput {
       id: 'x';
@@ -40,7 +43,7 @@ describe('param shapes (via ParamValueFor)', () => {
   });
 });
 
-describe('meter shapes (via MeterValueFor)', () => {
+describe('Meter Shapes via MeterValueFor', () => {
   it('scalar + array', () => {
     interface S extends SpecInput {
       id: 'x';

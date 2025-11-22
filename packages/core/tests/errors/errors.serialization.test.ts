@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 import { createError, isSeqlokError, type SeqlokError } from '../../src/errors/error';
 
-describe('errors/error – toJSON + type guard coverage', () => {
-  it('serializes to a stable minimal JSON shape and omits details/cause', () => {
+describe('SeqlokError: Serialization & Type Identity', () => {
+  it('serializes to a minimal, stable JSON structure omitting sensitive details and causes', () => {
     const err = createError('backing.wasmMemoryNotShared', 'wrapped', {
       detail: 'WebAssembly.Memory.buffer is not SharedArrayBuffer',
       plane: 'wasm',
@@ -12,12 +12,16 @@ describe('errors/error – toJSON + type guard coverage', () => {
 
     expect(isSeqlokError(err)).toBe(true);
 
+    // Simulate the serialization/deserialization cycle
     const json = JSON.parse(JSON.stringify(err)) as ReturnType<SeqlokError['toJSON']>;
 
+    // Verify core identity fields
     expect(json.name).toBe('SeqlokError');
     expect(json.code).toBe('backing.wasmMemoryNotShared');
     expect(typeof json.message).toBe('string');
 
+    // Ensure structural strictness: Only safe, standard fields should remain.
+    // Internal details and nested causes are stripped to prevent leakages in logs.
     const keys = Object.keys(json).sort();
     expect(keys).toEqual(['code', 'message', 'name']);
 
@@ -25,26 +29,28 @@ describe('errors/error – toJSON + type guard coverage', () => {
     expect('cause' in json).toBe(false);
   });
 
-  it('isSeqlokError only accepts branded SeqlokError-like objects (by name)', () => {
+  it('correctly distinguishes SeqlokError instances from generic errors and plain objects', () => {
     const seqlokErr = createError('env.unsupported', 'Feature unavailable', {
       feature: 'SharedArrayBuffer',
       reason: 'Missing COOP/COEP',
     });
 
+    // Positive validation
     expect(isSeqlokError(seqlokErr)).toBe(true);
 
-    const foreign1 = new Error('nope');
-    const foreign2 = {
-      name: 'Error',
+    // Negative validation cases
+    const genericError = new Error('Standard JS Error');
+    const mimickedShape = {
+      name: 'Error', // Fails branding check
       message: 'nope',
       code: 'env.unsupported',
-    } as unknown;
-    const foreign3 = null as unknown;
-    const foreign4 = 42 as unknown;
+    };
+    const nullValue = null;
+    const primitiveValue = 42;
 
-    expect(isSeqlokError(foreign1)).toBe(false);
-    expect(isSeqlokError(foreign2)).toBe(false);
-    expect(isSeqlokError(foreign3)).toBe(false);
-    expect(isSeqlokError(foreign4)).toBe(false);
+    expect(isSeqlokError(genericError)).toBe(false);
+    expect(isSeqlokError(mimickedShape)).toBe(false);
+    expect(isSeqlokError(nullValue)).toBe(false);
+    expect(isSeqlokError(primitiveValue)).toBe(false);
   });
 });

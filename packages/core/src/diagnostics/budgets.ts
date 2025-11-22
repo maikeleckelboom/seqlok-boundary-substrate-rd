@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Diagnostics budget management and validation.
+ *
+ * @remarks
+ * - Defines resource budgets for diagnostics operations.
+ * - Provides validation and creation of budget configurations.
+ * - Ensures safe defaults for diagnostic operations.
+ */
+
 import { createError } from '../errors/error';
 
 import type { DiagnosticsCounterDetails } from '../errors/codes/diagnostics';

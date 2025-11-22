@@ -1,15 +1,25 @@
+/**
+ * @fileoverview
+ * Snapshot utilities for controller bindings.
+ *
+ * @remarks
+ * - Implements zero-copy `into` pattern for efficient param/meter reads.
+ * - Handles type-safe conversion from raw memory to public JS values.
+ * - Provides both full and partial snapshot capabilities.
+ */
+
+import { createError } from '../../errors/error';
 import {
   assertMeterInto,
   assertParamInto,
   throwUnknownKey,
   type MeterPlane,
   type ParamPlane,
-} from './validate';
-import { createError } from '../errors/error';
+} from '../common/validate';
 
-import type { ControllerMeters, ControllerParams } from './types';
-import type { MeterPlaneViews, ParamPlaneViews } from '../backing/map-views';
-import type { ParamDef, SpecInput } from '../spec/types';
+import type { MeterPlaneViews, ParamPlaneViews } from '../../backing/map-views';
+import type { ParamDef, SpecInput } from '../../spec/types';
+import type { ControllerMeters, ControllerParams } from '../common/types';
 
 type SnapshotParamSlot = Readonly<{
   plane: ParamPlane;
