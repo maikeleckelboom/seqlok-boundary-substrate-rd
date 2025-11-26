@@ -1,5 +1,5 @@
 /**
- * @file Vitest configuration for @seqlok/host.
+ * @file Vitest configuration for @seqlok/integration.
  */
 
 import { defineConfig } from "vitest/config";

@@ -1,5 +1,5 @@
 /**
- * @file ESLint configuration for @seqlok/host (topology & host wiring).
+ * @file ESLint configuration for @seqlok/integration (topology & integration wiring).
  * @license MIT
  */
 
@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { createPackageEslintConfig } from "../../scripts/eslint/eslint.base.config.js";
 
 /**
- * Directory of the @seqlok/host package.
+ * Directory of the @seqlok/integration package.
  * @type {string}
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -46,12 +46,12 @@ const paths = {
 };
 
 /**
- * Flat ESLint configuration for @seqlok/host.
+ * Flat ESLint configuration for @seqlok/integration.
  *
  * @type {import("typescript-eslint").ConfigArray}
  */
 export default createPackageEslintConfig({
-  name: "seqlok/host",
+  name: "seqlok/integration",
   tsconfigRootDir: HERE,
   tsconfigProjects: ["./tsconfig.eslint.json"],
   src: paths.src,

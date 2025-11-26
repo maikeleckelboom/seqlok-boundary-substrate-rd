@@ -4,9 +4,9 @@
   "description": "Diagnostics, counters, and environment checks for Seqlok.",
   "license": "MIT",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -34,10 +34,15 @@
     "bench": "vitest bench --reporter=verbose --run"
   },
   "dependencies": {
-    "@seqlok/foundation": "workspace:*"
+    "@seqlok/foundation": "workspace:*",
+    "@seqlok/primitives": "workspace:*",
+    "@seqlok/core": "workspace:*",
+    "@seqlok/commands": "workspace:*",
+    "@seqlok/hotswap": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
     "eslint-import-resolver-typescript": "catalog:",
     "eslint-plugin-import": "catalog:",
@@ -47,7 +52,6 @@
     "rimraf": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
-    "vitest": "catalog:",
-    "@vitest/coverage-v8": "catalog:"
+    "vitest": "catalog:"
   }
 }

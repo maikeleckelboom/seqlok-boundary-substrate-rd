@@ -4,7 +4,7 @@ import foundationConfig from "./packages/foundation/eslint.config.js";
 import primitivesConfig from "./packages/primitives/eslint.config.js";
 import diagnosticsConfig from "./packages/diagnostics/eslint.config.js";
 import commandsConfig from "./packages/commands/eslint.config.js";
-import hostConfig from "./packages/host/eslint.config.js";
+import integrationConfig from "./packages/integration/eslint.config.js";
 
 function prefixPackage(blocks, pkgRoot) {
   return blocks.map((block) => {
@@ -28,5 +28,5 @@ export default [
   ...prefixPackage(primitivesConfig, "packages/primitives"),
   ...prefixPackage(diagnosticsConfig, "packages/diagnostics"),
   ...prefixPackage(commandsConfig, "packages/commands"),
-  ...prefixPackage(hostConfig, "packages/host"),
+  ...prefixPackage(integrationConfig, "packages/integration"),
 ];

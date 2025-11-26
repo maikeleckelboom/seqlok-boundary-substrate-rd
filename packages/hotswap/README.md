@@ -184,7 +184,7 @@ const slot: EngineSlot = {
   swapState: null,
 };
 
-// Called on the audio thread when host has staged a new engine:
+// Called on the audio thread when integration has staged a new engine:
 function beginSwap(
   engineKind: EngineKind,
   newEngine: EngineHandle,
@@ -241,7 +241,7 @@ function processBlock(output: Float32Array[], blockFrames: number): void {
 
     case "runBothForCrossfade": {
       if (!next) {
-        // Should not happen if host respected the contract.
+        // Should not happen if integration respected the contract.
         processEngine(current, output, blockFrames);
         break;
       }

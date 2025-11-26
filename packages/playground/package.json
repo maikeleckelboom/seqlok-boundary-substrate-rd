@@ -18,12 +18,17 @@
     "test:types": "tsc -b --noEmit --pretty"
   },
   "dependencies": {
+    "@seqlok/foundation": "workspace:*",
+    "@seqlok/primitives": "workspace:*",
     "@seqlok/core": "workspace:*",
+    "@seqlok/commands": "workspace:*",
     "@seqlok/hotswap": "workspace:*",
-    "@seqlok/host": "workspace:*"
+    "@seqlok/integration": "workspace:*",
+    "@seqlok/diagnostics": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
     "eslint-import-resolver-typescript": "catalog:",
     "eslint-plugin-import": "catalog:",
@@ -34,7 +39,6 @@
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
     "vitest": "catalog:",
-    "@vitest/coverage-v8": "catalog:",
     "@vitejs/plugin-vue": "^6.0.2"
   }
 }

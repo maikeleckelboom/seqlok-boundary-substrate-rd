@@ -1,12 +1,12 @@
 {
-  "name": "@seqlok/host",
+  "name": "@seqlok/integration",
   "version": "0.3.0-next.0",
-  "description": "Host/integration wiring on top of Seqlok core, commands, and hotswap.",
+  "description": "Integration wiring on top of Seqlok core, commands, and hotswap.",
   "license": "MIT",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -36,13 +36,13 @@
   "dependencies": {
     "@seqlok/foundation": "workspace:*",
     "@seqlok/primitives": "workspace:*",
-    "@seqlok/diagnostics": "workspace:*",
     "@seqlok/core": "workspace:*",
     "@seqlok/commands": "workspace:*",
     "@seqlok/hotswap": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
     "eslint-import-resolver-typescript": "catalog:",
     "eslint-plugin-import": "catalog:",
@@ -52,7 +52,6 @@
     "rimraf": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
-    "vitest": "catalog:",
-    "@vitest/coverage-v8": "catalog:"
+    "vitest": "catalog:"
   }
 }

@@ -1,10 +1,12 @@
 {
   "name": "@seqlok/hotswap",
   "version": "0.1.0",
+  "description": "Engine lifecycle and hot-swap protocol on top of Seqlok.",
+  "license": "MIT",
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -13,6 +15,11 @@
     },
     "./package.json": "./package.json"
   },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json",
     "test": "vitest run",
@@ -23,6 +30,12 @@
     "clean": "rimraf dist .eslintcache node_modules/.vite node_modules/.cache pnpm-debug.log",
     "test:types": "tsc -b --noEmit --pretty",
     "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@seqlok/foundation": "workspace:*",
+    "@seqlok/primitives": "workspace:*",
+    "@seqlok/core": "workspace:*",
+    "@seqlok/commands": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

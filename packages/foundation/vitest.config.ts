@@ -1,7 +1,3 @@
-/**
- * @file Vitest configuration for @seqlok/commands.
- */
-
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
