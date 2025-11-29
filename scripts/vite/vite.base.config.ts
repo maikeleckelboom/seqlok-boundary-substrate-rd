@@ -1,33 +1,53 @@
-import { defineConfig, type UserConfig } from "vite";
-import { fileURLToPath } from "node:url";
-import { dirname, resolve } from "node:path";
+import type { UserConfig } from "vite";
+import { createSeqlokWorkspaceAliases } from "./workspace-aliases";
 
-export type ViteLibConfigOptions = {
-  entryRelative: string;
-};
+export interface ViteLibConfigOptions {
+  readonly entryRelative: string;
+}
 
+/**
+ * Shared Vite library config for Seqlok packages.
+ *
+ * - Uses workspace aliases resolved via the workspace sentinel
+ * - Emits a single ES module bundle to `dist/index.js`
+ */
 export function createLibraryViteConfig(
-  importMetaUrl: string,
-  { entryRelative }: ViteLibConfigOptions,
+  options: ViteLibConfigOptions,
 ): UserConfig {
-  const pkgRoot = dirname(fileURLToPath(importMetaUrl));
+  const { entryRelative } = options;
 
-  return defineConfig({
+  const aliases = createSeqlokWorkspaceAliases();
+
+  return {
+    resolve: {
+      alias: aliases,
+    },
+    define: {
+      __SEQLOK_DEV_ASSERTS__: "true",
+    },
     build: {
       lib: {
-        entry: resolve(pkgRoot, entryRelative),
+        entry: {
+          index: entryRelative,
+        },
         formats: ["es"],
-        fileName: () => "index.js",
+        fileName: (_format, entry) => `${entry}.js`,
       },
+      minify: "esbuild",
       sourcemap: true,
-      target: "es2022",
+      outDir: "dist",
+      emptyOutDir: true,
       rollupOptions: {
-        external: (id: string): boolean =>
-          !id.startsWith(".") && !id.startsWith("/"),
+        output: {
+          preserveModules: false,
+        },
       },
     },
-    resolve: {
-      conditions: ["source", "import", "module", "browser", "default"],
+    esbuild: {
+      minifyIdentifiers: true,
+      minifySyntax: true,
+      minifyWhitespace: true,
+      legalComments: "none",
     },
-  });
+  };
 }

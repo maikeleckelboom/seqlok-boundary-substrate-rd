@@ -8,41 +8,72 @@
  * - Registered into the global error registry as the `spec.*` domain.
  */
 
-import type { AssertTrue, IsExact } from "../../internal/type-assert";
-import type { EnumDetails, RangeDetails } from "../details";
-import type { ErrorDetails, ErrorMeta } from "../registry";
+import {
+  buildErrorDomain,
+  type BuiltErrorDomain,
+  DOMAIN_IDS,
+  type DomainRegistry,
+  type ErrorCodeOf,
+  type ErrorDetails,
+  type ErrorKeyOf,
+  type KeyedErrorFactoryOf,
+  type SeqlokError,
+} from "@seqlok/base";
 
-export type SpecErrorCode =
-  | "spec.rangeInvalid"
-  | "spec.enumInvalid"
-  | "spec.arrayInvalid"
-  | "spec.duplicateKey"
-  | "spec.builderInvalid";
-
-export type SpecErrorKey =
-  | "rangeInvalid"
-  | "enumInvalid"
-  | "arrayInvalid"
-  | "duplicateKey"
-  | "builderInvalid";
-
-export interface SpecRangeDetails extends RangeDetails {
-  readonly reason: "inverted" | "nan" | "infinite";
+/**
+ * Details for invalid parameter ranges.
+ *
+ * @remarks
+ * - `reason: "inverted"` means min > max.
+ * - `reason: "nan"` means one or both bounds are NaN.
+ * - `reason: "infinite"` means one or both bounds are infinite.
+ */
+export interface SpecRangeDetails extends ErrorDetails {
+  readonly key: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly received?: number;
 }
 
-export type SpecEnumDetails = EnumDetails;
+/**
+ * Details for invalid enum specifications.
+ */
+export interface SpecEnumDetails extends ErrorDetails {
+  readonly key: string;
+  readonly values: readonly string[];
+  readonly received?: string | number;
+  readonly duplicate?: string;
+  readonly invalidIndex?: number;
+}
 
+/**
+ * Details for invalid array specifications.
+ *
+ * @remarks
+ * - `reason: "nonPositive"` means length <= 0.
+ * - `reason: "fractional"` means length is not an integer.
+ */
 export interface SpecArrayDetails extends ErrorDetails {
   readonly key: string;
   readonly length: number;
   readonly reason: "nonPositive" | "fractional";
 }
 
+/**
+ * Details for duplicate keys in params or meters sections.
+ */
 export interface SpecDuplicateKeyDetails extends ErrorDetails {
   readonly key: string;
   readonly section: "params" | "meters";
 }
 
+/**
+ * Details for high level builder failures.
+ *
+ * @remarks
+ * `planFailed`, `alignmentFailed`, and `overflowRisk` are reserved for cases
+ * where the spec is structurally valid but cannot be turned into a safe plan.
+ */
 export interface SpecBuilderDetails extends ErrorDetails {
   readonly key?: string;
   readonly reason?:
@@ -56,23 +87,16 @@ export interface SpecBuilderDetails extends ErrorDetails {
   readonly maxSafeBytes?: number;
 }
 
-interface ErrorDescriptor<C extends string> {
-  readonly code: C;
-  readonly message: string;
-  readonly meta: ErrorMeta;
+interface SpecDetailsByKey {
+  readonly rangeInvalid: SpecRangeDetails;
+  readonly enumInvalid: SpecEnumDetails;
+  readonly arrayInvalid: SpecArrayDetails;
+  readonly duplicateKey: SpecDuplicateKeyDetails;
+  readonly builderInvalid: SpecBuilderDetails;
 }
 
-interface SpecErrorsMap {
-  rangeInvalid: ErrorDescriptor<"spec.rangeInvalid">;
-  enumInvalid: ErrorDescriptor<"spec.enumInvalid">;
-  arrayInvalid: ErrorDescriptor<"spec.arrayInvalid">;
-  duplicateKey: ErrorDescriptor<"spec.duplicateKey">;
-  builderInvalid: ErrorDescriptor<"spec.builderInvalid">;
-}
-
-const SPEC_ERRORS_DEF = {
+const SPEC_DEFS = {
   rangeInvalid: {
-    code: "spec.rangeInvalid",
     message: "Parameter range invalid",
     meta: {
       severity: "error",
@@ -81,7 +105,6 @@ const SPEC_ERRORS_DEF = {
     },
   },
   enumInvalid: {
-    code: "spec.enumInvalid",
     message: "Enum validation failed",
     meta: {
       severity: "error",
@@ -90,7 +113,6 @@ const SPEC_ERRORS_DEF = {
     },
   },
   arrayInvalid: {
-    code: "spec.arrayInvalid",
     message: "Array definition invalid",
     meta: {
       severity: "error",
@@ -99,7 +121,6 @@ const SPEC_ERRORS_DEF = {
     },
   },
   duplicateKey: {
-    code: "spec.duplicateKey",
     message: "Duplicate key in params or meters",
     meta: {
       severity: "error",
@@ -108,7 +129,6 @@ const SPEC_ERRORS_DEF = {
     },
   },
   builderInvalid: {
-    code: "spec.builderInvalid",
     message: "Spec builder validation failed",
     meta: {
       severity: "error",
@@ -116,12 +136,25 @@ const SPEC_ERRORS_DEF = {
       boundarySafe: false,
     },
   },
-} as const satisfies SpecErrorsMap;
+} as const;
 
-export const SPEC_ERRORS: SpecErrorsMap = SPEC_ERRORS_DEF;
+type SpecDefs = typeof SPEC_DEFS;
 
-type SpecCodesFromDescriptors = SpecErrorsMap[SpecErrorKey]["code"];
-type SpecCodesEqual = IsExact<SpecErrorCode, SpecCodesFromDescriptors>;
+export const SPEC: BuiltErrorDomain<"spec", SpecDefs> = buildErrorDomain(
+  "spec",
+  DOMAIN_IDS.spec,
+  SPEC_DEFS,
+);
 
-/** @internal */
-export type _SpecCodesMatch = AssertTrue<SpecCodesEqual>;
+export type SpecErrorCode = ErrorCodeOf<typeof SPEC>;
+export type SpecErrorKey = ErrorKeyOf<typeof SPEC>;
+export type SpecError = SeqlokError<SpecErrorCode>;
+
+export const SPEC_ERRORS: DomainRegistry<"spec", SpecDefs> = SPEC.registry;
+
+export const createSpecError: KeyedErrorFactoryOf<
+  BuiltErrorDomain<"spec", SpecDefs>,
+  SpecDetailsByKey
+> = SPEC.createError;
+
+export type SpecErrorFactory = typeof createSpecError;

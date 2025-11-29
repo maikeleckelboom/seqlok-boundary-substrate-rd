@@ -1,6 +1,6 @@
-import { defineConfig } from "vite";
+import { defineConfig, type UserConfigFnObject } from "vite";
 
-export default defineConfig(({ mode }) => ({
+const config: UserConfigFnObject = defineConfig(({ mode }) => ({
   define: {
     __SEQLOK_DEV_ASSERTS__: mode === "development" ? "true" : "false",
   },
@@ -29,3 +29,5 @@ export default defineConfig(({ mode }) => ({
     legalComments: "none",
   },
 }));
+
+export default config;

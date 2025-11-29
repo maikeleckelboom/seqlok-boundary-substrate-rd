@@ -61,20 +61,6 @@ export type {
 export { buildHandoff, receiveHandoff, verifyHandoff } from "./handoff/handoff";
 export type { Handoff, HandoffPacking, ReceivedHandoff } from "./handoff/types";
 
-// ERRORS
-export { SeqlokError, isSeqlokError } from "./errors/error";
-export { getErrorMeta, getErrorMessage, isErrorCode } from "./errors/registry";
-export { interpretHealth } from "./errors/health";
-
-// ERROR TYPES
-export type {
-  ErrorCode,
-  ErrorPayload,
-  ErrorDetails,
-  ErrorMeta,
-  HealthInterpretation,
-} from "./errors/types";
-
 // ENUM UTILITIES
 export {
   enumArrayToLabels,
@@ -97,28 +83,14 @@ export type {
   SnapshotMetersOf,
 } from "./types";
 
-// PRIMITIVES
-export {
-  SWSR_HEADER_WORDS,
-  SWSR_HEADER_WRITE_INDEX,
-  SWSR_HEADER_READ_INDEX,
-  SWSR_HEADER_WRITE_SEQ,
-  SWSR_HEADER_DROPPED,
-  allocateSwsrRing,
-  bindSwsrRingProducer,
-  bindSwsrRingConsumer,
-} from "./primitives/swsr-ring";
-
-export type {
-  SwsrRingLayout,
-  SwsrRingBacking,
-  SwsrRingEncode,
-  SwsrRingDecode,
-  SwsrRingProducer,
-  SwsrRingConsumer,
-  SwsrRingStats,
-} from "./primitives/swsr-ring";
-
 // CONTEXT
 export type { SharedContext } from "./context/types";
 export { createSharedContext } from "./context/create";
+
+// ERRORS
+export { ENV_ERRORS } from "./errors/codes/env";
+export { BACKING_ERRORS } from "./errors/codes/backing";
+export { SPEC_ERRORS } from "./errors/codes/spec";
+export { PLAN_ERRORS } from "./errors/codes/plan";
+export { BINDING_ERRORS } from "./errors/codes/binding";
+export { HANDOFF_ERRORS } from "./errors/codes/handoff";

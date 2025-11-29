@@ -8,32 +8,38 @@
  * - Registered into the global error registry as the `handoff.*` domain.
  */
 
-import type { AssertTrue, IsExact } from "../../internal/type-assert";
-import type { ErrorDetails, ErrorMeta } from "../registry";
+import {
+  buildErrorDomain,
+  DOMAIN_IDS,
+  type BuiltErrorDomain,
+  type DomainRegistry,
+  type ErrorCodeOf,
+  type ErrorDetails,
+  type ErrorKeyOf,
+  type KeyedErrorFactoryOf,
+  type SeqlokError,
+} from "@seqlok/base";
 
-export type HandoffErrorCode =
-  | "handoff.versionMismatch"
-  | "handoff.invalidArtifact"
-  | "handoff.specHashMismatch"
-  | "handoff.backingMismatch";
-
-export type HandoffErrorKey =
-  | "versionMismatch"
-  | "invalidArtifact"
-  | "specHashMismatch"
-  | "backingMismatch";
-
+/**
+ * Details for a handoff version mismatch.
+ */
 export interface HandoffVersionMismatchDetails extends ErrorDetails {
   readonly expectedVersion: number;
   readonly receivedVersion: number;
 }
 
+/**
+ * Details for an invalid or unsupported handoff artifact.
+ */
 export interface HandoffInvalidArtifactDetails extends ErrorDetails {
   readonly detail?: string;
   readonly expectedBytes?: number;
   readonly receivedBytes?: number;
 }
 
+/**
+ * Details for spec hash mismatches during handoff validation.
+ */
 export interface HandoffSpecHashMismatchDetails extends ErrorDetails {
   readonly expectedHash: string;
   readonly receivedHash: string;
@@ -42,6 +48,9 @@ export interface HandoffSpecHashMismatchDetails extends ErrorDetails {
   readonly diff?: string;
 }
 
+/**
+ * Details for backing byteLength mismatches during handoff.
+ */
 export interface HandoffBackingMismatchDetails extends ErrorDetails {
   readonly expectedBytes: number;
   readonly receivedBytes: number;
@@ -49,26 +58,15 @@ export interface HandoffBackingMismatchDetails extends ErrorDetails {
   readonly remote?: number;
 }
 
-interface HandoffErrorDescriptor<C extends HandoffErrorCode> {
-  readonly code: C;
-  readonly message: string;
-  readonly meta: ErrorMeta;
+interface HandoffDetailsByKey {
+  readonly versionMismatch: HandoffVersionMismatchDetails;
+  readonly invalidArtifact: HandoffInvalidArtifactDetails;
+  readonly specHashMismatch: HandoffSpecHashMismatchDetails;
+  readonly backingMismatch: HandoffBackingMismatchDetails;
 }
 
-interface HandoffErrorsMap {
-  versionMismatch: HandoffErrorDescriptor<"handoff.versionMismatch">;
-  invalidArtifact: HandoffErrorDescriptor<"handoff.invalidArtifact">;
-  specHashMismatch: HandoffErrorDescriptor<"handoff.specHashMismatch">;
-  backingMismatch: HandoffErrorDescriptor<"handoff.backingMismatch">;
-}
-
-/**
- * Domain-local descriptors used for IDE navigation and as a single
- * source of truth for code, message, and metadata.
- */
-const HANDOFF_ERRORS_DEF: HandoffErrorsMap = {
+const HANDOFF_DEFS = {
   versionMismatch: {
-    code: "handoff.versionMismatch",
     message: "Unexpected handoff version",
     meta: {
       severity: "error",
@@ -77,7 +75,6 @@ const HANDOFF_ERRORS_DEF: HandoffErrorsMap = {
     },
   },
   invalidArtifact: {
-    code: "handoff.invalidArtifact",
     message: "Unsupported handoff artifact",
     meta: {
       severity: "error",
@@ -86,7 +83,6 @@ const HANDOFF_ERRORS_DEF: HandoffErrorsMap = {
     },
   },
   specHashMismatch: {
-    code: "handoff.specHashMismatch",
     message: "Spec hash mismatch",
     meta: {
       severity: "error",
@@ -95,7 +91,6 @@ const HANDOFF_ERRORS_DEF: HandoffErrorsMap = {
     },
   },
   backingMismatch: {
-    code: "handoff.backingMismatch",
     message: "Backing byteLength mismatch",
     meta: {
       severity: "error",
@@ -105,10 +100,21 @@ const HANDOFF_ERRORS_DEF: HandoffErrorsMap = {
   },
 } as const;
 
-export const HANDOFF_ERRORS: HandoffErrorsMap = HANDOFF_ERRORS_DEF;
+type HandoffDefs = typeof HANDOFF_DEFS;
 
-type HandoffCodesFromDescriptors = HandoffErrorsMap[HandoffErrorKey]["code"];
-type HandoffCodesEqual = IsExact<HandoffErrorCode, HandoffCodesFromDescriptors>;
+export const HANDOFF: BuiltErrorDomain<"handoff", HandoffDefs> =
+  buildErrorDomain("handoff", DOMAIN_IDS.handoff, HANDOFF_DEFS);
 
-/** @internal */
-export type _HandoffCodesMatch = AssertTrue<HandoffCodesEqual>;
+export type HandoffErrorCode = ErrorCodeOf<typeof HANDOFF>;
+export type HandoffErrorKey = ErrorKeyOf<typeof HANDOFF>;
+export type HandoffError = SeqlokError<HandoffErrorCode>;
+
+export const HANDOFF_ERRORS: DomainRegistry<"handoff", HandoffDefs> =
+  HANDOFF.registry;
+
+export const createHandoffError: KeyedErrorFactoryOf<
+  BuiltErrorDomain<"handoff", HandoffDefs>,
+  HandoffDetailsByKey
+> = HANDOFF.createError;
+
+export type HandoffErrorFactory = typeof createHandoffError;

@@ -8,16 +8,17 @@
  * - Registered into the global error registry as the `plan.*` domain.
  */
 
-import type { AssertTrue, IsExact } from "../../internal/type-assert";
-import type { ErrorDetails, ErrorMeta } from "../registry";
-
-/**
- * String union of all plan-layer error codes.
- *
- * @remarks
- * These codes are stable and safe to persist in logs and diagnostics.
- */
-export type PlanErrorCode = "plan.failed" | "plan.overflowRisk";
+import {
+  buildErrorDomain,
+  DOMAIN_IDS,
+  type BuiltErrorDomain,
+  type DomainRegistry,
+  type ErrorCodeOf,
+  type ErrorDetails,
+  type ErrorKeyOf,
+  type KeyedErrorFactoryOf,
+  type SeqlokError,
+} from "@seqlok/base";
 
 /**
  * Detail payload for a generic planning failure.
@@ -43,38 +44,13 @@ export interface PlanOverflowRiskDetails extends ErrorDetails {
   readonly softLimitBytes: number;
 }
 
-/**
- * Descriptor for a single plan-layer error.
- */
-interface PlanErrorDescriptor<C extends PlanErrorCode> {
-  readonly code: C;
-  readonly message: string;
-  readonly meta: ErrorMeta;
+interface PlanDetailsByKey {
+  readonly failed: PlanFailedDetails;
+  readonly overflowRisk: PlanOverflowRiskDetails;
 }
 
-/**
- * Keys of the plan error descriptor map.
- */
-export type PlanErrorKey = "failed" | "overflowRisk";
-
-/**
- * Map of all plan-layer error descriptors.
- */
-interface PlanErrorsMap {
-  failed: PlanErrorDescriptor<"plan.failed">;
-  overflowRisk: PlanErrorDescriptor<"plan.overflowRisk">;
-}
-
-/**
- * Canonical plan-layer error descriptors.
- *
- * @remarks
- * - `plan.failed` is a hard failure during planning.
- * - `plan.overflowRisk` indicates the plan exceeds a soft memory limit.
- */
-export const PLAN_ERRORS: PlanErrorsMap = {
+const PLAN_DEFS = {
   failed: {
-    code: "plan.failed",
     message: "Failed to compute memory layout plan",
     meta: {
       severity: "error",
@@ -83,7 +59,6 @@ export const PLAN_ERRORS: PlanErrorsMap = {
     },
   },
   overflowRisk: {
-    code: "plan.overflowRisk",
     message: "Planned memory exceeds soft limit",
     meta: {
       severity: "warning",
@@ -91,10 +66,25 @@ export const PLAN_ERRORS: PlanErrorsMap = {
       boundarySafe: true,
     },
   },
-};
+} as const;
 
-type PlanCodesFromDescriptors = PlanErrorsMap[PlanErrorKey]["code"];
-type PlanCodesEqual = IsExact<PlanErrorCode, PlanCodesFromDescriptors>;
+type PlanDefs = typeof PLAN_DEFS;
 
-/** @internal */
-export type _PlanCodesMatch = AssertTrue<PlanCodesEqual>;
+export const PLAN: BuiltErrorDomain<"plan", PlanDefs> = buildErrorDomain(
+  "plan",
+  DOMAIN_IDS.plan,
+  PLAN_DEFS,
+);
+
+export type PlanErrorCode = ErrorCodeOf<typeof PLAN>;
+export type PlanErrorKey = ErrorKeyOf<typeof PLAN>;
+export type PlanError = SeqlokError<PlanErrorCode>;
+
+export const PLAN_ERRORS: DomainRegistry<"plan", PlanDefs> = PLAN.registry;
+
+export const createPlanError: KeyedErrorFactoryOf<
+  BuiltErrorDomain<"plan", PlanDefs>,
+  PlanDetailsByKey
+> = PLAN.createError;
+
+export type PlanErrorFactory = typeof createPlanError;

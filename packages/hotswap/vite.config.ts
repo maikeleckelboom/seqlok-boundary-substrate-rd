@@ -2,7 +2,7 @@ import { createLibraryViteConfig } from "../../scripts/vite/vite.base.config";
 
 import type { UserConfig } from "vite";
 
-const config: UserConfig = createLibraryViteConfig(import.meta.url, {
+const config: UserConfig = createLibraryViteConfig({
   entryRelative: "src/index.ts",
 });
 

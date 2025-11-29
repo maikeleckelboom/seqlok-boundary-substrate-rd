@@ -6,9 +6,9 @@ export default defineConfig({
   },
   optimizeDeps: {
     exclude: [
-      "@seqlok/foundation",
+      "@seqlok/base",
       "@seqlok/primitives",
-      "@seqlok/diagnostics",
+      "@seqlok/introspect",
       "@seqlok/core",
       "@seqlok/commands",
       "@seqlok/hotswap",

@@ -1,22 +1,8 @@
 {
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@seqlok/foundation": ["packages/foundation/src/index.ts"],
-      "@seqlok/primitives": ["packages/primitives/src/index.ts"],
-      "@seqlok/diagnostics": ["packages/diagnostics/src/index.ts"],
-      "@seqlok/core": ["packages/core/src/index.ts"],
-      "@seqlok/commands": ["packages/commands/src/index.ts"],
-      "@seqlok/hotswap": ["packages/hotswap/src/index.ts"],
-      "@seqlok/integration": ["packages/integration/src/index.ts"],
-      "@seqlok/playground": ["packages/playground/src/index.ts"]
-    }
-  },
-  "include": [
-    "packages/*/src",
-    "packages/*/tests",
-    "packages/*/bench",
-    "scripts"
-  ]
+    "tsBuildInfoFile": "./node_modules/.cache/tsbuildinfo/workspace.tsbuildinfo",
+    "noEmit": true,
+    "isolatedDeclarations": false
+  }
 }

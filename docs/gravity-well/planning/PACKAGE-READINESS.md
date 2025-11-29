@@ -12,10 +12,10 @@ from `@seqlok/core` and that commands/hotswap/integration are not implemented ye
 
 | Package               | Status | Notes                                                     | Ready for v1.0? |
 |-----------------------|--------|-----------------------------------------------------------|-----------------|
-| `@seqlok/foundation`  | 🔴     | Planned; primitives currently live inside `@seqlok/core`. | ❌ No            |
+| `@seqlok/base`  | 🔴     | Planned; primitives currently live inside `@seqlok/core`. | ❌ No            |
 | `@seqlok/primitives`  | 🔴     | Planned; seqlock + low-level primitives live in `core`.   | ❌ No            |
-| `@seqlok/diagnostics` | 🔴     | Planned; diagnostics/env logic not yet extracted.         | ❌ No            |
-| `@seqlok/core`        | 🟡     | Existing v0.2.x monolith; golden flow implemented.        | ❌ Not yet       |
+| `@seqlok/introspect` | 🔴     | Planned; introspection/env logic not yet extracted.       | ❌ No            |
+| `@seqlok/core`        | 🟡     | Existing v0.2.x monolith; canonical flow implemented.        | ❌ Not yet       |
 | `@seqlok/commands`    | 🔴     | Not implemented; only designed.                           | ❌ No            |
 | `@seqlok/hotswap`     | 🔴     | Not implemented; only designed.                           | ❌ No            |
 | `@seqlok/integration` | 🔴     | Not implemented; host wiring patterns not yet packaged.   | ❌ No            |
@@ -25,7 +25,7 @@ Update this table as you actually create packages and move code.
 
 ---
 
-## `@seqlok/foundation`
+## `@seqlok/base`
 
 **Purpose**: Axioms – error primitives, invariants, health helpers. No dependencies.
 
@@ -34,7 +34,7 @@ Update this table as you actually create packages and move code.
 ### Current reality
 
 - `SeqlokError`, error helpers, invariants, and type-level tools are still in `@seqlok/core`.
-- The distributed error plan designates `foundation` as the home for:
+- The distributed error plan designates `base` as the home for:
   - `SeqlokError`, `ErrorDetails`, `ErrorMeta`.
   - `invariant`, `unreachable`, exhaustiveness helpers.
   - `interpretHealth` and related helpers.
@@ -45,10 +45,10 @@ Update this table as you actually create packages and move code.
 
 #### Implementation
 
-- [ ] Package exists under `packages/foundation`.
-- [ ] All error primitives and invariant helpers moved from `core` to `foundation`.
-- [ ] `internal.*` error codes live under `foundation/src/errors/codes/internal.ts`.
-- [ ] `internal/type-assert` lives in `foundation` and is exported as a **dev-only** internal path.
+- [ ] Package exists under `packages/base`.
+- [ ] All error primitives and invariant helpers moved from `core` to `base`.
+- [ ] `internal.*` error codes live under `base/src/errors/codes/internal.ts`.
+- [ ] `internal/type-assert` lives in `base` and is exported as a **dev-only** internal path.
 
 #### Testing
 
@@ -58,8 +58,8 @@ Update this table as you actually create packages and move code.
 
 #### Documentation
 
-- [ ] `README.md` explaining the role of `foundation`.
-- [ ] Short “Error Ownership” section describing `internal.*`.
+- [ ] `README.md` explaining the role of `base`.
+- [ ] Short "Error Ownership" section describing `internal.*`.
 - [ ] API surface documented (or covered by top-level docs).
 
 #### Quality Gates
@@ -74,7 +74,7 @@ Update this table as you actually create packages and move code.
 
 ## `@seqlok/primitives`
 
-**Purpose**: Concurrency & memory primitives (seqlock, SWSR ring, low-level atomics). Depends on `@seqlok/foundation`.
+**Purpose**: Concurrency & memory primitives (seqlock, SWSR ring, low-level atomics). Depends on `@seqlok/base`.
 
 **Status**: 🔴 Not yet extracted
 
@@ -100,7 +100,7 @@ Update this table as you actually create packages and move code.
 
 #### Documentation
 
-- [ ] `README.md` explaining “primitives vs core”.
+- [ ] `README.md` explaining "primitives vs core".
 - [ ] Seqlock protocol doc (or link to architecture docs).
 - [ ] Brief ring-buffer protocol description.
 
@@ -114,16 +114,16 @@ Update this table as you actually create packages and move code.
 
 ---
 
-## `@seqlok/diagnostics`
+## `@seqlok/introspect`
 
-**Purpose**: Environment probing, diagnostics, and health interpretation. Depends on `@seqlok/foundation`.
+**Purpose**: Environment probing, introspection, and health interpretation. Depends on `@seqlok/base`.
 
 **Status**: 🔴 Not yet extracted
 
 ### Current reality
 
-- Env probing (SAB/Atomics/WASM) and diagnostics logic are either ad-hoc or living in `@seqlok/core`.
-- Error codes `diagnostics.*` and `env.*` are designed but not split out.
+- Env probing (SAB/Atomics/WASM) and introspection logic are either ad-hoc or living in `@seqlok/core`.
+- Error codes `introspect.*` and `env.*` are designed but not split out.
 
 ### For v1.0, this package is "ready" when
 
@@ -131,7 +131,7 @@ Update this table as you actually create packages and move code.
 
 - [ ] Env probes for SAB, Atomics, WASM, and other relevant features.
 - [ ] Health helpers that translate probe results into error codes / recommendations.
-- [ ] `diagnostics.*` and `env.*` error codes live under `diagnostics/src/errors/codes/*.ts`.
+- [ ] `introspect.*` and `env.*` error codes live under `introspect/src/errors/codes/*.ts`.
 
 #### Testing
 
@@ -140,8 +140,8 @@ Update this table as you actually create packages and move code.
 
 #### Documentation
 
-- [ ] `README.md` for `diagnostics`.
-- [ ] Guide: “Handling missing features and degrading gracefully”.
+- [ ] `README.md` for `introspect`.
+- [ ] Guide: "Handling missing features and degrading gracefully".
 
 #### Quality Gates
 
@@ -155,22 +155,22 @@ Update this table as you actually create packages and move code.
 
 ## `@seqlok/core`
 
-**Purpose**: Main shared state model – spec, plan, backing, handoff, bindings. Depends on `foundation`, `primitives`,
-`diagnostics` (once split).
+**Purpose**: Main shared state model – spec, plan, backing, handoff, bindings. Depends on `base`, `primitives`,
+`introspect` (once split).
 
 **Status**: 🟡 Solid core, needs monorepo refactor
 
 ### Current reality
 
-- Implements the golden flow in a single package (v0.2.x).
-- Contains primitives, diagnostics, and error system that belong in other packages.
+- Implements the canonical flow in a single package (v0.2.x).
+- Contains primitives, introspect, and error system that belong in other packages.
 - Tests and benches exist for the current monolithic layout.
 
 ### For v1.0, this package is "ready" when
 
 #### Implementation
 
-- [ ] Uses `@seqlok/foundation`, `@seqlok/primitives`, `@seqlok/diagnostics` instead of inlining their logic.
+- [ ] Uses `@seqlok/base`, `@seqlok/primitives`, `@seqlok/introspect` instead of inlining their logic.
 - [ ] Only owns `spec.*`, `plan.*`, `backing.*`, `binding.*`, `handoff.*` error codes.
 - [ ] Global error registry aggregates domains imported from other packages.
 - [ ] Public API surface matches the final DoD (no legacy names).
@@ -183,7 +183,7 @@ Update this table as you actually create packages and move code.
 #### Documentation
 
 - [ ] Core docs updated to reference the new packages.
-- [ ] Golden flow doc updated for monorepo layout.
+- [ ] Canonical flow doc updated for monorepo layout.
 
 #### Quality Gates
 
@@ -197,7 +197,7 @@ hierarchy.
 
 ## `@seqlok/commands`
 
-**Purpose**: Command transport / ring, built on primitives. Depends on `@seqlok/foundation` and `@seqlok/primitives`.
+**Purpose**: Command transport / ring, built on primitives. Depends on `@seqlok/base` and `@seqlok/primitives`.
 
 **Status**: 🔴 Not implemented
 
@@ -229,7 +229,7 @@ hierarchy.
 
 ## `@seqlok/hotswap`
 
-**Purpose**: Engine lifecycle and swap protocol. Depends on `@seqlok/foundation`, `@seqlok/core`, `@seqlok/commands`.
+**Purpose**: Engine lifecycle and swap protocol. Depends on `@seqlok/base`, `@seqlok/core`, `@seqlok/commands`.
 
 **Status**: 🔴 Not implemented
 

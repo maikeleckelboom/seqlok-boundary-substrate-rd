@@ -21,7 +21,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && rollup -c rollup.dts.config.mts",
     "clean": "rimraf dist .eslintcache node_modules/.vite node_modules/.cache pnpm-debug.log",
     "purge": "pnpm run clean && rimraf node_modules",
     "lint": "eslint src",
@@ -30,17 +30,17 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "test:types": "tsc -b --noEmit --pretty",
-    "bench": "vitest bench --reporter=verbose --run"
+    "test:types": "tsc -p ../../tsconfig.workspace.json --noEmit --pretty",
+    "bench": "vitest bench --reporter=verbose --run",
+    "dev": "pnpm run test:watch"
   },
   "dependencies": {
-    "@seqlok/foundation": "workspace:*",
+    "@seqlok/base": "workspace:*",
     "@seqlok/primitives": "workspace:*",
     "@seqlok/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@vitest/coverage-v8": "catalog:",
     "eslint": "catalog:",
     "eslint-import-resolver-typescript": "catalog:",
     "eslint-plugin-import": "catalog:",
@@ -50,6 +50,7 @@
     "rimraf": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
-    "vitest": "catalog:"
+    "rollup": "catalog:",
+    "rollup-plugin-dts": "catalog:"
   }
 }

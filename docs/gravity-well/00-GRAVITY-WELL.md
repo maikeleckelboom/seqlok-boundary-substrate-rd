@@ -28,10 +28,10 @@ Everything else is either support work or distraction.
 
 As of 2025-11-24:
 
-- `@seqlok/core` v0.2.x exists and implements the **golden flow** in a single package
+- `@seqlok/core` v0.2.x exists and implements the **canonical flow** in a single package
     -
     `defineSpec → planLayout → allocateShared → buildHandoff → receiveHandoff → bindController/bindProcessor/bindObserver`
-- The **monorepo split** into `@seqlok/foundation`, `@seqlok/primitives`, `@seqlok/diagnostics`, `@seqlok/commands`,
+- The **monorepo split** into `@seqlok/base`, `@seqlok/primitives`, `@seqlok/introspect`, `@seqlok/commands`,
   `@seqlok/hotswap`, `@seqlok/integration` is **designed but not yet fully implemented**.
 - The **error system** is still effectively centralized in `@seqlok/core`; the distributed-domain plan exists as a spec
   and is being implemented.
@@ -54,22 +54,22 @@ Goal: **Split the monolith and stabilize the contracts** without changing behavi
 
 1. **Create and wire base packages**
     - Materialize:
-        - `@seqlok/foundation` – error primitives, invariants, health helpers.
+        - `@seqlok/base` – error primitives, invariants, health helpers.
         - `@seqlok/primitives` – seqlock + low-level concurrency/memory primitives.
-        - `@seqlok/diagnostics` – env probing + diagnostics/health helpers.
+        - `@seqlok/introspect` – env probing + diagnostics/health helpers.
     - Move code out of `@seqlok/core` into the owning packages.
 
 2. **Implement distributed error domains**
     - Move error codes into:
-        - `internal.*` → foundation
+        - `internal.*` → base
         - `primitives.*` → primitives
-        - `diagnostics.*, env.*` → diagnostics
+        - `env.*, introspect.*` → introspect
         - `spec.*, plan.*, backing.*, binding.*, handoff.*` → core
     - Keep `@seqlok/core` as **global registry aggregator** with identical runtime behaviour.
 
 3. **Stabilize build + tests for the split**
     - `pnpm test`, `pnpm tsc -b` and benchmarks pass with the new package layout.
-    - No new circular dependencies; dependency rules enforced (foundation at bottom, integration at top).
+    - No new circular dependencies; dependency rules enforced (base at bottom, integration at top).
 
 4. **Write a minimal, language-agnostic layout spec**
     - Document plane types, alignment, and layout rules so a Rust/C++ implementation can be written without reading the
@@ -193,7 +193,7 @@ When you're unsure what to do next, run the work through this filter.
 ### 3. Does this expand the public API surface?
 
 - **Yes** → Needs a strong architectural rationale. Prefer putting it in a new package over expanding `@seqlok/core`.
-- **No** → It’s either internal or refinement; lower blast radius.
+- **No** → It's either internal or refinement; lower blast radius.
 
 ### 4. Does this make cross-language interop harder?
 
@@ -211,12 +211,12 @@ When you're unsure what to do next, run the work through this filter.
 
 | Anti-Pattern                      | Why It Hurts                               | Do This Instead                                         |
 |-----------------------------------|--------------------------------------------|---------------------------------------------------------|
-| “Let’s add sugar for X”           | Surface area explosion, harder v1.0 freeze | Keep core minimal; sugar can be post-v1 add-on packages |
-| “I’ll refactor this later”        | Rot accumulates exactly on hot paths       | Either fix now or leave a very explicit TODO + ADR      |
-| “Just one more feature…”          | Scope creep eats time for invariants       | Ask: does it unblock v1.0? If not, backlog it           |
-| “Tests are flaky but I know why”  | You stop trusting CI                       | Fix flakes immediately; tests are part of the contract  |
-| “I’ll document it when it’s done” | The mental model diverges from reality     | Rough docs first, refine as you go                      |
-| “Let’s make it perfect first”     | Infinite delay, no club-tested feedback    | Ship minimal, correct, observable; then iterate         |
+| "Let's add sugar for X"           | Surface area explosion, harder v1.0 freeze | Keep core minimal; sugar can be post-v1 add-on packages |
+| "I'll refactor this later"        | Rot accumulates exactly on hot paths       | Either fix now or leave a very explicit TODO + ADR      |
+| "Just one more feature…"          | Scope creep eats time for invariants       | Ask: does it unblock v1.0? If not, backlog it           |
+| "Tests are flaky but I know why"  | You stop trusting CI                       | Fix flakes immediately; tests are part of the contract  |
+| "I'll document it when it's done" | The mental model diverges from reality     | Rough docs first, refine as you go                      |
+| "Let's make it perfect first"     | Infinite delay, no club-tested feedback    | Ship minimal, correct, observable; then iterate         |
 
 ---
 
@@ -247,7 +247,7 @@ These are **interpretation rules** for `STATUS-MATRIX.md`:
 
 ### First time you open this repo on a new day
 
-1. Skim `completion/STATUS-MATRIX.md` – what’s currently red/yellow?
+1. Skim `completion/STATUS-MATRIX.md` – what's currently red/yellow?
 2. Look at `planning/CRITICAL-PATH.md` – where are you in the phases?
 3. Pick the smallest next task that moves a red/yellow cell toward green.
 

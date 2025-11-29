@@ -145,7 +145,7 @@ Decision framework catches:
 ## Current Status Highlights
 
 ### ✅ What's Already Strong
-- Foundation, primitives, diagnostics packages (95-100% done)
+- Foundation, primitives, introspect packages (95-100% done)
 - Core package (90% done, just needs error schema + layout spec)
 - Comprehensive test suite for implemented features
 - Excellent architecture documentation

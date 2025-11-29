@@ -58,7 +58,7 @@ The **Controller** typically lives on the main thread (browser) or a host thread
 - Never writes meters
 - Never calls `within` / `publish` (those are processor-side semantics)
 
-Example (golden flow up to the Controller binding):
+Example (canonical flow up to the Controller binding):
 
 ```ts
 import {

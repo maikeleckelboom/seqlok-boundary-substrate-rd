@@ -8,52 +8,54 @@
  * - Registered into the global error registry as the `binding.*` domain.
  */
 
-import type { AssertTrue, IsExact } from "../../internal/type-assert";
-import type {
-  BufferDetails,
-  RangeDetails,
-  UnknownKeyDetails,
-} from "../details";
-import type { ErrorDetails, ErrorMeta } from "../registry";
+import {
+  buildErrorDomain,
+  DOMAIN_IDS,
+  type BuiltErrorDomain,
+  type DomainRegistry,
+  type ErrorCodeOf,
+  type ErrorDetails,
+  type ErrorKeyOf,
+  type JsonValue,
+  type KeyedErrorFactoryOf,
+  type SeqlokError,
+  type TypedArrayName,
+} from "@seqlok/base";
 
 /**
- * Binding error codes.
- */
-export type BindingErrorCode =
-  | "binding.unknownKey"
-  | "binding.paramRange"
-  | "binding.paramInvalidValue"
-  | "binding.shapeInvalid"
-  | "binding.snapshotIntoTypeMismatch"
-  | "binding.snapshotIntoLengthMismatch"
-  | "binding.snapshotRetryExhausted"
-  | "binding.coherentRetryExhausted";
-
-/**
- * Unknown key in params/meters.
+ * Unknown key in params/meters at the binding layer.
  *
- * We tighten the shared UnknownKeyDetails by requiring `known`.
+ * @remarks
+ * We model scope explicitly and require `known` keys here,
+ * instead of aliasing a shared UnknownKeyDetails type.
  */
-export interface BindingUnknownKeyDetails extends UnknownKeyDetails {
+export interface BindingUnknownKeyDetails extends ErrorDetails {
+  readonly scope: "params" | "meters";
+  readonly key: string;
   readonly known: readonly string[];
 }
 
 /**
  * Param range details at the binding layer.
  *
- * Reuses shared RangeDetails vocabulary; for binding we typically do
- * have a concrete received value, but the field stays optional to
- * align with RangeDetails.
+ * @remarks
+ * This duplicates the generic "range" vocabulary but is kept
+ * local to the binding domain to avoid cross-module aliases.
  */
-export type BindingParamRangeDetails = RangeDetails;
+export interface BindingParamRangeDetails extends ErrorDetails {
+  readonly key: string;
+  readonly min?: number;
+  readonly max?: number;
+  readonly received?: number;
+}
 
 /**
  * Invalid parameter value (type/shape/etc).
  */
 export interface BindingInvalidValueDetails extends ErrorDetails {
   readonly key: string;
-  readonly expected?: unknown;
-  readonly received?: unknown;
+  readonly expected?: JsonValue | undefined;
+  readonly received?: JsonValue | undefined;
 }
 
 /**
@@ -65,130 +67,109 @@ export interface BindingShapeDetails extends ErrorDetails {
 }
 
 /**
- * Snapshot → typed array mismatches reuse the shared BufferDetails shape.
- */
-export type BindingSnapshotIntoTypeMismatchDetails = BufferDetails;
-export type BindingSnapshotIntoLengthMismatchDetails = BufferDetails;
-
-/**
- * Descriptor shape for binding errors.
- */
-interface BindingErrorDescriptor<C extends BindingErrorCode> {
-  readonly code: C;
-  readonly message: string;
-  readonly meta: ErrorMeta;
-}
-
-/**
- * Key space for binding descriptors.
- */
-export type BindingErrorKey =
-  | "unknownKey"
-  | "paramRange"
-  | "paramInvalidValue"
-  | "shapeInvalid"
-  | "snapshotIntoTypeMismatch"
-  | "snapshotIntoLengthMismatch"
-  | "snapshotRetryExhausted"
-  | "coherentRetryExhausted";
-
-/**
- * Domain-local descriptors used for IDE navigation and as a single
- * source of truth for code, message, and metadata.
+ * Buffer constraints for binding-level "into" operations.
  *
- * NOTE:
- * - Explicit `BindingErrorsMap` type keeps `_TypeChecks` meaningful.
- * - Exported `BINDING_ERRORS` has an explicit annotation for
- *   `--isolatedDeclarations`.
+ * Used by snapshotInto for both type and length mismatches.
  */
-interface BindingErrorsMap {
-  unknownKey: BindingErrorDescriptor<"binding.unknownKey">;
-  paramRange: BindingErrorDescriptor<"binding.paramRange">;
-  paramInvalidValue: BindingErrorDescriptor<"binding.paramInvalidValue">;
-  shapeInvalid: BindingErrorDescriptor<"binding.shapeInvalid">;
-  snapshotIntoTypeMismatch: BindingErrorDescriptor<"binding.snapshotIntoTypeMismatch">;
-  snapshotIntoLengthMismatch: BindingErrorDescriptor<"binding.snapshotIntoLengthMismatch">;
-  snapshotRetryExhausted: BindingErrorDescriptor<"binding.snapshotRetryExhausted">;
-  coherentRetryExhausted: BindingErrorDescriptor<"binding.coherentRetryExhausted">;
+export interface BindingBufferDetails extends ErrorDetails {
+  readonly key: string;
+  readonly expectedType: TypedArrayName;
+  readonly receivedType: string;
+  readonly expectedLength: number;
+  readonly receivedLength: number;
 }
 
-export const BINDING_ERRORS: BindingErrorsMap = {
+/**
+ * Snapshot → typed array mismatches at the binding layer.
+ *
+ * These share the same underlying shape as BindingBufferDetails but
+ * keep separate type names for clarity at call sites.
+ */
+export type BindingSnapshotIntoTypeMismatchDetails = BindingBufferDetails;
+
+export type BindingSnapshotIntoLengthMismatchDetails = BindingBufferDetails;
+
+export interface BindingCoherentRetryDetails extends ErrorDetails {
+  readonly retries?: number;
+  readonly spins?: number;
+}
+
+export interface SnapshotRetryDetails extends BindingCoherentRetryDetails {
+  readonly section: "params" | "meters";
+}
+
+/**
+ * Details for snapshot/coherent retry exhaustion.
+ *
+ * Binding adds section information on top of generic retry metrics.
+ */
+export interface BindingSnapshotRetryDetails extends ErrorDetails {
+  readonly section: "params" | "meters";
+  readonly spins?: number;
+  readonly retries?: number;
+}
+
+interface BindingDetailsByKey {
+  readonly unknownKey: BindingUnknownKeyDetails;
+  readonly paramRange: BindingParamRangeDetails;
+  readonly paramInvalidValue: BindingInvalidValueDetails;
+  readonly shapeInvalid: BindingShapeDetails;
+  readonly snapshotIntoTypeMismatch: BindingSnapshotIntoTypeMismatchDetails;
+  readonly snapshotIntoLengthMismatch: BindingSnapshotIntoLengthMismatchDetails;
+  readonly snapshotRetryExhausted: BindingSnapshotRetryDetails;
+  readonly coherentRetryExhausted: BindingCoherentRetryDetails;
+}
+
+const BINDING_DEFS = {
   unknownKey: {
-    code: "binding.unknownKey",
     message: "Unknown binding key",
-    meta: {
-      severity: "error",
-      recoverable: true,
-      boundarySafe: true,
-    },
+    meta: { severity: "error", recoverable: true, boundarySafe: true },
   },
   paramRange: {
-    code: "binding.paramRange",
     message: "Param out of range",
-    meta: {
-      severity: "error",
-      recoverable: true,
-      boundarySafe: true,
-    },
+    meta: { severity: "error", recoverable: true, boundarySafe: true },
   },
   paramInvalidValue: {
-    code: "binding.paramInvalidValue",
     message: "Param invalid value",
-    meta: {
-      severity: "error",
-      recoverable: true,
-      boundarySafe: true,
-    },
+    meta: { severity: "error", recoverable: true, boundarySafe: true },
   },
   shapeInvalid: {
-    code: "binding.shapeInvalid",
     message: "Invalid shape",
-    meta: {
-      severity: "error",
-      recoverable: true,
-      boundarySafe: true,
-    },
+    meta: { severity: "error", recoverable: true, boundarySafe: true },
   },
   snapshotIntoTypeMismatch: {
-    code: "binding.snapshotIntoTypeMismatch",
     message: "Snapshot into: typed array mismatch",
-    meta: {
-      severity: "error",
-      recoverable: true,
-      boundarySafe: false,
-    },
+    meta: { severity: "error", recoverable: true, boundarySafe: false },
   },
   snapshotIntoLengthMismatch: {
-    code: "binding.snapshotIntoLengthMismatch",
     message: "Snapshot into: length mismatch",
-    meta: {
-      severity: "error",
-      recoverable: true,
-      boundarySafe: false,
-    },
+    meta: { severity: "error", recoverable: true, boundarySafe: false },
   },
   snapshotRetryExhausted: {
-    code: "binding.snapshotRetryExhausted",
     message: "Snapshot retries exhausted",
-    meta: {
-      severity: "warning",
-      recoverable: true,
-      boundarySafe: false,
-    },
+    meta: { severity: "warning", recoverable: true, boundarySafe: false },
   },
   coherentRetryExhausted: {
-    code: "binding.coherentRetryExhausted",
     message: "Coherent retries exhausted",
-    meta: {
-      severity: "warning",
-      recoverable: true,
-      boundarySafe: false,
-    },
+    meta: { severity: "warning", recoverable: true, boundarySafe: false },
   },
 } as const;
 
-type BindingCodesFromDescriptors = BindingErrorsMap[BindingErrorKey]["code"];
-type BindingCodesEqual = IsExact<BindingErrorCode, BindingCodesFromDescriptors>;
+type BindingDefs = typeof BINDING_DEFS;
 
-/** @internal */
-export type _BindingCodesMatch = AssertTrue<BindingCodesEqual>;
+export const BINDING: BuiltErrorDomain<"binding", BindingDefs> =
+  buildErrorDomain("binding", DOMAIN_IDS.binding, BINDING_DEFS);
+
+export type BindingErrorCode = ErrorCodeOf<typeof BINDING>;
+export type BindingErrorKey = ErrorKeyOf<typeof BINDING>;
+export type BindingError = SeqlokError<BindingErrorCode>;
+
+export const BINDING_ERRORS: DomainRegistry<"binding", BindingDefs> =
+  BINDING.registry;
+
+export const createBindingError: KeyedErrorFactoryOf<
+  BuiltErrorDomain<"binding", BindingDefs>,
+  BindingDetailsByKey
+> = BINDING.createError;
+
+export type BindingErrorFactory = typeof createBindingError;

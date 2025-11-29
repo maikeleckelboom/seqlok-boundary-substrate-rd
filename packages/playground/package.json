@@ -15,20 +15,20 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "test:types": "tsc -b --noEmit --pretty"
+    "test:types": "tsc -p ../../tsconfig.workspace.json --noEmit --pretty"
   },
   "dependencies": {
-    "@seqlok/foundation": "workspace:*",
-    "@seqlok/primitives": "workspace:*",
-    "@seqlok/core": "workspace:*",
+    "@seqlok/base": "workspace:*",
     "@seqlok/commands": "workspace:*",
+    "@seqlok/core": "workspace:*",
     "@seqlok/hotswap": "workspace:*",
     "@seqlok/integration": "workspace:*",
-    "@seqlok/diagnostics": "workspace:*"
+    "@seqlok/introspect": "workspace:*",
+    "@seqlok/primitives": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",
-    "@vitest/coverage-v8": "catalog:",
+    "@vitejs/plugin-vue": "^6.0.2",
     "eslint": "catalog:",
     "eslint-import-resolver-typescript": "catalog:",
     "eslint-plugin-import": "catalog:",
@@ -38,7 +38,6 @@
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:",
-    "@vitejs/plugin-vue": "^6.0.2"
+    "vitest": "catalog:"
   }
 }

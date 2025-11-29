@@ -28,7 +28,7 @@ Rows below start with conservative defaults; update them as you implement work.
 
 | ID | Requirement                                                                                                                         | Status | Notes                                                                                             |
 |----|-------------------------------------------------------------------------------------------------------------------------------------|--------|---------------------------------------------------------------------------------------------------|
-| A1 | 8-package monorepo structure exists (`foundation`, `primitives`, `diagnostics`, `core`, `commands`, `hotswap`, `integration`, apps) | 🔴     | Core exists; other packages are being designed / scaffolded.                                      |
+| A1 | 8-package monorepo structure exists (`base`, `primitives`, `introspect`, `core`, `commands`, `hotswap`, `integration`, apps) | 🔴     | Core exists; other packages are being designed / scaffolded.                                      |
 | A2 | Dependency flow enforced (no upward deps)                                                                                           | 🟡     | `@seqlok/core` has tsconfig project refs; rules for new packages still to be wired.               |
 | A3 | Ownership of major concepts documented per package                                                                                  | 🟡     | Architecture docs describe the intended split; per-package README/ownership sections are pending. |
 | A4 | Memory layout model documented for x-lang interop                                                                                   | 🟡     | Existing docs describe planes/layout; needs a single normative spec that Rust/C++ can adopt.      |
@@ -38,13 +38,13 @@ Rows below start with conservative defaults; update them as you implement work.
 
 ## DOD-API – Public Surface & Semantics
 
-**Goal**: Stable golden flow and param/meter APIs, minimal surface.
+**Goal**: Stable canonical flow and param/meter APIs, minimal surface.
 
 **Section Status**: 🟡 Core stable, higher layers missing
 
 | ID | Requirement                                                                                                                      | Status | Notes                                                                  |
 |----|----------------------------------------------------------------------------------------------------------------------------------|--------|------------------------------------------------------------------------|
-| B1 | Golden flow (`defineSpec → planLayout → allocate* → buildHandoff → receiveHandoff → bindings`) stable in `@seqlok/core`          | 🟢     | Implemented in current core; needs re-validation after monorepo split. |
+| B1 | Canonical flow (`defineSpec → planLayout → allocate* → buildHandoff → receiveHandoff → bindings`) stable in `@seqlok/core`          | 🟢     | Implemented in current core; needs re-validation after monorepo split. |
 | B2 | Param/meter APIs (`params.set/update/stage`, `params.within`, `meters.snapshot/publish`) stable and range-only DSL (`{min,max}`) | 🟢     | Behaviourally stable; make sure no legacy DSL fields remain.           |
 | B3 | No legacy names/aliases (`setMany`, `adoptHandoff`, `meters.sample`, etc.) remain in public surface                              | 🟡     | Needs a grep + removal pass once v0.3.x refactor lands.                |
 | B4 | `@seqlok/commands` public API implemented                                                                                        | 🔴     | Package not implemented yet; only designed.                            |
@@ -63,7 +63,7 @@ Rows below start with conservative defaults; update them as you implement work.
 |----|----------------------------------------------------------------------------|--------|-------------------------------------------------------------|
 | C1 | Concurrency model for params/meters (SWMR + seqlock) documented and tested | 🟢     | Docs + tests exist for current core.                        |
 | C2 | Command ring concurrency model (MWSR/MWMR as designed) documented          | 🔴     | Depends on `@seqlok/commands` implementation.               |
-| C3 | Hotswap invariants: ticket lifecycle + “one active engine per slot”        | 🔴     | Depends on `@seqlok/hotswap` implementation.                |
+| C3 | Hotswap invariants: ticket lifecycle + "one active engine per slot"        | 🔴     | Depends on `@seqlok/hotswap` implementation.                |
 | C4 | SPARBB-style randomized stress harness for commands + hotswap              | 🔴     | Not implemented; planned once commands/hotswap exist.       |
 | C5 | Node + browser worker tests for existing concurrency primitives            | 🟡     | Some tests exist; expand as monorepo and new packages land. |
 
@@ -77,11 +77,11 @@ Rows below start with conservative defaults; update them as you implement work.
 
 | ID | Requirement                                                                                                                                          | Status | Notes                                                                             |
 |----|------------------------------------------------------------------------------------------------------------------------------------------------------|--------|-----------------------------------------------------------------------------------|
-| E1 | Error domains split across packages (`internal.*`, `primitives.*`, `diagnostics.*`, `spec.*`, `plan.*`, `backing.*`, `binding.*`, `handoff.*`, etc.) | 🔴     | Concept and migration plan defined; implementation of the split is pending.       |
+| E1 | Error domains split across packages (`internal.*`, `primitives.*`, `introspect.*`, `spec.*`, `plan.*`, `backing.*`, `binding.*`, `handoff.*`, etc.) | 🔴     | Concept and migration plan defined; implementation of the split is pending.       |
 | E2 | `@seqlok/core` registry aggregates domains without owning them                                                                                       | 🔴     | Current registry is still effectively "central"; must be updated after E1.        |
 | E3 | Invariants enforced: global uniqueness, bijection code ↔ maps, complete meta/messages                                                                | 🟡     | Some tests exist for current registry; need to be adapted to distributed domains. |
 | E4 | JSON/IDL error schema generated from registry                                                                                                        | 🔴     | Not implemented yet.                                                              |
-| E5 | Diagnostics API surfaces structured errors and health guidance                                                                                       | 🟡     | Env probing and diagnostics design exist; package and docs to be completed.       |
+| E5 | Introspect API surfaces structured errors and health guidance                                                                                       | 🟡     | Env probing and introspection design exist; package and docs to be completed.     |
 
 ---
 
@@ -108,8 +108,8 @@ Rows below start with conservative defaults; update them as you implement work.
 
 | ID | Requirement                                                                            | Status | Notes                                                              |
 |----|----------------------------------------------------------------------------------------|--------|--------------------------------------------------------------------|
-| D1 | Architecture docs for current core golden flow                                         | 🟢     | Docs exist; must be updated after monorepo refactor.               |
-| D2 | Docs for new packages (foundation/primitives/diagnostics/commands/hotswap/integration) | 🔴     | No per-package docs yet; use gravity-well + DoD as starting point. |
+| D1 | Architecture docs for current core canonical flow                                         | 🟢     | Docs exist; must be updated after monorepo refactor.               |
+| D2 | Docs for new packages (base/primitives/introspect/commands/hotswap/integration) | 🔴     | No per-package docs yet; use gravity-well + DoD as starting point. |
 | D3 | Host wiring / topology guide                                                           | 🔴     | To be written once integration patterns stabilize.                 |
 | D4 | Reference integration docs (audio deck + non-audio sim)                                | 🔴     | Planned for v1.0.                                                  |
 | D5 | VitePress docs site builds locally and in CI                                           | 🟡     | Local build exists / planned; CI integration to be added.          |

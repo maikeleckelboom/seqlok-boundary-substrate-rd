@@ -6,9 +6,9 @@
   },
   "files": [],
   "references": [
-    { "path": "./packages/foundation" },
+    { "path": "./packages/base" },
     { "path": "./packages/primitives" },
-    { "path": "./packages/diagnostics" },
+    { "path": "./packages/introspect" },
     { "path": "./packages/core" },
     { "path": "./packages/commands" },
     { "path": "./packages/hotswap" },

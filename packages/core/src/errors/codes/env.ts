@@ -1,55 +1,56 @@
 /**
  * @fileoverview
- * Error codes and detail types for environment capability checks.
+ * Error codes and detail types for environment / platform constraints.
  *
  * @remarks
- * - Covers missing SAB/COOP/COEP and other runtime prerequisites.
- * - Used by env guards and diagnostics when probing `globalThis`.
+ * - Models hard requirements like SharedArrayBuffer availability.
+ * - Used by env helpers and allocation guards to gate SAB usage.
  * - Registered into the global error registry as the `env.*` domain.
  */
 
-import type { AssertTrue, IsExact } from "../../internal/type-assert";
-import type { ErrorDetails, ErrorMeta } from "../registry";
-
-export type EnvErrorCode = "env.unsupported" | "env.coopCoepRequired";
-export type EnvErrorKey = "unsupported" | "coopCoepRequired";
+import {
+  buildErrorDomain,
+  DOMAIN_IDS,
+  type BuiltErrorDomain,
+  type DomainRegistry,
+  type ErrorCodeOf,
+  type ErrorDetails,
+  type ErrorKeyOf,
+  type KeyedErrorFactoryOf,
+  type SeqlokError,
+} from "@seqlok/base";
 
 /**
- * Details for `env.unsupported` errors.
+ * Details for `env.unsupported`.
  *
  * @remarks
- * - `cause` is attached on the error object itself, not in these details.
+ * Used when the runtime is missing a required platform feature such as
+ * SharedArrayBuffer or Atomics.
  */
 export interface EnvUnsupportedDetails extends ErrorDetails {
-  readonly feature:
-    | "SharedArrayBuffer"
-    | "Atomics"
-    | "WebAssembly"
-    | "WebAssembly.Memory";
+  readonly feature: string;
   readonly reason?: string;
 }
 
+/**
+ * Details for `env.coopCoepRequired`.
+ *
+ * @remarks
+ * Used when a browser/worker environment has SharedArrayBuffer but is
+ * not cross-origin isolated (COOP/COEP headers missing).
+ */
 export interface EnvCoopCoepDetails extends ErrorDetails {
-  readonly context: "browser" | "worker";
-  readonly hasCoopHeader?: boolean;
-  readonly hasCoepHeader?: boolean;
+  readonly context: "browser" | "worker" | "unknown";
 }
 
-interface EnvErrorDescriptor<C extends EnvErrorCode> {
-  readonly code: C;
-  readonly message: string;
-  readonly meta: ErrorMeta;
+interface EnvDetailsByKey {
+  readonly unsupported: EnvUnsupportedDetails;
+  readonly coopCoepRequired: EnvCoopCoepDetails;
 }
 
-interface EnvErrorsMap {
-  unsupported: EnvErrorDescriptor<"env.unsupported">;
-  coopCoepRequired: EnvErrorDescriptor<"env.coopCoepRequired">;
-}
-
-const ENV_ERRORS_DEF = {
+const ENV_DEFS = {
   unsupported: {
-    code: "env.unsupported",
-    message: "Required env feature unavailable",
+    message: "Required env feature unavailable: SharedArrayBuffer",
     meta: {
       severity: "fatal",
       recoverable: false,
@@ -57,20 +58,32 @@ const ENV_ERRORS_DEF = {
     },
   },
   coopCoepRequired: {
-    code: "env.coopCoepRequired",
-    message: "COOP/COEP headers required for SharedArrayBuffer",
+    message: "COOP/COEP headers required for SharedArrayBuffer usage",
     meta: {
       severity: "error",
       recoverable: true,
       boundarySafe: true,
     },
   },
-} as const satisfies EnvErrorsMap;
+} as const;
 
-export const ENV_ERRORS: EnvErrorsMap = ENV_ERRORS_DEF;
+type EnvDefs = typeof ENV_DEFS;
 
-type EnvCodesFromDescriptors = EnvErrorsMap[EnvErrorKey]["code"];
-type EnvCodesEqual = IsExact<EnvErrorCode, EnvCodesFromDescriptors>;
+export const ENV: BuiltErrorDomain<"env", EnvDefs> = buildErrorDomain(
+  "env",
+  DOMAIN_IDS.env,
+  ENV_DEFS,
+);
 
-/** @internal */
-export type _EnvCodesMatch = AssertTrue<EnvCodesEqual>;
+export type EnvErrorCode = ErrorCodeOf<typeof ENV>;
+export type EnvErrorKey = ErrorKeyOf<typeof ENV>;
+export type EnvError = SeqlokError<EnvErrorCode>;
+
+export const ENV_ERRORS: DomainRegistry<"env", EnvDefs> = ENV.registry;
+
+export const createEnvError: KeyedErrorFactoryOf<
+  BuiltErrorDomain<"env", EnvDefs>,
+  EnvDetailsByKey
+> = ENV.createError;
+
+export type EnvErrorFactory = typeof createEnvError;
