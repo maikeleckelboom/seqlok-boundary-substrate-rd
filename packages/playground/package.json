@@ -1,0 +1,44 @@
+{
+  "name": "@seqlok/playground",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Playground app for Seqlok experiments (dev host).",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --ignore-path ../../.prettierignore --write .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "test:types": "pnpm --filter seqlok test:types"
+  },
+  "dependencies": {
+    "@seqlok/base": "workspace:*",
+    "@seqlok/commands": "workspace:*",
+    "@seqlok/core": "workspace:*",
+    "@seqlok/hotswap": "workspace:*",
+    "@seqlok/integration": "workspace:*",
+    "@seqlok/introspect": "workspace:*",
+    "@seqlok/primitives": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@vitejs/plugin-vue": "^6.0.2",
+    "eslint": "catalog:",
+    "eslint-import-resolver-typescript": "catalog:",
+    "eslint-plugin-import": "catalog:",
+    "eslint-plugin-regex": "catalog:",
+    "globals": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:",
+    "tsx": "catalog:"
+  }
+}

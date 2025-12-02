@@ -14,10 +14,10 @@
  * @internal
  */
 
-import { createError } from "../errors/error";
+import { createInternalError } from "@seqlok/base";
 
 import type { Backing } from "./types";
-import type { PlaneKey } from "../primitives/planes";
+import type { PlaneKey } from "@seqlok/primitives";
 
 /**
  * Gets the single SharedArrayBuffer for a non-partitioned backing.
@@ -27,14 +27,14 @@ import type { PlaneKey } from "../primitives/planes";
  * - `wasm-shared`: Returns the WebAssembly.Memory buffer
  * - `shared-partitioned`: Throws (use {@link getPlaneBuffer} instead)
  *
- * @throws {SeqlokError<'internal.assertionFailed'>}
+ * @throws {SeqlokError<"internal.assertionFailed">}
  * If called with a partitioned backing
  *
  * @example
  * ```typescript
  * // For non-partitioned backings
- * const buf = getBackingBuffer(backing);
- * const view = new Float32Array(buf);
+ * const buf = getBackingBuffer(backing)
+ * const view = new Float32Array(buf)
  * ```
  *
  * @internal
@@ -45,29 +45,24 @@ export function getBackingBuffer(backing: Backing): SharedArrayBuffer {
       return backing.sab;
 
     case "wasm-shared":
-      // `allocateWasmShared` ensures this is a SharedArrayBuffer.
-      // We rely on that invariant here to keep this helper hot-path friendly.
+      // We rely on that invariant to keep this helper hot-path friendly.
       return backing.memory.buffer as unknown as SharedArrayBuffer;
 
     case "shared-partitioned":
-      break;
+      // This is a programmer error: API misuse.
+      throw createInternalError("assertionFailed", {
+        where: "backing.getBackingBuffer",
+        detail:
+          "partitioned backing has no single SharedArrayBuffer; use getPlaneBuffer instead",
+      });
 
     default: {
-      // Exhaustiveness guard in case BackingKind ever grows.
-      // noinspection UnnecessaryLocalVariableJS
-      const _exhaustive: never = backing;
-      void _exhaustive;
+      throw createInternalError("exhaustiveness", {
+        where: "backing.getBackingBuffer",
+        detail: `unknown backing kind ${(backing as { kind: string }).kind}`,
+      });
     }
   }
-
-  throw createError(
-    "internal.assertionFailed",
-    "getBackingBuffer(backing): partitioned backing has no single SharedArrayBuffer; use getPlaneBuffer instead.",
-    {
-      where: "backing.getBackingBuffer",
-      detail: "shared-partitioned",
-    },
-  );
 }
 
 /**
@@ -75,13 +70,13 @@ export function getBackingBuffer(backing: Backing): SharedArrayBuffer {
  *
  * @remarks
  * - `shared-partitioned`: Returns the plane's dedicated SAB
- * - `shared`/`wasm-shared`: Returns the main buffer (offsets handled by mappers)
+ * - `shared` / `wasm-shared`: Returns the main buffer (offsets handled by mappers)
  *
  * @example
  * ```typescript
  * // Works with any backing type
- * const buf = getPlaneBuffer(backing, 'PF32');
- * const view = new Float32Array(buf);
+ * const buf = getPlaneBuffer(backing, "PF32")
+ * const view = new Float32Array(buf)
  * ```
  *
  * @see {@link mapViews} For creating typed array views
@@ -93,5 +88,6 @@ export function getPlaneBuffer(
   if (backing.kind === "shared-partitioned") {
     return backing.planes[plane];
   }
+
   return getBackingBuffer(backing);
 }
