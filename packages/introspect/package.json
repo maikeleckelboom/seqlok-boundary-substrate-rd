@@ -33,7 +33,6 @@
     "test:types": "pnpm --filter seqlok test:types",
     "bench": "vitest bench --reporter=verbose --run",
     "dev": "pnpm run test:watch",
-    "errors:export": "tsx scripts/export-errors.ts",
     "errors:registry:schema": "tsx scripts/export-error-registry.ts",
     "errors:registry:schema:full": "pnpm run errors:registry:schema -- --preset=full --out schema/snapshots/error-registry.full.snapshot.json",
     "errors:registry:schema:boundary-safe": "pnpm run errors:registry:schema -- --preset=boundary-safe --out schema/snapshots/error-registry.boundary-safe.snapshot.json",
