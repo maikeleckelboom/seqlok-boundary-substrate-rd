@@ -8,7 +8,7 @@
   "properties": {
     "schemaVersion": {
       "type": "integer",
-      "const": 1,
+      "enum": [1],
       "description": "Schema version for this export format. Increment on breaking changes."
     },
     "generatedAt": {
@@ -18,7 +18,7 @@
     },
     "generator": {
       "type": "string",
-      "const": "@seqlok/introspect",
+      "enum": ["@seqlok/introspect"],
       "description": "Identifier of the tool that generated this registry export."
     },
     "domainIds": {

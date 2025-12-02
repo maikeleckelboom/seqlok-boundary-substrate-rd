@@ -6,8 +6,8 @@
  * This module is the cross-language ABI for error domains:
  *
  * - Domain ids are 8-bit (0–255).
- * - High byte of the numeric error code encodes the domain id.
- * - Low byte is a domain-local index (0–255).
+ * - High 8 bits of the numeric error code (32-bit) encode the domain id.
+ * - Low 24 bits are a domain-local ordinal (1–16_777_215, 0 reserved).
  *
  * The table below is deliberately small and explicit so it can be
  * mirrored in Rust / C++ without ambiguity.

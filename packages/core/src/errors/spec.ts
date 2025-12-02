@@ -68,7 +68,7 @@ export interface SpecDuplicateKeyDetails extends ErrorDetails {
 }
 
 /**
- * Details for high level builder failures.
+ * Details for high-level builder failures.
  *
  * @remarks
  * `planFailed`, `alignmentFailed`, and `overflowRisk` are reserved for cases

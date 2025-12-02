@@ -74,4 +74,22 @@ export {
   type JsonSchemaDocument,
   type DomainSchema,
   type RegistryStats,
-} from "./errors/registry";
+} from "./errors/export-json";
+
+export type { AggregatedErrorDescriptor } from "./errors/descriptors";
+export { listErrors, computeNumericCode } from "./errors/all-domains";
+
+export {
+  type SubsetSelectionCriteria,
+  type ErrorSubset,
+  type SelectedDomain,
+  selectErrorSubset,
+} from "./errors/subset-selection";
+
+export {
+  type ExportedError,
+  type ExportedDomain,
+  type ErrorRegistryJson,
+  buildErrorRegistryJson,
+  buildFullErrorRegistryJson,
+} from "./errors/registry-export";

@@ -5,18 +5,19 @@
  * CLI entrypoint for exporting the Seqlok error registry as JSON.
  *
  * Example:
- *   pnpm -F @seqlok/introspect schema:errors:json -- --preset=full
- *   pnpm -F @seqlok/introspect schema:errors:json -- --preset=fatal-core --out schema/snapshots/error-registry.fatal-core.snapshot.json
+ *   pnpm -F @seqlok/introspect errors:registry:schema -- --preset=full
+ *   pnpm -F @seqlok/introspect errors:registry:schema -- --preset=fatal-core --out schema/snapshots/error-registry.fatal-core.snapshot.json
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import {
-  buildErrorRegistryExport,
-  type SubsetSelectionCriteria,
-  type ErrorRegistryExport,
+  buildErrorRegistrySchema,
+  type ErrorRegistrySchema,
 } from "../src/errors/export-json";
+
+import type { SubsetSelectionCriteria } from "../src/errors/subset-selection";
 
 type PresetName = "full" | "fatal-core" | "boundary-safe";
 
@@ -59,7 +60,6 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
 
-    // Extra guard for strict TS (and future-proofing)
     if (arg === undefined) {
       continue;
     }
@@ -110,7 +110,7 @@ function parseArgs(argv: readonly string[]): ParsedArgs {
 
 function writeJson(
   outFile: string | undefined,
-  payload: ErrorRegistryExport,
+  payload: ErrorRegistrySchema,
 ): void {
   const json = `${JSON.stringify(payload, null, 2)}\n`;
 
@@ -131,7 +131,7 @@ function main(): void {
   const { preset, outFile } = parseArgs(process.argv.slice(2));
   const { criteria } = PRESETS[preset];
 
-  const exportData = buildErrorRegistryExport(criteria);
+  const exportData = buildErrorRegistrySchema(criteria);
   writeJson(outFile, exportData);
 }
 

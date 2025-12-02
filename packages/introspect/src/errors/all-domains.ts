@@ -1,6 +1,6 @@
 /**
  * @fileoverview
- * Global aggregation of all error domains.
+ * Global numeric index for all error domains.
  *
  * @remarks
  * - Pulls registries from @seqlok/base, @seqlok/core, @seqlok/primitives,
@@ -14,8 +14,8 @@ import {
   DOMAIN_IDS,
   type DomainDescriptor,
   type DomainEntry,
-  type ErrorNumericCode,
   type DomainId,
+  type ErrorNumericCode,
 } from "@seqlok/base";
 
 import { getRegistryForDomain, type DomainRegistry } from "./registry-map";
@@ -29,7 +29,20 @@ import { getRegistryForDomain, type DomainRegistry } from "./registry-map";
  */
 export type DomainName = DomainDescriptor["prefix"];
 
-export interface ErrorDescriptor {
+/**
+ * Lightweight entry in the global numeric error index.
+ *
+ * @remarks
+ * - `code` is the fully-qualified string code (e.g. "env.unsupported")
+ * - `domain` is the prefix (e.g. "env")
+ * - `key` is the domain-local key (e.g. "unsupported")
+ * - `numericCode` is the encoded numeric value
+ *
+ * For `message` / `meta`, join this with the per-domain registry from
+ * `getRegistryForDomain(domain)`, whose values are `ErrorDescriptor`
+ * from `@seqlok/base`.
+ */
+export interface ErrorIndexEntry {
   readonly code: string;
   readonly domain: DomainName;
   readonly key: string;
@@ -127,6 +140,11 @@ const INTROSPECT_DOMAIN_DESCRIPTOR: DomainDescriptor = buildDomainDescriptor(
   DOMAIN_IDS.introspect,
 );
 
+const COMMANDS_DOMAIN_DESCRIPTOR: DomainDescriptor = buildDomainDescriptor(
+  "commands",
+  DOMAIN_IDS.commands,
+);
+
 /**
  * All error domains exported by Seqlok.
  *
@@ -144,13 +162,15 @@ export const ALL_DOMAINS: readonly DomainDescriptor[] = [
   BINDING_DOMAIN_DESCRIPTOR,
   HANDOFF_DOMAIN_DESCRIPTOR,
   INTROSPECT_DOMAIN_DESCRIPTOR,
+  COMMANDS_DOMAIN_DESCRIPTOR,
 ];
 
 /**
- * Returns a flattened list of all registered errors across all domains.
+ * Returns a flattened list of all registered errors across all domains,
+ * in a numeric-index-friendly shape.
  */
-export function listErrors(): ErrorDescriptor[] {
-  const descriptors: ErrorDescriptor[] = [];
+export function listErrors(): ErrorIndexEntry[] {
+  const descriptors: ErrorIndexEntry[] = [];
 
   for (const domain of ALL_DOMAINS) {
     for (const entry of domain.entries) {
@@ -183,6 +203,13 @@ export function computeNumericCode(code: string): ErrorNumericCode | undefined {
   return undefined;
 }
 
+/**
+ * Extracts the domain prefix from a fully-qualified error code.
+ *
+ * @example
+ * extractDomainPrefix("env.unsupported") === "env"
+ * extractDomainPrefix("weird") === ""
+ */
 export function extractDomainPrefix(code: string): string {
   const idx = code.indexOf(".");
   if (idx <= 0) {
@@ -191,6 +218,13 @@ export function extractDomainPrefix(code: string): string {
   return code.slice(0, idx);
 }
 
+/**
+ * Extracts the local code part from a fully-qualified error code.
+ *
+ * @example
+ * extractLocalCode("env.unsupported") === "unsupported"
+ * extractLocalCode("weird") === "weird"
+ */
 export function extractLocalCode(code: string): string {
   const idx = code.indexOf(".");
   if (idx < 0 || idx === code.length - 1) {

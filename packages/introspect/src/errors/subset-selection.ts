@@ -1,8 +1,27 @@
+/**
+ * @fileoverview
+ * Subset selection over the global error universe.
+ *
+ * @remarks
+ * - Joins numeric descriptors (`ALL_DOMAINS`) with per-domain registries.
+ * - Produces `AggregatedErrorDescriptor` values for each selected error.
+ * - Used by JSON export, tooling, and future native bindings.
+ */
+
 import { ALL_DOMAINS, type DomainName } from "./all-domains";
+import { type AggregatedErrorDescriptor } from "./descriptors";
 import { type DomainRegistry, getRegistryForDomain } from "./registry-map";
 
-import type { ErrorMeta, ErrorNumericCode } from "@seqlok/base";
+import type { DomainDescriptor, ErrorMeta, ErrorSeverity } from "@seqlok/base";
 
+/**
+ * Criteria for selecting a subset of the error universe.
+ *
+ * @remarks
+ * All filters are conjunctive (ANDed):
+ * - If a field is omitted, it imposes no restriction.
+ * - Arrays are treated as "any-of" unless otherwise specified.
+ */
 export interface SubsetSelectionCriteria {
   /**
    * Restrict to these domain prefixes (e.g. ["env", "backing"]).
@@ -11,14 +30,15 @@ export interface SubsetSelectionCriteria {
   readonly domains?: readonly DomainName[];
 
   /**
-   * Restrict to this set of full error codes (e.g. ["env.sharedArrayBufferNotSupported"]).
+   * Restrict to this set of full error codes
+   * (e.g. ["env.sharedArrayBufferNotSupported"]).
    */
   readonly codes?: readonly string[];
 
   /**
    * Restrict to these severities.
    */
-  readonly severities?: readonly ErrorMeta["severity"][];
+  readonly severities?: readonly ErrorSeverity[];
 
   /**
    * If set, require meta.recoverable to equal this flag.
@@ -31,29 +51,31 @@ export interface SubsetSelectionCriteria {
   readonly boundarySafe?: boolean;
 
   /**
-   * If set, require the error to have at least one of these tags in meta.tags.
+   * If set, require the error to have at least one of these tags.
    */
   readonly tagsAnyOf?: readonly string[];
+
+  /**
+   * If set, require the error to have all of these tags.
+   */
+  readonly tagsAllOf?: readonly string[];
+
+  /**
+   * If set, require the error to have none of these tags.
+   */
+  readonly tagsNoneOf?: readonly string[];
 }
 
 /**
- * Single error inside a filtered domain.
+ * Domain in a selected subset.
+ *
+ * @remarks
+ * `errors` are fully-joined `AggregatedErrorDescriptor` values.
  */
-export interface FilteredError {
-  readonly key: string;
-  readonly code: string;
-  readonly numericCode: ErrorNumericCode;
-  readonly message: string;
-  readonly meta: ErrorMeta;
-}
-
-/**
- * Domain + its filtered errors.
- */
-export interface FilteredDomain {
+export interface SelectedDomain {
   readonly prefix: DomainName;
-  readonly domainId: number;
-  readonly errors: readonly FilteredError[];
+  readonly domainId: DomainDescriptor["domainId"];
+  readonly errors: readonly AggregatedErrorDescriptor[];
 }
 
 /**
@@ -61,22 +83,53 @@ export interface FilteredDomain {
  */
 export interface ErrorSubset {
   readonly criteria: SubsetSelectionCriteria;
-  readonly domains: readonly FilteredDomain[];
+  readonly domains: readonly SelectedDomain[];
+}
+
+function matchesTags(
+  meta: ErrorMeta,
+  criteria: SubsetSelectionCriteria,
+): boolean {
+  const tags = meta.tags ?? [];
+  const { tagsAnyOf, tagsAllOf, tagsNoneOf } = criteria;
+
+  if (tagsAnyOf && tagsAnyOf.length > 0) {
+    const ok = tagsAnyOf.some((tag) => tags.includes(tag));
+    if (!ok) {
+      return false;
+    }
+  }
+
+  if (tagsAllOf && tagsAllOf.length > 0) {
+    const ok = tagsAllOf.every((tag) => tags.includes(tag));
+    if (!ok) {
+      return false;
+    }
+  }
+
+  if (tagsNoneOf && tagsNoneOf.length > 0) {
+    const bad = tagsNoneOf.some((tag) => tags.includes(tag));
+    if (bad) {
+      return false;
+    }
+  }
+
+  return true;
 }
 
 function matchesCriteria(
-  error: FilteredError,
+  error: AggregatedErrorDescriptor,
   criteria: SubsetSelectionCriteria,
 ): boolean {
-  const { codes, severities, recoverable, boundarySafe, tagsAnyOf } = criteria;
+  const { codes, severities, recoverable, boundarySafe } = criteria;
   const { code, meta } = error;
 
-  if (codes !== undefined && codes.length > 0 && !codes.includes(code)) {
+  if (codes && codes.length > 0 && !codes.includes(code)) {
     return false;
   }
 
   if (
-    severities !== undefined &&
+    severities &&
     severities.length > 0 &&
     !severities.includes(meta.severity)
   ) {
@@ -91,67 +144,39 @@ function matchesCriteria(
     return false;
   }
 
-  if (tagsAnyOf !== undefined && tagsAnyOf.length > 0) {
-    const tags = meta.tags ?? [];
-    const hasAnyTag = tags.some((tag) => tagsAnyOf.includes(tag));
-    if (!hasAnyTag) {
-      return false;
-    }
+  if (!matchesTags(meta, criteria)) {
+    return false;
   }
 
   return true;
 }
 
 /**
- * Named presets so callers do not have to spell out criteria each time.
- */
-export const PRESET_SUBSETS: Record<string, SubsetSelectionCriteria> = {
-  /**
-   * Full registry: all domains, all severities.
-   */
-  all: {},
-
-  /**
-   * Portable core set: the domains that matter for host/runtime integration.
-   * (Excludes introspect-only meta domains if you want a leaner native surface.)
-   */
-  corePortable: {
-    domains: [
-      "env",
-      "backing",
-      "primitives",
-      "binding",
-      "spec",
-      "plan",
-      "handoff",
-    ],
-  },
-
-  /**
-   * Only fatal errors across all domains.
-   */
-  fatalOnly: {
-    severities: ["fatal"],
-  },
-};
-
-/**
  * Compute a filtered view of the error universe.
+ *
+ * @remarks
+ * - Joins `ALL_DOMAINS` numeric entries with per-domain registries.
+ * - Applies `SubsetSelectionCriteria` to each joined descriptor.
+ * - Returns domains that have at least one matching error.
  */
 export function selectErrorSubset(
   criteria: SubsetSelectionCriteria,
 ): ErrorSubset {
-  const domains: FilteredDomain[] = [];
+  const domains: SelectedDomain[] = [];
 
   for (const descriptor of ALL_DOMAINS) {
     const prefix = descriptor.prefix;
 
-    if (criteria.domains !== undefined && !criteria.domains.includes(prefix)) {
+    if (
+      criteria.domains &&
+      criteria.domains.length > 0 &&
+      !criteria.domains.includes(prefix)
+    ) {
       continue;
     }
 
     const registry: DomainRegistry = getRegistryForDomain(prefix);
-    const errors: FilteredError[] = [];
+    const errors: AggregatedErrorDescriptor[] = [];
 
     for (const entry of descriptor.entries) {
       const registryEntry = registry[entry.key];
@@ -164,17 +189,20 @@ export function selectErrorSubset(
         );
       }
 
-      const candidate: FilteredError = {
+      const aggregated: AggregatedErrorDescriptor = {
+        domain: prefix,
         key: entry.key,
         code: registryEntry.code,
-        numericCode: entry.numericCode,
         message: registryEntry.message,
         meta: registryEntry.meta,
+        numericCode: entry.numericCode,
       };
 
-      if (matchesCriteria(candidate, criteria)) {
-        errors.push(candidate);
+      if (!matchesCriteria(aggregated, criteria)) {
+        continue;
       }
+
+      errors.push(aggregated);
     }
 
     if (errors.length > 0) {

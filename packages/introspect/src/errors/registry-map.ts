@@ -11,7 +11,9 @@ import {
   type ErrorDescriptor as BaseErrorDescriptor,
   type ErrorRegistry as BaseErrorRegistry,
   INTERNAL_ERRORS,
+  panic,
 } from "@seqlok/base";
+import { COMMANDS_ERRORS } from "@seqlok/commands";
 import {
   BACKING_ERRORS,
   BINDING_ERRORS,
@@ -76,12 +78,15 @@ export function getRegistryForDomain(domain: DomainName): DomainRegistry {
     case "handoff":
       return HANDOFF_ERRORS as unknown as DomainRegistry;
 
+    case "commands":
+      return COMMANDS_ERRORS as unknown as DomainRegistry;
+
     case "introspect":
       return INTROSPECT_ERRORS as unknown as DomainRegistry;
 
     default:
       // DomainName is currently just `string`, so this is a runtime guard,
       // not an exhaustiveness check.
-      throw new Error(`Unhandled error domain in registry lookup: ${domain}`);
+      panic(`Unhandled error domain in registry lookup: ${domain}`);
   }
 }

@@ -1,3 +1,13 @@
+/**
+ * @fileoverview
+ * Thin JSON export for the error registry.
+ *
+ * @remarks
+ * - Delegates selection to `selectErrorSubset`.
+ * - Produces a stable, minimal JSON shape for tooling.
+ * - Richer schema exports live in `export-json.ts`.
+ */
+
 import {
   selectErrorSubset,
   type ErrorSubset,
@@ -5,10 +15,16 @@ import {
 } from "./subset-selection";
 
 import type { DomainName } from "./all-domains";
+import type { AggregatedErrorDescriptor } from "./descriptors";
 import type { ErrorMeta, ErrorNumericCode } from "@seqlok/base";
 
 /**
- * Error descriptor as it appears in the exported JSON.
+ * Error descriptor as it appears in the simple JSON export.
+ *
+ * @remarks
+ * This intentionally mirrors a subset of `AggregatedErrorDescriptor`
+ * and does not include the `domain` field (it is implicit via the
+ * containing `ExportedDomain`).
  */
 export interface ExportedError {
   readonly key: string;
@@ -19,7 +35,7 @@ export interface ExportedError {
 }
 
 /**
- * Domain entry in the exported JSON.
+ * Domain entry in the simple JSON export.
  */
 export interface ExportedDomain {
   readonly prefix: DomainName;
@@ -30,32 +46,46 @@ export interface ExportedDomain {
 /**
  * Top-level JSON document for the error registry.
  *
- * This is what your JSON Schema should describe.
+ * @remarks
+ * - `version` is for this export format only (not the schema).
+ * - For richer, schema-described exports, see `export-json.ts`.
  */
 export interface ErrorRegistryJson {
   readonly version: 1;
   readonly domains: readonly ExportedDomain[];
 }
 
+function toExportedError(error: AggregatedErrorDescriptor): ExportedError {
+  const { key, code, numericCode, message, meta } = error;
+  return {
+    key,
+    code,
+    numericCode,
+    message,
+    meta,
+  };
+}
+
+function buildExportedDomain(
+  domain: ErrorSubset["domains"][number],
+): ExportedDomain {
+  const errors = domain.errors.map(toExportedError);
+  return {
+    prefix: domain.prefix,
+    domainId: domain.domainId,
+    errors,
+  };
+}
+
 /**
- * Convert an ErrorSubset into the canonical JSON document.
+ * Build a JSON registry document for a selected subset of errors.
  */
 export function buildErrorRegistryJson(
   criteria: SubsetSelectionCriteria,
 ): ErrorRegistryJson {
-  const subset: ErrorSubset = selectErrorSubset(criteria);
+  const subset = selectErrorSubset(criteria);
 
-  const domains: ExportedDomain[] = subset.domains.map((domain) => ({
-    prefix: domain.prefix,
-    domainId: domain.domainId,
-    errors: domain.errors.map((error) => ({
-      key: error.key,
-      code: error.code,
-      numericCode: error.numericCode,
-      message: error.message,
-      meta: error.meta,
-    })),
-  }));
+  const domains: ExportedDomain[] = subset.domains.map(buildExportedDomain);
 
   return {
     version: 1,
@@ -64,7 +94,7 @@ export function buildErrorRegistryJson(
 }
 
 /**
- * Convenience alias for "give me the full, unfiltered registry".
+ * Convenience helper for "all errors, no filters".
  */
 export function buildFullErrorRegistryJson(): ErrorRegistryJson {
   return buildErrorRegistryJson({});
