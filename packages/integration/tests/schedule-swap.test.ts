@@ -1,10 +1,13 @@
 import { isSeqlokError, type SeqlokError } from "@seqlok/base";
+import {
+  type HotswapSchedulerConfig,
+  scheduleSwap,
+  type SwapTicketRT,
+  type TicketId,
+} from "@seqlok/hotswap";
 import { describe, expect, it } from "vitest";
 
-import { type HotswapSchedulerConfig, scheduleSwap } from "../src";
-
 import type { CommandProducer, CommandPushResult } from "@seqlok/commands";
-import type { SwapTicketRT, TicketId } from "@seqlok/hotswap";
 
 type EngineKind = 0;
 

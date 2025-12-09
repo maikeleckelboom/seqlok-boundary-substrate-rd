@@ -6,7 +6,9 @@
 
 ## Overview
 
-The `StretchEngineConfig` defines a universal configuration contract that all time-stretch and pitch-shift engines agree on. This abstraction allows Seqlok to treat different algorithms (Signalsmith-stretch, Bungee, Bungee Pro, varispeed, etc.) as interchangeable implementations behind a common interface.
+The `StretchEngineConfig` defines a universal configuration contract that all time-stretch and pitch-shift engines agree
+on. This abstraction allows Seqlok to treat different algorithms (Signalsmith-stretch, Bungee, Bungee Pro, varispeed,
+etc.) as interchangeable implementations behind a common interface.
 
 ## Design Goals
 
@@ -27,7 +29,7 @@ type StretchAlgorithm =
   | 'signalsmith'      // Signalsmith-stretch (open source, high quality)
   | 'bungee-basic'     // Bungee open-source engine
   | 'bungee-pro'       // Bungee Pro (proprietary, AI-assisted)
-  // Future algorithms can be added here
+// Future algorithms can be added here
   ;
 ```
 
@@ -43,9 +45,12 @@ type QualityTier =
   ;
 ```
 
-Quality tiers map to algorithm-specific settings (FFT size, window length, overlap, etc.) but the host doesn't need to know those details.
+Quality tiers map to algorithm-specific settings (FFT size, window length, overlap, etc.) but the host doesn't need to
+know those details.
 
-> **Cross-language note:** In the C ABI, `QualityTier` maps 1:1 to `seqlok_quality_t` (`SEQLOK_QUALITY_ECO`, `SEQLOK_QUALITY_NORMAL`, `SEQLOK_QUALITY_INSANE`). Similarly, `StretchAlgorithm` maps to `seqlok_algorithm_t`. The naming differs by language convention, but the semantics are identical.
+> **Cross-language note:** In the C ABI, `QualityTier` maps 1:1 to `seqlok_quality_t` (`SEQLOK_QUALITY_ECO`,
+`SEQLOK_QUALITY_NORMAL`, `SEQLOK_QUALITY_INSANE`). Similarly, `StretchAlgorithm` maps to `seqlok_algorithm_t`. The
+> naming differs by language convention, but the semantics are identical.
 
 ### StretchEngineConfig
 
@@ -74,7 +79,7 @@ interface StretchEngineConfig {
   /** Number of audio channels */
   channels: number;
 
-  /** 
+  /**
    * Optional vendor/engine-specific extensions.
    * The host passes this through opaquely; engines may use it for
    * algorithm-specific tuning without requiring Seqlok schema changes.
@@ -83,9 +88,12 @@ interface StretchEngineConfig {
 }
 ```
 
-> **Note:** The `version` field is readonly and always `1` for this specification version. It enables graceful migration when the schema evolves.
+> **Note:** The `version` field is readonly and always `1` for this specification version. It enables graceful migration
+> when the schema evolves.
 
-> **About `extensions`:** This optional field follows the same pattern as `PrimeContext.phaseState`—an opaque bag the host ignores but engines can use for custom data. It prevents "one more field" pressure on the core schema. If unused, omit it entirely.
+> **About `extensions`:** This optional field follows the same pattern as `PrimeContext.phaseState`—an opaque bag the
+> host ignores but engines can use for custom data. It prevents "one more field" pressure on the core schema. If unused,
+> omit it entirely.
 
 ## Parameter Classification
 
@@ -93,25 +101,26 @@ interface StretchEngineConfig {
 
 Changes to these parameters require creating a new engine instance:
 
-| Parameter | Rationale |
-|-----------|-----------|
-| `algorithm` | Different algorithm = different engine type entirely |
+| Parameter     | Rationale                                                   |
+|---------------|-------------------------------------------------------------|
+| `algorithm`   | Different algorithm = different engine type entirely        |
 | `qualityTier` | Typically changes FFT size, window length, internal buffers |
-| `sampleRate` | Requires reinitialization of all internal filters/tables |
-| `channels` | Changes buffer allocation and processing topology |
+| `sampleRate`  | Requires reinitialization of all internal filters/tables    |
+| `channels`    | Changes buffer allocation and processing topology           |
 
 ### Non-Structural Parameters (Live Update)
 
 Changes to these parameters can be applied to a running engine:
 
-| Parameter | Rationale |
-|-----------|-----------|
+| Parameter      | Rationale                                     |
+|----------------|-----------------------------------------------|
 | `stretchRatio` | Most algorithms handle ratio changes smoothly |
-| `pitchRatio` | Most algorithms handle pitch changes smoothly |
+| `pitchRatio`   | Most algorithms handle pitch changes smoothly |
 
 ## Comparison Semantics
 
-Two configs are considered **structurally equivalent** if they would produce the same engine instance (ignoring non-structural parameters):
+Two configs are considered **structurally equivalent** if they would produce the same engine instance (ignoring
+non-structural parameters):
 
 ```typescript
 function structurallyEquivalent(a: StretchEngineConfig, b: StretchEngineConfig): boolean {
@@ -127,7 +136,9 @@ function structurallyEquivalent(a: StretchEngineConfig, b: StretchEngineConfig):
 
 If two configs are structurally equivalent, a hotswap is not required—only parameter updates.
 
-> **Extensions and equivalence:** The host ignores `extensions` when comparing configs. However, engine implementations may treat certain extension fields as structural internally. If an engine needs extension-triggered hotswaps, it should document which extension keys are structural.
+> **Extensions and equivalence:** The host ignores `extensions` when comparing configs. However, engine implementations
+> may treat certain extension fields as structural internally. If an engine needs extension-triggered hotswaps, it should
+> document which extension keys are structural.
 
 ## Config Validation
 
@@ -153,7 +164,10 @@ interface StretchEngineConfigConstraints {
 }
 ```
 
-> **v0.1 Channel Constraint:** The 1–2 channel limit is deliberately conservative for this version. Future versions may expand to support multi-bus scenarios (e.g., 4-stem separation, 5.1 surround). The extension path would likely model multi-bus as either (a) separate engine instances per stem, or (b) a single engine with an explicit `busCount` parameter. This is deferred to avoid premature complexity.
+> **v0.1 Channel Constraint:** The 1–2 channel limit is deliberately conservative for this version. Future versions may
+> expand to support multi-bus scenarios (e.g., 4-stem separation, 5.1 surround). The extension path would likely model
+> multi-bus as either (a) separate engine instances per stem, or (b) a single engine with an explicit `busCount`
+> parameter. This is deferred to avoid premature complexity.
 
 ### Validation Function
 
@@ -181,7 +195,7 @@ function validateStretchConfig(config: StretchEngineConfig): ValidationResult {
     errors.push(`channels ${config.channels} out of range [1, 2]`);
   }
 
-  return errors.length === 0 ? { valid: true } : { valid: false, errors };
+  return errors.length === 0 ? {valid: true} : {valid: false, errors};
 }
 ```
 
@@ -210,23 +224,24 @@ function createEngine(config: StretchEngineConfig): EngineHandle {
 
 ## Quality Tier Mappings
 
-Each algorithm maps quality tiers to its own internal settings. These mappings are implementation details hidden from the host:
+Each algorithm maps quality tiers to its own internal settings. These mappings are implementation details hidden from
+the host:
 
 ### Signalsmith-stretch (Example)
 
-| Tier | FFT Size | Window | Overlap |
-|------|----------|--------|---------|
-| eco | 1024 | Hann | 4x |
-| normal | 2048 | Hann | 4x |
-| insane | 4096 | Kaiser | 8x |
+| Tier   | FFT Size | Window | Overlap |
+|--------|----------|--------|---------|
+| eco    | 1024     | Hann   | 4x      |
+| normal | 2048     | Hann   | 4x      |
+| insane | 4096     | Kaiser | 8x      |
 
 ### Bungee (Example)
 
-| Tier | Mode | Notes |
-|------|------|-------|
-| eco | Basic | Minimal processing |
-| normal | Standard | Default quality |
-| insane | HQ | Full AI-assisted processing (Pro only) |
+| Tier   | Mode     | Notes                                  |
+|--------|----------|----------------------------------------|
+| eco    | Basic    | Minimal processing                     |
+| normal | Standard | Default quality                        |
+| insane | HQ       | Full AI-assisted processing (Pro only) |
 
 The host never needs to know these details—it just requests a tier and the engine figures out the rest.
 
@@ -355,7 +370,8 @@ const config: StretchEngineConfig = {
 };
 ```
 
-These options are passed through to the engine factory but don't affect the host's structural equivalence checks. Engines should namespace their extension keys (e.g., `signalsmith.*`, `bungee.*`) to avoid collisions.
+These options are passed through to the engine factory but don't affect the host's structural equivalence checks.
+Engines should namespace their extension keys (e.g., `signalsmith.*`, `bungee.*`) to avoid collisions.
 
 ### Feature Flags
 

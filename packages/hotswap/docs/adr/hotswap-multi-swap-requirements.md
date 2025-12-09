@@ -1,23 +1,26 @@
 # Lane Hot-Swap Multi-Swap Requirements (Level 2.5)
 
-**Status:** Accepted for v0.3.x (policy + implementation shipped)  
-**Date:** 2025-12-04 (last updated: 2025-12-06)  
+**Status:** Accepted for v0.3.x (policy + implementation shipped)
+**Date:** 2025-12-04 (last updated: 2025-12-09)
 **Depends on:** Level 2 (single-swap correctness) — already passing
 
 ---
 
 ## Purpose
 
-This document defines the requirements for **Level 2.5**: guaranteeing that multiple hot-swaps on a single lane behave
-sanely and predictably.
+This document defines the requirements for **Level 2.5**: guaranteeing that multiple hot-swaps on a **single lane**
+behave sanely and predictably.
 
-Level 2 established that a **single** A→B swap is correct at both protocol and sample level.  
+Level 2 established that a **single** A→B swap is correct at both protocol and sample level.
 Level 2.5 extends this to:
 
-- sequences of swaps (A→B→C), and
-- overlapping swap *requests* (A→B while B→C is requested mid-fade).
+* sequences of swaps (A→B→C), and
+* overlapping swap *requests* on one lane (A→B while B→C is requested mid-fade).
 
 **Core principle:** multiple swaps in a row must not turn the lane into a chaos goblin.
+
+> Scope note: Seqlok only knows about **lanes** and engines. Hosts (e.g. “decks” in an audio app) are free to treat a
+> lane as “the deck’s audio lane”, but this ADR is lane-only.
 
 ---
 
@@ -25,8 +28,8 @@ Level 2.5 extends this to:
 
 These must remain green before Level 2.5 can be considered complete. They are enforced by existing tests in:
 
-- `lane.timeline.integration.test.ts`
-- `lane.engine-bank.integration.test.ts` (single-swap cases)
+* `lane.timeline.integration.test.ts`
+* `lane.engine-bank.integration.test.ts` (single-swap cases)
 
 **Important architectural note:**
 
@@ -37,29 +40,34 @@ cancel-by-replacement semantics for timeline commands in general.
 The timeline layer (`processTimelineBlock`, `TimelineDriver`) can handle arbitrary command replacement patterns. Level
 2.5 specifically addresses the **higher-level lane integration** where:
 
-- Swaps are scheduled through `scheduleSwap` (not raw timeline commands)
-- The mailbox + hotswap slot driver mediate the behavior
-- Engine bank interactions produce actual audio
+* Swaps are scheduled through `scheduleSwap` (not raw timeline commands)
+* The mailbox + hotswap slot driver mediate the behavior
+* Engine bank interactions produce actual audio
 
 See **Section 10, Q4** for alignment considerations between these layers.
 
 **Required invariants (Level 2):**
 
-- ✅ Single A→B swap executes all phases correctly:  
+* ✅ Single A→B swap executes all phases correctly:
   `idle → prewarm → crossfade → retire → idle`
-- ✅ Crossfade gain envelope is smooth and monotonic across the fade window  
+* ✅ Crossfade gain envelope is smooth and monotonic across the fade window
   (for test engines A = 1.0 → B = 2.0, envelope averages increase smoothly).
-- ✅ Prewarm phase does not leak next-engine audio to output
-  - Output during `prewarm` is indistinguishable from "current-only A".
-- ✅ Same-engine swap (A→A) produces stable output at 1.0
-  - Crossfade A→A yields samples ≈ 1.0 for the entire fade.
-- ✅ "Missing engine" produces **bounded** output (no explosions)
-  - With next engine missing, crossfade output stays in `(0.0, 1.0)` for the test engines:
+* ✅ Prewarm phase does not leak next-engine audio to output
+
+  * Output during `prewarm` is indistinguishable from "current-only A".
+* ✅ Same-engine swap (A→A) produces stable output at 1.0
+
+  * Crossfade A→A yields samples ≈ 1.0 for the entire fade.
+* ✅ "Missing engine" produces **bounded** output (no explosions)
+
+  * With next engine missing, crossfade output stays in `(0.0, 1.0)` for the test engines:
     it never exceeds the current engine's level and never goes negative.
-- ✅ Very short `fadeFrames` completes cleanly within block budget
-  - Crossfade completes in ≤ 2 blocks and transitions clearly from "mostly A" to "mostly B".
-- ✅ Zero-length segments produce no audio samples
-  - Protocol may emit segments of `frames = 0`; those must not cause any samples to be rendered.
+* ✅ Very short `fadeFrames` completes cleanly within block budget
+
+  * Crossfade completes in ≤ 2 blocks and transitions clearly from "mostly A" to "mostly B".
+* ✅ Zero-length segments produce no audio samples
+
+  * Protocol may emit segments of `frames = 0`; those must not cause any samples to be rendered.
 
 These are the foundation Level 2.5 builds on. If any of these regress, Level 2.5 is automatically broken.
 
@@ -67,11 +75,11 @@ These are the foundation Level 2.5 builds on. If any of these regress, Level 2.5
 
 ## 1. Sequential Swaps (Requirement 2.5-S1) ✅
 
-**Status:** PASSING  
-**Test (engine-bank harness, Level 2):**  
+**Status:** PASSING
+**Test (engine-bank harness, Level 2):**
 `lane engine bank integration: higher-order swaps → "supports sequential swaps A→B→C without regressing engines"`
 
-**Test (timeline harness, Level 2.5 sanity):**  
+**Test (timeline harness, Level 2.5 sanity):**
 Back-to-back swap coverage in `lane.timeline.integration.test.ts` (sequential cases).
 
 ### 1.1 Scenario
@@ -80,12 +88,15 @@ The scenario is defined in terms of the test harness:
 
 1. Lane starts on engine **A** (constant output 1.0).
 2. We schedule and complete a swap **A→B**:
-  - Swap is installed at `atFrame = 0`.
-  - We call `runUntilSwapComplete(blockFrames, maxBlocks)` until the harness observes
-    a full cycle back to `phase === "idle"`.
+
+* Swap is installed at `atFrame = 0`.
+* We call `runUntilSwapComplete(blockFrames, maxBlocks)` until the harness observes
+  a full cycle back to `phase === "idle"`.
+
 3. We then schedule and complete a swap **B→C**:
-  - Second ticket is scheduled at `atFrame = timeline.frame` (i.e. after the first swap is fully settled).
-  - Again, we run until the system returns to `phase === "idle"`.
+
+* Second ticket is scheduled at `atFrame = timeline.frame` (i.e. after the first swap is fully settled).
+* Again, we run until the system returns to `phase === "idle"`.
 
 The engines used in the test harness are:
 
@@ -93,7 +104,7 @@ The engines used in the test harness are:
 EngineKind.A = 1.0;
 EngineKind.B = 2.0;
 EngineKind.C = 3.0;
-````
+```
 
 These constant values are **test-only fixtures** used to make the crossfade math
 directly observable; production engines are free to output arbitrary audio.
@@ -148,7 +159,7 @@ You never "fall back" to A after the lane has idled on B.
 
 **Status:** PASSING (Reject While Busy policy implemented)
 
-**Runtime policy:** **Reject While Busy** at the host + lane level.
+**Runtime policy:** **Reject While Busy** at the host scheduling layer, with lane-level guard rails.
 
 **Key tests:**
 
@@ -182,19 +193,21 @@ is in progress.
 #### Behavior
 
 * While `decision.status.phase !== "idle"`, the lane is considered **swap-busy**.
+
 * New swap tickets are rejected at the **host scheduling layer**:
 
   * `scheduleSwap` consults an optional `isLaneBusy()` hook on the config.
   * If it returns `true`, the function returns a `SwapResult` with
     `accepted: false` and `reason: "lane-busy"`.
   * The ticket is **not** enqueued into the mailbox.
+
 * On the RT side, if an overlapping `installSwap` command somehow appears
   (e.g. from a non-conforming sender), the `HotswapSlotDriver` is required
   to ignore it while a ticket is active and keep the current protocol on track.
 
 #### Invariants (for test engines A/B/C)
 
-During an in-flight A→B swap:
+During an in-flight A→B swap on a lane:
 
 * No block may have `activeEngineKind === EngineKind.C`.
 * No block may have `nextEngineKind === EngineKind.C`.
@@ -215,16 +228,17 @@ The overlapping integration test in `lane.timeline.integration.test.ts` asserts 
 * ✅ Simple to implement and reason about.
 * ✅ Makes it clear to callers that they need to respect a "busy" window.
 * ✅ Avoids 3-engine states at the protocol level; the TLA invariant "at most 2 engines" still holds.
-* ❌ Controllers must handle "swap rejected while busy" and retry later.
+* ❌ Controllers must handle "swap rejected while busy" and retry / reschedule later.
 
 ### 2.3 Non-chosen policies (documented but not implemented)
 
-For completeness, two alternative policies remain *design space only* (see Level 3 ADR):
+For completeness, two alternative policies remain *design space only* (see Level 3 exploratory doc):
 
 * **Queue Until Idle**
 
   * Accept second ticket, queue, and install after current swap completes.
   * Implies a queued-ticket state and more complicated reasoning.
+
 * **Retarget / Coalesce**
 
   * Morph in-flight swap into a different target (e.g. A→B becomes A→C).
@@ -276,7 +290,7 @@ breaking the harness is equivalent to breaking the spec.
 
 **Status:** SATISFIED for the current A→B / A→B→C / overlapping tests.
 
-**Requirement:**
+**Requirement (per lane):**
 
 Across any finite sequence of swaps on a single lane:
 
@@ -306,15 +320,16 @@ Across any finite sequence of swaps on a single lane:
 
 ## 4. Documentation Coupling (Requirement 2.5-D1)
 
-**Status:** PARTIAL
+**Status:** PASS
 
-### 2.5-D1.1 `HOTSWAP_INTEGRATION.md` updates
+### 2.5-D1.1 `HOTSWAP_INTEGRATION.md` alignment
 
 `HOTSWAP_INTEGRATION.md` includes a **Multi-Swap Behavior** section that:
 
 * Describes sequential swaps A→B→C and links them to the integration tests.
-* States the overlapping policy as **Reject While Busy**.
-* Points to this ADR (`hotswap-multi-swap-requirements.md`) as the normative
+* States the overlapping policy as **Reject While Busy**, enforced primarily at the host scheduling layer via
+  `scheduleSwap` + `isLaneBusy`, with slot-level ignore as a guard rail.
+* Points to this ADR (`hotswap-level-2.5-multi-swap-requirements.md`) as the normative
   requirements and test matrix.
 
 If `HOTSWAP_INTEGRATION.md` changes its coverage or terminology, this ADR must
@@ -326,10 +341,20 @@ From `HOTSWAP_INTEGRATION.md`, the canonical link is:
 
 ```md
 For detailed multi-swap requirements and test specifications, see
-[HOTSWAP_MULTI_SWAP_REQUIREMENTS.md](adr/hotswap-multi-swap-requirements.md).
+[`hotswap-level-2.5-multi-swap-requirements.md`](./adr/hotswap-multi-swap-requirements.md).
 ```
 
 (Exact relative path may differ depending on docs layout; the link must resolve.)
+
+### 2.5-D1.3 Level 3 design link
+
+The exploratory Level 3 behavior (queues, retarget, etc.) is documented separately in:
+
+```md
+[`hotswap-level-3-advanced-multi-swap-exploratory.md`](adr/hotswap-advanced-multi-swap-exploratory.md)
+```
+
+Level 2.5 explicitly **does not** inherit any requirements from Level 3; the reference is for design context only.
 
 ---
 
@@ -401,7 +426,7 @@ required to call Level 2.5 "done" for v0.3.x.
 
 ### 2.5-P1: Sequential swap overhead
 
-Running N sequential swaps (A→B→C→D...) must not:
+Running N sequential swaps (A→B→C→D...) on one lane must not:
 
 * Accumulate memory leaks (ticket state must be cleaned up)
 * Degrade block processing time
@@ -438,8 +463,8 @@ All Level 2 single-swap contracts remain valid:
 
 Multi-swap behavior is **only** observable if:
 
-* User explicitly schedules a second swap before the first completes (sequential or overlapping), or
-* User consumes the new `SwapResult` diagnostics.
+* Caller explicitly schedules a second swap before the first completes (sequential or overlapping), or
+* Caller consumes the new `SwapResult` diagnostics.
 
 **Migration story:**
 "If you never overlapped swaps before, you're safe."
@@ -452,7 +477,7 @@ Multi-swap behavior is **only** observable if:
 
 ### In scope for v0.3.x model:
 
-The existing TLA+ specification must be extended to prove:
+The existing TLA+ specification must be extended to prove, for each lane:
 
 * **"At most 2 engines active per lane"** still holds under multi-swap scenarios.
 * Sequential A→B→C never regresses to A at idle.
@@ -462,7 +487,7 @@ The existing TLA+ specification must be extended to prove:
 
 * Queue semantics (`queue-until-idle`).
 * Retarget/coalesce policies.
-* Cross-lane interactions (multi-lane coordination).
+* Cross-lane / cross-deck interactions (multi-lane coordination).
 
 **Verification commitment:**
 The model must prove the existing 2-engine invariant under Level 2.5 rules; anything beyond that is explicitly deferred.
@@ -483,13 +508,14 @@ If you're already using hotswap in production:
 
 * [ ] **Handle rejection status:** Check `result.accepted` and handle `reason: "lane-busy"` in UI/controller logic.
 * [ ] **Add monitoring:** Track swap rejection rate per lane as a health metric
-  - High rejection rate → controller bug or UI spam.
+
+  * High rejection rate → controller bug or UI spam.
 * [ ] **Update documentation:** Note that overlapping swaps are rejected at the host scheduling layer until the lane
   returns to idle.
 
 ---
 
-## 10. Open Design Questions (as of 2025-12-06)
+## 10. Open Design Questions (as of 2025-12-09)
 
 ### Q1: Per-lane or global rejection?
 
@@ -514,7 +540,8 @@ Tickets do not expire on their own; they are either installed, rejected, or over
 
 * Timeline layer keeps cancel-by-replacement as a low-level capability.
 * Lane layer exposes a **more conservative** policy (Reject While Busy) to simplify controller programming.
-* Future Level 3 work may expose richer policies (`queue-until-idle`, `retarget-*`) on top of the same core protocol.
+* Level 3 work (see `hotswap-level-3-advanced-multi-swap-exploratory.md`) may expose richer policies
+  (`queue-until-idle`, `retarget-*`) on top of the same core protocol.
 
 ---
 
@@ -526,7 +553,7 @@ Tickets do not expire on their own; they are either installed, rejected, or over
 | **2.5-O1** Overlapping policy | ✅ PASS           | Reject-while-busy implemented & tested |
 | **2.5-H1** Harness API        | ✅ PASS           | Must keep stable                       |
 | **2.5-H2** No zombie tickets  | ✅ PASS (current) | Covered by sequential + overlap tests  |
-| **2.5-D1** Docs               | 🟡 PARTIAL       | Integration doc linked; keep in sync   |
+| **2.5-D1** Docs               | ✅ PASS           | Integration doc linked & aligned       |
 | **2.5-E1** SwapResult         | ✅ PASS           | Implemented in `scheduleSwap`          |
 | **2.5-P** Performance         | 📝 Intent only   | Micro-benchmarks still TODO            |
 | **2.5-V** Formal model        | 📝 In progress   | TLA update not yet merged              |
@@ -536,5 +563,5 @@ Tickets do not expire on their own; they are either installed, rejected, or over
 ## Ultra-short summary
 
 **Level 2 = "one swap is always sane."**
-**Level 2.5 = "many swaps in a row are still sane, and overlapping ones are politely rejected."**
+**Level 2.5 = "many swaps in a row are still sane, and overlapping ones are politely rejected per lane."**
 

@@ -15,10 +15,13 @@ import {
   type TimelineCommand,
   type TimelineDriver,
   type TimelineProcessCallbacks,
-  type HotswapSchedulerConfig,
 } from "../../src";
 
-import type { HotswapCommand, SwapStepDecisionRT } from "@seqlok/hotswap";
+import type {
+  HotswapCommand,
+  SwapStepDecisionRT,
+  HotswapSchedulerConfig,
+} from "@seqlok/hotswap";
 
 /**
  * Minimal engine kind enum for testing the hot-swap protocol.

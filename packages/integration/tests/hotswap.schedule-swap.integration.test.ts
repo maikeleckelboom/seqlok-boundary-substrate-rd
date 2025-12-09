@@ -6,14 +6,12 @@ import {
   type HotswapCommand,
   type SwapStepDecisionRT,
   type SwapTicketRT,
+  scheduleSwap,
+  type HotswapSchedulerConfig,
 } from "@seqlok/hotswap";
 import { describe, expect, it } from "vitest";
 
-import {
-  createHotswapSlotDriver,
-  scheduleSwap,
-  type HotswapSchedulerConfig,
-} from "../src";
+import { createHotswapSlotDriver } from "../src";
 
 import type { SwsrRingLayout } from "@seqlok/primitives";
 

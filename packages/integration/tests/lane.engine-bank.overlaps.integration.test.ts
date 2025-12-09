@@ -1,7 +1,10 @@
-import { createTicketId, type SwapTicketRT } from "@seqlok/hotswap";
+import {
+  createTicketId,
+  type SwapTicketRT,
+  scheduleSwap,
+} from "@seqlok/hotswap";
 import { describe, expect, it } from "vitest";
 
-import { scheduleSwap } from "../src";
 import {
   createLaneEngineHarness,
   EngineKind,

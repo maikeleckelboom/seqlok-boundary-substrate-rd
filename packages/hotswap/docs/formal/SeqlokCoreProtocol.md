@@ -1,307 +1,424 @@
-# Seqlok Core Protocol: TLA+ Formal Specification
+# Seqlok Core Protocol – Coherence Specification (Design Stub)
 
-## What This Is
+**Status:** Draft design – TLA+ module not yet implemented  
+**Scope:** Coherence protocol for `@seqlok/core` parameters and meters (LU/MU seqlock)  
+**Audience:** Seqlok contributors, `@seqlok/core` implementers, and TLA+ authors
 
-This is a **formal specification** of the seqlock-based coherence protocol used by `@seqlok/core` for params (
-controller → processor) and meters (processor → controller/observer). The specification captures the SWMR (Single
-Writer, Multiple Reader) model where:
+This document defines the logical behavior of the seqlock-based coherence
+protocol used by `@seqlok/core`:
 
-- The **controller** thread writes params via scalar `set`, batch `update`, and array `stage` + commit operations; each
-  completed write bumps a **LU** (Logical Unit) version exactly once.
-- The **processor** thread (real-time audio) reads params within a **coherent window** (`params.within`) that sees
-  either all-old or all-new values, never a torn mix; it writes meters via `publish`, bumping a **MU** (Meter Unit)
-  version exactly once per call.
-- **Observers** (main thread, UI) snapshot meters via seqlock retry until coherent.
+- **Parameters:** controller → processor (real-time thread)
+- **Meters:** processor → observers (host/UI)
 
-The TLC model checker exhaustively explores every interleaving of writer and reader operations and verifies that safety
-invariants (no torn snapshots, monotonic versions, exactly-once bumps) always hold and liveness properties (eventual
-coherent snapshot, no infinite retry) are satisfied.
+The aim is to specify:
 
----
+- **Safety:** conditions that must hold in every reachable state.
+- **Liveness:** conditions that eventually hold under reasonable assumptions.
 
-## Files (Proposed)
-
-```
-SeqlokCoreProtocol.tla   # The specification
-SeqlokCoreProtocol.cfg   # Model checking configuration
-test-vectors.json        # Conformance test traces
-```
+A future TLA+ module will encode this behavior and be checked with TLC.
 
 ---
 
-## Informal State Model
+## 1. Role in the Architecture
 
-The TLA+ specification would track the following state variables:
+The protocol underlies the following public APIs:
 
-### Params State
+- `params.set(key, value)`
+- `params.update(patch)`
+- `params.stage(key, cb)` – RAII-style array writes
+- `params.within(cb)` – coherent reads on the real-time side
+- `meters.publish(cb)` – coherent meter writes on the real-time side
+- `meters.snapshot(...)` – coherent meter reads on host/observers
 
-| Variable        | Domain                             | Description                                                                |
-|-----------------|------------------------------------|----------------------------------------------------------------------------|
-| `paramsScalars` | `[ParamKey → Value]`               | Committed scalar param values                                              |
-| `paramsArrays`  | `[ArrayKey → Seq(Value)]`          | Committed array param values                                               |
-| `paramsVersion` | `Nat` (LU counter)                 | Current seqlock version for params; even = stable, odd = write-in-progress |
-| `stagingArrays` | `[ArrayKey → Seq(Value) ∪ {NULL}]` | In-flight staged array data (uncommitted)                                  |
-| `stagingActive` | `BOOLEAN`                          | True if a `stage` block is open (uncommitted)                              |
+Design constraints:
 
-### Meters State
-
-| Variable              | Domain                             | Description                                                                |
-|-----------------------|------------------------------------|----------------------------------------------------------------------------|
-| `metersScalars`       | `[MeterKey → Value]`               | Committed scalar meter values                                              |
-| `metersArrays`        | `[ArrayKey → Seq(Value)]`          | Committed array meter values                                               |
-| `metersVersion`       | `Nat` (MU counter)                 | Current seqlock version for meters; even = stable, odd = write-in-progress |
-| `publishActive`       | `BOOLEAN`                          | True if a `publish` block is open (uncommitted)                            |
-| `meterStagingScalars` | `[MeterKey → Value ∪ {NULL}]`      | In-flight scalar meter values during publish (uncommitted)                 |
-| `meterStagingArrays`  | `[ArrayKey → Seq(Value) ∪ {NULL}]` | In-flight staged array meter data during publish (uncommitted)             |
-
-The meter state mirrors the param staging model: during a `publish` block, all writes (both scalar and array) accumulate
-in staging state. Only when the publish block commits does the MU version bump once, atomically moving all staged values
-to committed state.
-
-### Reader State (for modeling snapshot attempts)
-
-| Variable              | Domain                            | Description                                    |
-|-----------------------|-----------------------------------|------------------------------------------------|
-| `readerState`         | `{"idle", "reading", "retrying"}` | Current reader phase                           |
-| `readerVersionBefore` | `Nat`                             | Version captured at snapshot start             |
-| `readerBuffer`        | `[Key → Value ∪ {INCOMPLETE}]`    | Partial snapshot buffer                        |
-| `retryCount`          | `Nat`                             | Number of retries (bounded for liveness proof) |
-
-**Note on reader roles**: The spec models a single generic reader that can be instantiated in two concrete roles:
-
-- **Param reader** (processor side): Uses `ProcessorWithin*` actions to read params coherently. In the real-time
-  context, the processor does not retry on version mismatch — it simply uses stale data — but the model captures the
-  coherence guarantee.
-- **Meter observer** (controller/observer side): Uses `ObserverSnapshot*` actions to read meters. Observers may retry
-  until a coherent snapshot is obtained.
-
-This is a **reduced model** focusing on coherence semantics, not on every concrete API detail (e.g., how values are
-surfaced to callbacks, or the exact retry policy).
+- **Single writer, multiple readers (SWMR)** per side:
+  - Controller is the sole writer of parameters.
+  - Processor is the sole writer of meters.
+- **Lock-free:** no blocking on the real-time thread.
+- **Coherent snapshots:** readers observe whole generations, never torn states.
 
 ---
 
-## Actions / Next-state Operators
+## 2. Planned Formal Artifacts
 
-### Controller Actions (Params Writer)
+The formal model is expected to be located under `@seqlok/core`:
 
-| Action                                 | Variables Modified                                                | Constraints                                                                                           |
-|----------------------------------------|-------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------|
-| `ControllerSetParam(k, v)`             | `paramsScalars`, `paramsVersion`                                  | Scalar write: bumps version to odd, writes value, bumps to even. Atomic from model perspective.       |
-| `ControllerUpdateParams(patch)`        | `paramsScalars`, `paramsVersion`                                  | Batch write: single version bump pair (odd → even) for entire patch. All-or-nothing commit semantics. |
-| `ControllerStageArrayBegin(k)`         | `stagingActive`, `stagingArrays`                                  | Opens staging block for array `k`. Precondition: `stagingActive = FALSE`.                             |
-| `ControllerStageArrayWrite(k, idx, v)` | `stagingArrays[k]`                                                | Mutates staging buffer. Only valid while `stagingActive = TRUE`.                                      |
-| `ControllerStageArrayCommit`           | `paramsArrays`, `paramsVersion`, `stagingActive`, `stagingArrays` | Commits staged array, bumps LU exactly once, clears staging. Precondition: `stagingActive = TRUE`.    |
-| `ControllerStageArrayAbort`            | `stagingActive`, `stagingArrays`                                  | Discards staging, no version bump. Precondition: `stagingActive = TRUE`.                              |
+```text
+packages/core/docs/formal/tla/SeqlokCoreProtocol.tla
+packages/core/docs/formal/tla/SeqlokCoreProtocol.cfg
+packages/core/docs/formal/core-test-vectors.json
+````
 
-### Processor Actions (Params Reader, Meters Writer)
+* `.tla` – TLA+ module defining the protocol.
+* `.cfg` – model-checking configuration (constants, invariants, properties).
+* `.json` – test vectors / traces consumable by TypeScript/Rust harnesses.
 
-| Action                                   | Variables Modified                                                                                             | Constraints                                                                                                        |
-|------------------------------------------|----------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------|
-| `ProcessorWithinBegin`                   | `readerState`, `readerVersionBefore`                                                                           | Captures `paramsVersion` at window start. Precondition: version is even (stable).                                  |
-| `ProcessorWithinRead(k)`                 | `readerBuffer`                                                                                                 | Copies param value to local buffer. Only valid while `readerState = "reading"`.                                    |
-| `ProcessorWithinEnd`                     | `readerState`                                                                                                  | Validates `paramsVersion` unchanged. If mismatch, transitions to `"retrying"` (not modeled as real failure in RT). |
-| `ProcessorPublishBegin`                  | `publishActive`, `metersVersion`                                                                               | Bumps `metersVersion` to odd, opens publish block. Precondition: `publishActive = FALSE`.                          |
-| `ProcessorPublishScalar(k,v)`            | `meterStagingScalars`                                                                                          | Stages scalar meter value. Only valid while `publishActive = TRUE`. Does not bump version.                         |
-| `ProcessorPublishArrayStage(k, mutator)` | `meterStagingArrays`                                                                                           | Stages array meter mutations via callback. Only valid while `publishActive = TRUE`. Does not bump version.         |
-| `ProcessorPublishCommit`                 | `metersScalars`, `metersArrays`, `metersVersion`, `publishActive`, `meterStagingScalars`, `meterStagingArrays` | Commits all staged meter values, bumps `metersVersion` to even (exactly one MU bump), clears staging.              |
-
-**Staging semantics for meters**: Inside a `publish` block, scalar writes via per-key writer functions and array writes
-via `stage(key, cb)` both accumulate in staging state. The MU version is bumped **exactly once** when the publish block
-commits, regardless of how many scalars or arrays were updated. This mirrors the param array staging model and ensures
-observers see a coherent meter snapshot.
-
-### Observer Actions (Meters Reader)
-
-| Action                    | Variables Modified                   | Constraints                                                                 |
-|---------------------------|--------------------------------------|-----------------------------------------------------------------------------|
-| `ObserverSnapshotBegin`   | `readerState`, `readerVersionBefore` | Captures `metersVersion`. Transitions to `"reading"`.                       |
-| `ObserverSnapshotRead(k)` | `readerBuffer`                       | Copies meter value. Only valid while `readerState = "reading"`.             |
-| `ObserverSnapshotEnd`     | `readerState`, `retryCount`          | If `metersVersion` changed or was odd, retry. Otherwise, snapshot succeeds. |
+This document serves as the English reference for those artifacts.
 
 ---
 
-## Safety Invariants
+## 3. Informal State Model
 
-| Property                      | Meaning                                                                                                                  |
-|-------------------------------|--------------------------------------------------------------------------------------------------------------------------|
-| `TypeOK`                      | All variables are in valid domains (versions non-negative, arrays bounded, flags boolean).                               |
-| `VersionsEvenWhenStable`      | When no writer is active (`stagingActive = FALSE ∧ publishActive = FALSE`), versions are even.                           |
-| `NoTornParamSnapshots`        | A completed `within` window sees a coherent generation: all values from before or after any single LU bump, never mixed. |
-| `NoTornMeterSnapshots`        | A completed `snapshot` sees a coherent generation: all values from before or after any single MU bump.                   |
-| `MonotoneParamsVersion`       | `paramsVersion` never decreases across transitions.                                                                      |
-| `MonotoneMU`                  | `metersVersion` never decreases.                                                                                         |
-| `StageCommitBumpsExactlyOnce` | Each `ControllerStageArrayCommit` increments `paramsVersion` by exactly 2 (odd → even cycle).                            |
-| `PublishBumpsExactlyOnce`     | Each `ProcessorPublishCommit` increments `metersVersion` by exactly 2.                                                   |
-| `SnapshotSeesCommittedOnly`   | Snapshot buffers never contain uncommitted staging data (param or meter).                                                |
-| `NoNestedStaging`             | At most one param staging block is open at a time (`stagingActive` is exclusive).                                        |
-| `NoNestedPublish`             | At most one meter publish block is open at a time (`publishActive` is exclusive).                                        |
+The TLA+ spec will track an abstract state. This is not a memory layout; it is a
+logical model that implementations must emulate.
 
-### Staging constraints explained
+### 3.1 Parameters state (controller → processor)
 
-The invariants `NoNestedStaging` and `NoNestedPublish` enforce that **at most one active staging context exists per side
-** in this model:
+* `paramsScalars : [ParamKey → Value]`
+  Committed scalar parameter values.
 
-- On the controller side: only one `stage(key, cb)` block can be open at a time.
-- On the processor side: only one `publish(cb)` block can be open at a time.
+* `paramsArrays : [ArrayKey → Seq(Value)]`
+  Committed array parameter values.
 
-This is a **spec simplification** for tractable reasoning. Real implementations may allow concurrent staging of
-different arrays (in separate `stage` calls), but the coherence guarantees remain: each completed staging or publish
-operation bumps the version exactly once, and snapshots never observe partially-staged data.
+* `paramsVersion : Nat`
+  Logical “LU” counter. Even = stable, odd = write in progress.
 
-The invariant `SnapshotSeesCommittedOnly` is the key coherence property: it ensures that readers (whether `within` for
-params or `snapshot` for meters) only observe values that have been fully committed. Staged-but-uncommitted data is
-invisible to readers.
+* `stagingArrays : [ArrayKey → Seq(Value) ∪ {NULL}]`
+  Staged arrays during a `params.stage(key, cb)` operation.
 
----
+* `stagingActive : BOOLEAN`
+  Indicates whether a staging block is active in the model.
 
-## Liveness Properties
+Model simplification:
 
-| Property                      | Meaning                                                                                  |
-|-------------------------------|------------------------------------------------------------------------------------------|
-| `EventuallySnapshotSucceeds`  | A reader attempting a snapshot eventually obtains a coherent result.                     |
-| `NoInfiniteRetryOnStableData` | If writers stop modifying data, readers do not retry forever.                            |
-| `EventuallyPublishVisible`    | A committed meter publish eventually becomes observable to subsequent snapshots.         |
-| `EventuallyParamVisible`      | A committed param write eventually becomes observable to subsequent `within` calls.      |
-| `StagingEventuallyResolves`   | An opened staging or publish block eventually commits or aborts (no indefinite staging). |
+* At most one staging block is active at a time.
+* Production implementations may support multiple staged arrays, provided that
+  each commit still corresponds to a single LU bump and that snapshots remain
+  coherent.
 
-### Liveness assumptions
+### 3.2 Meters state (processor → observers)
 
-The liveness properties above hold under the following assumptions:
+* `metersScalars : [MeterKey → Value]`
+  Committed scalar meter values.
 
-1. **Writer quiescence or bounded activity**: Properties like `EventuallySnapshotSucceeds` and
-   `NoInfiniteRetryOnStableData` assume that writers do not toggle versions indefinitely without making progress. In
-   practice, this means:
-  - Writers eventually commit or abort their staging/publish blocks.
-  - Writers do not issue an unbounded stream of overlapping writes that keep the version odd forever.
+* `metersArrays : [ArrayKey → Seq(Value)]`
+  Committed array meter values.
 
-2. **Weak fairness on reader actions**: Readers that are enabled (i.e., ready to attempt a snapshot) eventually get
-   scheduled. This is a standard TLA+ fairness assumption (`WF_vars(ReaderActions)`).
+* `metersVersion : Nat`
+  Logical “MU” counter. Even = stable, odd = publish in progress.
 
-3. **Weak fairness on writer commit actions**: Opened staging or publish blocks eventually commit or abort. This
-   prevents writers from holding a block open indefinitely (`WF_vars(CommitActions)`).
+* `publishActive : BOOLEAN`
+  Indicates an active `meters.publish` block.
 
-4. **Bounded retry model**: For `NoInfiniteRetryOnStableData`, the model assumes a bounded `retryCount` or relies on the
-   fact that once writers stop, the version stabilizes (even), allowing readers to succeed on the next attempt.
+* `meterStagingScalars : [MeterKey → Value ∪ {NULL}]`
+  Staged scalar meter values during publish.
 
-Under these assumptions:
+* `meterStagingArrays : [ArrayKey → Seq(Value) ∪ {NULL}]`
+  Staged array meter values during publish.
 
-- `EventuallySnapshotSucceeds` holds because a stable (even) version window eventually appears.
-- `EventuallyPublishVisible` and `EventuallyParamVisible` hold because committed writes are immediately reflected in the
-  committed state, and subsequent coherent reads see them.
-- `StagingEventuallyResolves` holds by the fairness assumption on commit/abort actions.
+Staging accumulates writes; MU is bumped exactly once when a publish commits.
 
----
+### 3.3 Reader state
 
-## Relationship to Implementation
+A generic reader is modeled with bounded retry. Two roles share this machinery:
 
-The TLA+ spec is the **source of truth** for the seqlock coherence protocol. TypeScript and Rust implementations must:
+* Parameter reader on the processor side (`params.within`).
+* Meter reader on host/observers (`meters.snapshot`).
 
-1. **Implement the same state transitions** — `set`, `update`, `stage`/commit, `within`, `publish`, `snapshot` map
-   directly to spec actions.
-2. **Maintain the invariants** — no torn reads, monotonic versions, exactly-once bumps.
-3. **Use appropriate memory ordering** — TypeScript relies on `Atomics.load`/`store` with appropriate semantics;
-   Rust/C++ use `atomic_thread_fence` or equivalent.
-4. **Be testable via generated test-vectors** — TLC can export state traces that implementations replay to verify
-   conformance.
+State:
 
-The spec deliberately does **not** define:
+* `readerState ∈ {"idle", "reading", "retrying"}`
+* `readerVersionBefore : Nat`
+* `readerBuffer : [Key → Value ∪ {INCOMPLETE}]`
+* `retryCount : Nat` (bounded in the model)
 
-- Memory layout (offsets, alignment, plane structure).
-- Specific typed-array kinds (`Float32Array`, `Int32Array`, etc.).
-- How the `within` callback receives values (copied vs view).
+Implementation notes:
 
-### Out of scope: range policy and value validation
-
-The implementation supports a **range policy** for scalar params (`'clamp' | 'reject'`), but this spec does not model
-it. The TLA+ spec treats all values as abstract but well-typed — if a value appears in a `set` or `update` action, it is
-assumed valid.
-
-This omission is intentional: range clamping/rejection is a **value-level concern** orthogonal to the coherence
-protocol. The spec focuses on:
-
-- Version bumps and their atomicity.
-- Snapshot coherence (no torn reads).
-- Staging/commit lifecycle.
-
-Implementations must layer range validation on top of the coherence protocol, but the two concerns are independent.
-
-Those are implementation details in `@seqlok/core` bindings.
+* The processor-side parameter reader may choose to use stale data rather than
+  retry; the model over-approximates with retries to reason about coherence.
+* Observer-side meter readers are expected to retry until a stable snapshot is
+  obtained.
 
 ---
 
-## TLA+ Module Structure (Sketch)
+## 4. Behaviour Model
+
+The following actions describe the logical behavior. TLA operators will encode
+them as next-state relations.
+
+### 4.1 Controller actions – parameter writer
+
+These correspond to `params.set`, `params.update` and `params.stage`.
+
+**`ControllerSetParam(k, v)`**
+
+* Preconditions:
+
+  * `k ∈ ParamKey`.
+* Effects:
+
+  * `paramsVersion` transitions even → odd → even (one LU bump).
+  * `paramsScalars[k]` is updated.
+
+**`ControllerUpdateParams(patch)`**
+
+* Applies a finite patch to `paramsScalars` and/or `paramsArrays`.
+* All changes are visible as a single generation.
+* Exactly one LU bump for the full patch.
+
+**`ControllerStageArrayBegin(k)`**
+
+* Preconditions:
+
+  * `stagingActive = FALSE`.
+  * `k ∈ ArrayKey`.
+* Effects:
+
+  * `stagingActive' = TRUE`.
+  * `stagingArrays[k]` initialized from `paramsArrays[k]`.
+
+**`ControllerStageArrayWrite(k, idx, v)`**
+
+* Preconditions:
+
+  * `stagingActive = TRUE`.
+* Effects:
+
+  * Staging buffer for `k` is mutated at `idx`.
+
+**`ControllerStageArrayCommit`**
+
+* Preconditions:
+
+  * `stagingActive = TRUE`.
+* Effects:
+
+  * `paramsArrays` updated from `stagingArrays`.
+  * `paramsVersion` increments by 2 (odd → even).
+  * `stagingActive' = FALSE`, staging cleared.
+
+**`ControllerStageArrayAbort`**
+
+* Preconditions:
+
+  * `stagingActive = TRUE`.
+* Effects:
+
+  * Staging state cleared, no LU bump.
+
+### 4.2 Processor actions – parameter reader and meter writer
+
+These model `params.within` and `meters.publish`.
+
+#### Parameters (`params.within`)
+
+**`ProcessorWithinBegin`**
+
+* Captures `paramsVersion` into `readerVersionBefore`.
+* Requires the captured version to be even.
+* Sets `readerState' = "reading"`.
+
+**`ProcessorWithinRead(k)`**
+
+* Copies `paramsScalars[k]` or `paramsArrays[k]` into `readerBuffer[k]`.
+* Valid only in `"reading"`.
+
+**`ProcessorWithinEnd`**
+
+* Checks whether `paramsVersion` is unchanged and even.
+* If unchanged:
+
+  * Snapshot is coherent.
+* If changed:
+
+  * Model may transition to `"retrying"` with increased `retryCount`.
+  * Actual runtime behavior may use the stale snapshot; the model remains a
+    conservative over-approximation.
+
+#### Meters (`meters.publish`)
+
+**`ProcessorPublishBegin`**
+
+* Preconditions:
+
+  * `publishActive = FALSE`.
+* Effects:
+
+  * `metersVersion` becomes odd.
+  * `publishActive' = TRUE`.
+
+**`ProcessorPublishScalar(k, v)`**
+
+* Writes staged scalar meter value for `k`.
+
+**`ProcessorPublishArrayStage(k, mutator)`**
+
+* Applies `mutator` to the staged array for `k`.
+
+**`ProcessorPublishCommit`**
+
+* Preconditions:
+
+  * `publishActive = TRUE`.
+* Effects:
+
+  * Meters updated from staging.
+  * `metersVersion` increments by 2 and becomes even.
+  * Staging cleared.
+  * `publishActive' = FALSE`.
+
+### 4.3 Observer actions – meter reader
+
+These model `meters.snapshot(...)`.
+
+**`ObserverSnapshotBegin`**
+
+* Captures `metersVersion` in `readerVersionBefore`.
+* Sets `readerState' = "reading"`.
+
+**`ObserverSnapshotRead(k)`**
+
+* Copies meter values for `k` into `readerBuffer[k]`.
+
+**`ObserverSnapshotEnd`**
+
+* If `metersVersion` is unchanged and even:
+
+  * Snapshot is accepted; `readerState' = "idle"`.
+* Otherwise:
+
+  * Snapshot is rejected; `readerState' = "retrying"`, `retryCount` increases.
+
+---
+
+## 5. Safety Properties
+
+The protocol is intended to satisfy the following invariants in all reachable
+states.
+
+* **TypeOK**
+  All variables remain within their declared domains.
+
+* **VersionsEvenWhenStable**
+  If `stagingActive = FALSE` and `publishActive = FALSE`, both `paramsVersion`
+  and `metersVersion` are even.
+
+* **NoTornParamSnapshots**
+  Any completed `within` window observes either:
+
+  * all parameter values from a single pre-write generation, or
+  * all parameter values from a single post-write generation,
+    but never a mix.
+
+* **NoTornMeterSnapshots**
+  Analogous property for meter snapshots.
+
+* **MonotoneParamsVersion**
+  `paramsVersion` never decreases.
+
+* **MonotoneMetersVersion**
+  `metersVersion` never decreases.
+
+* **StageCommitBumpsExactlyOnce**
+  Each successful staged array commit corresponds to exactly one LU bump.
+
+* **PublishBumpsExactlyOnce**
+  Each successful publish corresponds to exactly one MU bump.
+
+* **SnapshotSeesCommittedOnly**
+  Reader buffers contain only committed values. Staged-but-uncommitted values
+  do not leak into snapshots.
+
+* **NoNestedStaging (model-level)**
+  At most one staging block is active in the model.
+
+* **NoNestedPublish (model-level)**
+  At most one publish block is active in the model.
+
+---
+
+## 6. Liveness Properties and Assumptions
+
+### 6.1 Target liveness properties
+
+* **EventuallySnapshotSucceeds**
+  Under quiescent writers, snapshots eventually succeed.
+
+* **NoInfiniteRetryOnStableData**
+  If parameters/meters stabilize, readers do not retry indefinitely.
+
+* **EventuallyPublishVisible**
+  Once a publish commits, subsequent snapshots eventually reflect the new
+  meters.
+
+* **EventuallyParamVisible**
+  Once a parameter write completes, subsequent `within` windows eventually
+  reflect the updated parameters.
+
+* **StagingEventuallyResolves**
+  Every staging or publish block eventually commits or aborts.
+
+### 6.2 Assumptions
+
+To reason about liveness, the model assumes:
+
+1. Writers eventually either complete or quiesce (no perpetually open staging or
+   publish blocks).
+2. Fair scheduling of reader and writer actions (`WF_vars(Next)` style).
+3. Bounded retry (`MAX_RETRY` or equivalent), or eventual stabilization of
+   versions when writers quiesce.
+
+These assumptions will be reflected in the `.cfg` configuration and comments in
+the `.tla` module.
+
+---
+
+## 7. Mapping to `@seqlok/core` API
+
+Correspondence between spec concepts and API:
+
+| Spec concept / action    | `@seqlok/core` API            |
+|--------------------------|-------------------------------|
+| `ControllerSetParam`     | `params.set(key, value)`      |
+| `ControllerUpdateParams` | `params.update(patch)`        |
+| `ControllerStageArray*`  | `params.stage(key, cb(view))` |
+| `ProcessorWithin*`       | `params.within(cb)`           |
+| `ProcessorPublish*`      | `meters.publish(cb(writer))`  |
+| `ObserverSnapshot*`      | `meters.snapshot(...)`        |
+
+Implementation requirements:
+
+* One LU bump per logical parameter write (set/update/stage+commit).
+* One MU bump per meter publish.
+* Parameter readers observe coherent generations.
+* Meter readers observe coherent generations or retry until they do.
+
+Range policy (`"clamp" | "reject"`) is out of scope for this protocol and is
+treated as a value-level concern.
+
+---
+
+## 8. TLA+ Module Skeleton (Non-normative)
+
+The eventual TLA+ module is expected to resemble the following structure:
 
 ```tla
----------------------------- MODULE SeqlokCoreProtocol ----------------------------
+---- MODULE SeqlokCoreProtocol ----
 EXTENDS Integers, Sequences, FiniteSets
 
 CONSTANTS
-    PARAM_KEYS,           \* Set of scalar param keys
-    ARRAY_PARAM_KEYS,     \* Set of array param keys
-    METER_KEYS,           \* Set of scalar meter keys
-    ARRAY_METER_KEYS,     \* Set of array meter keys
-    MAX_ARRAY_LEN,        \* Maximum array length
-    MAX_RETRY             \* Bounded retry for liveness proof
+    PARAM_KEYS, ARRAY_PARAM_KEYS,
+    METER_KEYS, ARRAY_METER_KEYS,
+    MAX_ARRAY_LEN,
+    MAX_RETRY
 
 VARIABLES
-    \* Params state
     paramsScalars, paramsArrays, paramsVersion,
     stagingArrays, stagingActive,
-    \* Meters state (with staging)
     metersScalars, metersArrays, metersVersion,
     publishActive, meterStagingScalars, meterStagingArrays,
-    \* Reader state
     readerState, readerVersionBefore, readerBuffer, retryCount
 
-vars == << paramsScalars, paramsArrays, paramsVersion,
-           stagingArrays, stagingActive,
-           metersScalars, metersArrays, metersVersion,
-           publishActive, meterStagingScalars, meterStagingArrays,
-           readerState, readerVersionBefore, readerBuffer, retryCount >>
+vars == << ... >>
 
 TypeOK == ...
-
 Init == ...
-
-\* Controller actions (params writer)
-ControllerSetParam(k, v) == ...
-ControllerUpdateParams(patch) == ...
-ControllerStageArrayBegin(k) == ...
-ControllerStageArrayWrite(k, idx, v) == ...
-ControllerStageArrayCommit == ...
-ControllerStageArrayAbort == ...
-
-\* Processor actions (params reader, meters writer)
-ProcessorWithinBegin == ...
-ProcessorWithinRead(k) == ...
-ProcessorWithinEnd == ...
-ProcessorPublishBegin == ...
-ProcessorPublishScalar(k, v) == ...       \* Stages to meterStagingScalars
-ProcessorPublishArrayStage(k) == ...      \* Stages to meterStagingArrays
-ProcessorPublishCommit == ...             \* Commits all staged, bumps MU once
-
-\* Observer actions (meters reader)
-ObserverSnapshotBegin == ...
-ObserverSnapshotRead(k) == ...
-ObserverSnapshotEnd == ...
-
 Next == ...
 
-\* Safety invariants
-NoTornParamSnapshots == ...
-NoTornMeterSnapshots == ...
-MonotoneParamsVersion == ...
-MonotoneMU == ...
-StageCommitBumpsExactlyOnce == ...
-PublishBumpsExactlyOnce == ...
-SnapshotSeesCommittedOnly == ...
-NoNestedStaging == stagingActive => ~stagingActive'  \* (simplified)
-NoNestedPublish == publishActive => ~publishActive'  \* (simplified)
-
-Safety == TypeOK /\ NoTornParamSnapshots /\ NoTornMeterSnapshots /\ ...
-
-\* Liveness (under fairness assumptions)
+Safety == ...
 Fairness == WF_vars(Next)
+
 EventuallySnapshotSucceeds == ...
 NoInfiniteRetryOnStableData == ...
 
@@ -309,217 +426,9 @@ Spec == Init /\ [][Next]_vars /\ Fairness
 
 THEOREM Spec => []Safety
 THEOREM Spec => EventuallySnapshotSucceeds
-=============================================================================
+
+====
 ```
 
----
-
-## Test Vector Shape (Proposed)
-
-```json
-{
-  "name": "scalar_set_then_within",
-  "description": "Controller sets a scalar, processor reads it coherently",
-  "initialState": {
-    "paramsScalars": {
-      "gain": 0.5
-    },
-    "paramsVersion": 0
-  },
-  "steps": [
-    {
-      "action": "ControllerSetParam",
-      "args": {
-        "key": "gain",
-        "value": 0.8
-      },
-      "expectedState": {
-        "paramsScalars": {
-          "gain": 0.8
-        },
-        "paramsVersion": 2
-      }
-    },
-    {
-      "action": "ProcessorWithinBegin",
-      "expectedReaderVersionBefore": 2
-    },
-    {
-      "action": "ProcessorWithinRead",
-      "args": {
-        "key": "gain"
-      },
-      "expectedValue": 0.8
-    },
-    {
-      "action": "ProcessorWithinEnd",
-      "expectedSuccess": true
-    }
-  ],
-  "invariants": [
-    "NoTornParamSnapshots",
-    "MonotoneParamsVersion",
-    "VersionsEvenWhenStable"
-  ]
-}
-```
-
-```json
-{
-  "name": "array_stage_commit_coherent",
-  "description": "Array staging commits atomically, single LU bump",
-  "initialState": {
-    "paramsArrays": {
-      "eq": [
-        0,
-        0,
-        0,
-        0
-      ]
-    },
-    "paramsVersion": 0,
-    "stagingActive": false
-  },
-  "steps": [
-    {
-      "action": "ControllerStageArrayBegin",
-      "args": {
-        "key": "eq"
-      }
-    },
-    {
-      "action": "ControllerStageArrayWrite",
-      "args": {
-        "key": "eq",
-        "index": 0,
-        "value": 1.0
-      }
-    },
-    {
-      "action": "ControllerStageArrayWrite",
-      "args": {
-        "key": "eq",
-        "index": 1,
-        "value": 2.0
-      }
-    },
-    {
-      "action": "ControllerStageArrayCommit",
-      "expectedState": {
-        "paramsArrays": {
-          "eq": [
-            1.0,
-            2.0,
-            0,
-            0
-          ]
-        },
-        "paramsVersion": 2,
-        "stagingActive": false
-      },
-      "comment": "Single LU bump for entire array commit"
-    }
-  ]
-}
-```
-
-```json
-{
-  "name": "meter_publish_then_snapshot",
-  "description": "Processor publishes meters, observer snapshots coherently",
-  "initialState": {
-    "metersScalars": {
-      "rms": 0.0,
-      "peak": 0.0
-    },
-    "metersVersion": 0
-  },
-  "steps": [
-    {
-      "action": "ProcessorPublishBegin",
-      "expectedVersionAfter": 1,
-      "comment": "Version odd during publish block"
-    },
-    {
-      "action": "ProcessorPublishScalar",
-      "args": {
-        "key": "rms",
-        "value": 0.25
-      },
-      "comment": "Staged, not yet committed"
-    },
-    {
-      "action": "ProcessorPublishScalar",
-      "args": {
-        "key": "peak",
-        "value": 0.9
-      },
-      "comment": "Staged, not yet committed"
-    },
-    {
-      "action": "ProcessorPublishCommit",
-      "expectedState": {
-        "metersScalars": {
-          "rms": 0.25,
-          "peak": 0.9
-        },
-        "metersVersion": 2
-      },
-      "comment": "Single MU bump for entire publish block"
-    },
-    {
-      "action": "ObserverSnapshotBegin",
-      "expectedReaderVersionBefore": 2
-    },
-    {
-      "action": "ObserverSnapshotRead",
-      "args": {
-        "keys": [
-          "rms",
-          "peak"
-        ]
-      },
-      "expectedValues": {
-        "rms": 0.25,
-        "peak": 0.9
-      }
-    },
-    {
-      "action": "ObserverSnapshotEnd",
-      "expectedSuccess": true
-    }
-  ]
-}
-```
-
----
-
-## How to Run (Proposed)
-
-### TLA+ Toolbox
-
-1. Open `SeqlokCoreProtocol.tla`
-2. Create a new model with small constant bounds (e.g., 2 param keys, array length 4, max retry 3)
-3. Add invariants: `TypeOK`, `NoTornParamSnapshots`, `NoTornMeterSnapshots`, etc.
-4. Add properties: `EventuallySnapshotSucceeds`, `NoInfiniteRetryOnStableData`
-5. Run TLC
-
-### Command Line
-
-```bash
-java -jar tla2tools.jar -config SeqlokCoreProtocol.cfg SeqlokCoreProtocol.tla
-```
-
----
-
-## Why This Matters for Real-Time Audio
-
-In RT audio, torn reads are catastrophic: they produce audible clicks, pops, or wildly incorrect filter coefficients.
-The seqlock protocol ensures:
-
-- **Coherence**: Readers see a consistent generation of all params/meters.
-- **Lock-free writes**: Writers (both controller and processor) never block.
-- **Bounded reader retry**: Under reasonable write rates, readers converge quickly.
-
-By formally specifying and model-checking the protocol, we have mathematical confidence that the **design** prevents
-torn reads before writing implementation code.
+This skeleton is illustrative only. The authoritative behavior is defined by
+the properties in the preceding sections.

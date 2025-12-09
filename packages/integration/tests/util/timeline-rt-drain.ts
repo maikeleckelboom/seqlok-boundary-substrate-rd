@@ -32,7 +32,7 @@ export function drainMailboxAndPendingCommands<EngineKind extends number>(
   timeline: TimelineDriver<EngineKind>,
   blockFrames: number,
 ): TimelineCommand<EngineKind>[] {
-  // Drain mailbox and project HotswapCommand → TimelineCommand.
+  // Drain mailbox and project HotswapCommand to TimelineCommand.
   mailbox.consumer.drain({
     onCommand(command): void {
       const { ticket } = command;

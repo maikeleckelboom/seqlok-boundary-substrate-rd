@@ -40,11 +40,10 @@ import {
   HOTSWAP_COMMAND_TAG_INSTALL,
   HOTSWAP_COMMAND_WORDS_PER_SLOT,
   type HotswapCommand,
-} from "@seqlok/hotswap";
-import {
   scheduleSwap,
   type HotswapSchedulerConfig,
-} from "@seqlok/integration";
+  type SwapResult,
+} from "@seqlok/hotswap";
 
 const codec = createHotswapCommandCodec<EngineKind>();
 const mailbox = createCommandMailbox<HotswapCommand<EngineKind>>({
@@ -56,6 +55,10 @@ const mailbox = createCommandMailbox<HotswapCommand<EngineKind>>({
   },
 });
 
+// Product-specific lane status surface.
+// In a real system this would come from lane runtime state / introspection.
+declare function isLaneBusy(mailboxId: string): boolean;
+
 const schedulerConfig: HotswapSchedulerConfig<
   EngineKind,
   HotswapCommand<EngineKind>
@@ -65,18 +68,49 @@ const schedulerConfig: HotswapSchedulerConfig<
   encodeInstallSwap(ticket) {
     return {tag: HOTSWAP_COMMAND_TAG_INSTALL, ticket};
   },
+  isLaneBusy() {
+    return isLaneBusy("lane-0");
+  },
 };
 
-// Minimal usage: fire-and-forget.
-// Level 2.5 semantics guarantee that invalid / overlapping tickets
-// are either rejected at this boundary or ignored by the slot.
-// See "Multi-Swap Behavior" below.
-scheduleSwap(schedulerConfig, ticket);
+// Level 2.5 semantics:
+//  - Validate ticket using the RT protocol
+//  - Consult isLaneBusy for Reject-While-Busy
+//  - Enqueue on success, or return a structured SwapResult on rejection
+const result: SwapResult = scheduleSwap(schedulerConfig, ticket);
+
+if (!result.accepted) {
+  switch (result.reason) {
+    case "lane-busy":
+      // Lane already has an in-flight ticket: caller can back off, queue, or
+      // coalesce at a higher layer.
+      break;
+    case "invalid-ticket":
+      // Protocol preconditions violated (e.g. fadeFrames < 1); caller should
+      // fix the ticket instead of retrying.
+      break;
+    case "out-of-range":
+    case "internal-error":
+    default:
+      // Reserved for future differentiation / diagnostics.
+      break;
+  }
+}
 ```
 
-`scheduleSwap` validates the ticket according to the RT protocol and enqueues a `HotswapCommand` into the lane's
-`CommandMailbox`. Invalid tickets are rejected before they hit the RT path (via validation error or status, depending on
-version). Overlapping tickets for the same lane are governed by the **Reject While Busy** policy described below.
+`scheduleSwap` validates the ticket according to the RT protocol and, if the lane is not busy, enqueues a
+`HotswapCommand` into the lane's `CommandMailbox`. It returns a `SwapResult` describing whether the ticket was accepted
+and why:
+
+* Valid ticket + lane not busy → `{accepted: true, reason: undefined, ticketId}`.
+* Invalid ticket → `{accepted: false, reason: "invalid-ticket", ticketId}` (no mailbox write).
+* Overlapping ticket while the lane is busy → `{accepted: false, reason: "lane-busy", ticketId}` (no mailbox write).
+
+Any commands that still reach the slot (e.g. tests that omit `isLaneBusy`) are additionally guarded by the slot
+driver's "at most one active ticket" rule; see **Multi-Swap Behavior** below.
+
+Command transport failures (mailbox closed / ring overflow) remain typed `commands.*` exceptions and are not encoded in
+`SwapResult`.
 
 ## 2. RT Side (Per Audio Block)
 
@@ -175,9 +209,10 @@ function processAudioBlock(blockFrames: number): void {
       // Called at exact segment boundaries when a TimelineCommand applies.
       // For "installSwap" this installs the ticket into hotswapSlot.
       //
-      // The Level 2.5 "Reject While Busy" policy is enforced by the
-      // slot driver: once a ticket is active, overlapping installs
-      // for the same lane are ignored until the slot returns to idle.
+      // Level 2.5 "Reject While Busy" is primarily enforced by scheduleSwap
+      // on the host side via cfg.isLaneBusy (see section 1). The slot driver
+      // still enforces "at most one active ticket" and ignores overlapping
+      // installs as a defense-in-depth guard rail.
     },
   };
 
@@ -253,6 +288,9 @@ function applyDecisionToEngines(
 
 ## 4. Multi-Swap Behavior (Sequential + Overlapping)
 
+For detailed multi-swap requirements and test specifications, see
+[`hotswap-multi-swap-requirements.md`](../../hotswap/docs/adr/hotswap-multi-swap-requirements.md).
+
 ### 4.1 Sequential swaps (A→B→C)
 
 Sequential swaps on a single lane are supported and tested via the engine-bank harness:
@@ -272,13 +310,19 @@ simple A→B→C→… progression.
 For Level 2.5, the lane hot-swap integration uses the **Reject While Busy** policy for overlapping swaps on the **same
 lane**:
 
-* While a ticket is in-flight (`hotswapSlot` phase is not `"idle"`), the lane is considered **swap-busy**.
-* Any additional swap ticket for that lane, issued via `scheduleSwap`, **must not take effect** until the slot returns
-  to idle.
-* In the current implementation, this is enforced at the slot/integration layer:
+* While a ticket is in-flight (the lane is considered **swap-busy**), additional swap tickets for that lane must not
+  take effect.
 
-  * The slot maintains at most one active ticket.
-  * Overlapping `installSwap` commands for the same lane are ignored while a ticket is active.
+* At the host / scheduling layer, this is implemented via `schedulerConfig.isLaneBusy`:
+
+  * If `isLaneBusy()` returns `true`, `scheduleSwap` returns a `SwapResult` with
+    `{accepted: false, reason: "lane-busy", ticketId}` and **does not enqueue** any command into the mailbox.
+  * This keeps multi-swap policy off the audio thread and O(1) in time and allocations.
+
+* As a defense-in-depth guard rail, the slot driver still maintains at most one active ticket:
+
+  * If overlapping `installSwap` commands for the same lane do reach the RT side (e.g. tests that omit `isLaneBusy`),
+    the slot simply ignores them while a ticket is active.
 
 The integration tests enforce:
 
@@ -286,6 +330,7 @@ The integration tests enforce:
 
   * Never appears as `activeEngineKind === C`.
   * Never appears as `nextEngineKind === C`.
+
 * The final idle state is indistinguishable from a single A→B swap:
 
   * Final idle engine is B.
@@ -294,11 +339,12 @@ The integration tests enforce:
 From a controller’s perspective:
 
 * **Sequential intent** (A→B then, once settled, B→C) is fully supported.
-* **Overlapping intent** (spam swaps while a fade is in progress) is not interpreted as “cancel-by-replacement” at the
-  lane layer; extra tickets are effectively rejected/ignored until the current swap completes.
+* **Overlapping intent** (spamming swaps while a fade is in progress) yields structured rejections at the host boundary
+  (`reason: "lane-busy"`). Any commands that slip through are ignored by the slot, so C never leaks into the audio
+  path.
 
 Higher-level schedulers (e.g. Ghost DJ planners) can implement richer policies (queueing, coalescing, “last-writer
-wins”) on top by controlling when they call `scheduleSwap`.
+wins”) on top by controlling when they call `scheduleSwap` and how they respond to `SwapResult`.
 
 ## 5. Protocol Guarantees
 
@@ -317,16 +363,20 @@ The underlying hot-swap protocol (formally verified via TLA+ at the slot/timelin
 In other words:
 
 * Slot/timeline core: small, two-engine, monotone state machine with replacement *capability*.
-* lane integration: conservative “one ticket at a time per lane; overlapping requests are ignored” behavior, to keep the
-  audio semantics predictable.
+* Lane integration: conservative “one ticket at a time per lane”; overlapping requests are rejected at the host
+  scheduling layer (`scheduleSwap` + `SwapResult`) and ignored defensively by the slot, to keep the audio semantics
+  predictable.
 
 ## 6. Test Coverage
 
 The integration test suite covers:
 
 * **Happy path:** Full swap lifecycle (spawn → prime → prewarm → crossfade → retire → idle).
+
 * **Immediate swap:** `atFrame = 0` with no prewarm.
+
 * **Multi-block crossfade:** `fadeFrames` spanning multiple blocks.
+
 * **Back-to-back swaps:**
 
   * Sequential swaps at distinct `atFrame` values.
@@ -334,7 +384,9 @@ The integration test suite covers:
 
     * Overlapping ticket does not perturb the in-flight swap.
     * Protocol still converges to idle with the original ticket’s engine.
+
 * **Invalid tickets:** Defense-in-depth validation (e.g. `fadeFrames = 0`, negative `preWarmBlocks`, `ticketId = 0`).
+
 * **Edge cases:** Late commands, zero-frame segments, very short fades, same-engine swaps, command priority ordering.
 
 See [`tests/lane.timeline.integration.test.ts`](../tests/lane.timeline.integration.test.ts) and

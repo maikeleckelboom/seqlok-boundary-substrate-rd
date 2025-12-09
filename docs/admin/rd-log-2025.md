@@ -203,3 +203,21 @@ Brought the hot-swap docs in line with the new behavior and naming. Updated `HOT
 lane-centric flow and engine-bank application, refreshed the `hotswap-multi-swap-requirements.md` spec to mark overlaps
 (2.5-O1) as PASS under Reject-While-Busy, and wired in references to the new `lane.timeline` and `lane.engine-bank`
 integration tests so Level 2.5 is backed by explicit, greppable scenarios rather than hand-wavy prose.
+
+## 2025-12-09 (6h)
+
+[hotswap, formal specs] 3h
+Split the old monolithic hot-swap spec into two clear policies (single-swap and reject-while-busy), with their own
+configs and bounded state spaces. Refined invariants and liveness so the specs read like neutral protocol definitions,
+not tutorials, and wired the TLA runner to select policies via flags while handling extra TLC args robustly.
+
+[hotswap, benches & integration] 2h
+Added a small benchmark stack around hotswap: pure RT state machine, reject-while-busy scheduling under mixed
+accept/reject load, and a short mailbox+driver lane run. Verified the numbers are sane and align with the spec bounds.
+Centralized `scheduleSwap` in the hotswap package, removed the integration duplicate, and refreshed the lane integration
+tests so the reject-while-busy contract is exercised end-to-end.
+
+[tooling, eslint and shared config] 1h
+Tightened shared Vitest and ESLint configuration across
+base/commands/hotswap/integration/introspect/playground/primitives. Aligned hotswap with the shared error-domain system,
+cleaned up minor lint fallout, and kept the workspace green under tests, type checks, and the new hotswap bench command.

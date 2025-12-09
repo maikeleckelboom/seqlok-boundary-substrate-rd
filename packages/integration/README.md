@@ -15,19 +15,19 @@ scheduleSwap
   → processTimelineBlock
   → HotswapSlotDriver.stepBlock
   → SwapStepDecisionRT<EngineKind>
-````
+```
 
 On the **host side**, you:
 
-* Construct a `SwapTicketRT<EngineKind>` (non-zero `ticketId`, `engineKind`, `atFrame`, `fadeFrames`, `preWarmBlocks`)
-* Configure a `HotswapSchedulerConfig<EngineKind, HotswapCommand<EngineKind>>`
-* Call `scheduleSwap(config, ticket)` to validate and enqueue a `HotswapCommand` into the lane’s `CommandMailbox`
+- Construct a `SwapTicketRT<EngineKind>` (non-zero `ticketId`, `engineKind`, `atFrame`, `fadeFrames`, `preWarmBlocks`)
+- Configure a `HotswapSchedulerConfig<EngineKind, HotswapCommand<EngineKind>>`
+- Call `scheduleSwap(config, ticket)` to validate and enqueue a `HotswapCommand` into the lane’s `CommandMailbox`
 
 On the **RT side**, each lane:
 
-* Drains its mailbox into `TimelineCommand<EngineKind>` values (`kind: "installSwap"` for new tickets)
-* Runs `processTimelineBlock(timeline, blockFrames, commands, callbacks)`
-* Inside `renderSegment`, calls `hotswapSlot.stepBlock(...)` and applies the resulting
+- Drains its mailbox into `TimelineCommand<EngineKind>` values (`kind: "installSwap"` for new tickets)
+- Runs `processTimelineBlock(timeline, blockFrames, commands, callbacks)`
+- Inside `renderSegment`, calls `hotswapSlot.stepBlock(...)` and applies the resulting
   `SwapStepDecisionRT<EngineKind>` to its engine bank (current / next / crossfade / retire)
 
 See `docs/HOTSWAP_INTEGRATION.md` for code-level examples and protocol guarantees,

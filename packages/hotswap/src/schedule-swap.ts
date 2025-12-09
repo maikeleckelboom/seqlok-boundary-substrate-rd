@@ -86,7 +86,6 @@ function mapPushFailureToCommandsError(
     return createCommandsError("mailboxClosed", { mailboxId });
   }
 
-  // reason === "ringOverflow"
   return createCommandsError("ringOverflow", {
     mailboxId,
     capacity: result.capacity,
@@ -106,13 +105,13 @@ function mapPushFailureToCommandsError(
  * Still throws for command-mailbox failures (commands.* errors).
  */
 export function scheduleSwap<EngineKind extends number, Command>(
-  cfg: HotswapSchedulerConfig<EngineKind, Command>,
+  config: HotswapSchedulerConfig<EngineKind, Command>,
   ticket: SwapTicketRT<EngineKind>,
 ): SwapResult {
   const ticketId = ticket.ticketId as number;
 
-  // 1. Overlap policy: Reject While Busy (Level 2.5-O1)
-  if (cfg.isLaneBusy?.()) {
+  // Overlap policy: Reject While Busy
+  if (config.isLaneBusy?.()) {
     return {
       accepted: false,
       reason: "lane-busy",
@@ -120,11 +119,11 @@ export function scheduleSwap<EngineKind extends number, Command>(
     };
   }
 
-  // 2. Validate ticket using RT protocol.
-  //    If invalid, return a structured rejection instead of throwing.
+  // Validate ticket using RT protocol
+  // If invalid, return a structured rejection instead of throwing
   try {
-    // initSwapStateRT performs full ticket validation.
-    // We don't need the state here, only the validation side-effects.
+    // initSwapStateRT performs full ticket validation
+    // We don't need the state here, only the validation side-effects
     initSwapStateRT(ticket);
   } catch (error) {
     if (isSeqlokError(error) && error.code === "hotswap.invalidTicket") {
@@ -137,25 +136,25 @@ export function scheduleSwap<EngineKind extends number, Command>(
 
     // For now, surface any other error as-is. "internal-error" and
     // "out-of-range" are reserved for future differentiation at the
-    // integration layer.
+    // integration layer
     throw error;
   }
 
-  // 3. Encode and enqueue the command.
-  const command = cfg.encodeInstallSwap(ticket);
-  const pushResult = cfg.producer.push(command);
+  // Encode and enqueue the command.
+  const command = config.encodeInstallSwap(ticket);
+  const pushResult = config.producer.push(command);
 
   const commandsError = mapPushFailureToCommandsError(
-    cfg.mailboxId,
+    config.mailboxId,
     pushResult,
   );
 
   if (commandsError !== null) {
-    // Command/mailbox failures stay as exceptions — they are not multi-swap policy.
+    // Command/mailbox failures stay as exceptions — they are not multi-swap policy
     throw commandsError;
   }
 
-  // 4. Success.
+  // Success
   return {
     accepted: true,
     ticketId,

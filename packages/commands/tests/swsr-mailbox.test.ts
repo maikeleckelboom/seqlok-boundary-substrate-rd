@@ -38,7 +38,6 @@ const TEST_CODEC: CommandCodec<TestCommand> = {
     }
 
     if (tag === 1) {
-      // noUncheckedIndexedAccess: index returns number | undefined
       // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const value = src[wordOffset + 1]!;
       const command: TestCommand = { kind: "set", value };

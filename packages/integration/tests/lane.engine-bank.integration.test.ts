@@ -8,10 +8,13 @@
  * sample-level crossfade semantics without touching Web Audio.
  */
 
-import { createTicketId, type SwapTicketRT } from "@seqlok/hotswap";
+import {
+  createTicketId,
+  scheduleSwap,
+  type SwapTicketRT,
+} from "@seqlok/hotswap";
 import { describe, expect, it } from "vitest";
 
-import { scheduleSwap } from "../src";
 import {
   createLaneEngineHarness,
   EngineKind,

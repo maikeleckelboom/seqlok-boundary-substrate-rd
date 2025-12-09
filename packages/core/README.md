@@ -50,16 +50,16 @@ Properties:
 
 ```bash
 pnpm add @seqlok/core
-````
+```
 
 ### Runtime requirements
 
-* ESM-only: modern browsers (≈2022+) or Node 20+.
-* `SharedArrayBuffer` must be available:
+- ESM-only: modern browsers (≈2022+) or Node 20+.
+- `SharedArrayBuffer` must be available:
 
-  * **Browser**: correct COOP/COEP headers and `crossOriginIsolated === true`.
-  * **Worker / AudioWorklet**: same process, SAB enabled by the host.
-  * **Node**: recent Node with `SharedArrayBuffer` support (e.g. Node 20+).
+  - **Browser**: correct COOP/COEP headers and `crossOriginIsolated === true`.
+  - **Worker / AudioWorklet**: same process, SAB enabled by the host.
+  - **Node**: recent Node with `SharedArrayBuffer` support (e.g. Node 20+).
 
 ---
 
@@ -106,7 +106,7 @@ The important rule:
 > Backing and binding **consume** `Plan` — they never recompute it.
 
 There is **no** `bindController(spec, backing)` sugar in core.
-If you want shortcuts, you build them *on top* of this flow.
+If you want shortcuts, you build them _on top_ of this flow.
 
 ---
 
@@ -118,13 +118,13 @@ render lane, etc.
 ### 1. Define a spec
 
 ```ts
-import {defineSpec} from "@seqlok/core";
+import { defineSpec } from "@seqlok/core";
 
-export const laneSpec = defineSpec(({param, meter}) => ({
+export const laneSpec = defineSpec(({ param, meter }) => ({
   id: "lane",
   params: {
-    timeRatio: param.f32({min: 0.25, max: 4}),
-    eqBands: param.f32.array({length: 8}),
+    timeRatio: param.f32({ min: 0.25, max: 4 }),
+    eqBands: param.f32.array({ length: 8 }),
     mode: param.enum(["normal", "granular"]),
   },
   meters: {
@@ -147,7 +147,7 @@ import {
   bindController,
   type Handoff,
 } from "@seqlok/core";
-import {laneSpec, type LaneSpec} from "./spec";
+import { laneSpec, type LaneSpec } from "./spec";
 
 const plan = planLayout(laneSpec);
 const backing = allocateShared(plan);
@@ -156,11 +156,11 @@ const controller = bindController(laneSpec, plan, backing);
 const handoff: Handoff<LaneSpec> = buildHandoff(plan, backing);
 
 // handoff is what you post to a Worker / AudioWorklet / simulation worker
-worker.postMessage({type: "handoff", handoff});
+worker.postMessage({ type: "handoff", handoff });
 
 // Example controller usage
 controller.params.set("timeRatio", 1.5);
-controller.params.update({mode: "granular"});
+controller.params.update({ mode: "granular" });
 
 controller.params.stage("eqBands", (view) => {
   for (let i = 0; i < view.length; i += 1) {
@@ -181,7 +181,7 @@ import {
   type Handoff,
   type ProcessorBinding,
 } from "@seqlok/core";
-import type {LaneSpec} from "./spec";
+import type { LaneSpec } from "./spec";
 
 type InitMessage = {
   type: "handoff";
@@ -202,7 +202,7 @@ function processBlock(): void {
   if (!processor) return;
 
   processor.params.within((params) => {
-    const {timeRatio} = params;
+    const { timeRatio } = params;
     const framesForBlock = Math.floor(128 * timeRatio);
 
     // Use framesForBlock in your engine logic...
@@ -228,11 +228,8 @@ samples them coherently.
 ### Host-side: bind from spec/plan/backing or SharedContext
 
 ```ts
-import {
-  bindObserver,
-  type ObserverBinding,
-} from "@seqlok/core";
-import {laneSpec, type LaneSpec} from "./spec";
+import { bindObserver, type ObserverBinding } from "@seqlok/core";
+import { laneSpec, type LaneSpec } from "./spec";
 
 // Directly from spec + plan + backing
 const plan = planLayout(laneSpec);
@@ -257,7 +254,7 @@ import {
   type Handoff,
   type ReceivedHandoff,
 } from "@seqlok/core";
-import type {LaneSpec} from "./spec";
+import type { LaneSpec } from "./spec";
 
 let observer: ObserverBinding<LaneSpec> | undefined;
 
@@ -298,7 +295,7 @@ import {
   buildHandoff,
   type SharedContext,
 } from "@seqlok/core";
-import {laneSpec, type LaneSpec} from "./spec";
+import { laneSpec, type LaneSpec } from "./spec";
 
 const ctx: SharedContext<LaneSpec> = createSharedContext(laneSpec);
 
@@ -341,12 +338,12 @@ This is equivalent to:
 pnpm bench && pnpm bench:format
 ```
 
-* `bench` produces `bench-results.json`.
-* `bench:format` (`tsx scripts/format-bench.ts`) reads `bench-results.json` and prints a Markdown-ready summary
+- `bench` produces `bench-results.json`.
+- `bench:format` (`tsx scripts/format-bench.ts`) reads `bench-results.json` and prints a Markdown-ready summary
   (ASCII charts for hot-path ops and parameter writes) to stdout, and refreshes:
 
-  * `docs/performance/bench-results.generated.md`
-  * `docs/performance/bench-results.json`
+  - `docs/performance/bench-results.generated.md`
+  - `docs/performance/bench-results.json`
 
 Treat these numbers as **regression guardrails**, not marketing claims.
 
@@ -366,9 +363,9 @@ import {
 
 Use this surface for:
 
-* Environment probing and SAB/COOP/COEP checks.
-* Binding / seqlock counters in stress harnesses.
-* Dev overlays and HUDs.
+- Environment probing and SAB/COOP/COEP checks.
+- Binding / seqlock counters in stress harnesses.
+- Dev overlays and HUDs.
 
 It's designed so diagnostics can be tree-shaken out of production builds when unused.
 
@@ -380,18 +377,18 @@ Full design docs live under `packages/core/docs`.
 
 Recommended entry points:
 
-* [`docs/INDEX.md`](./docs/INDEX.md) – map of all architecture docs and ADRs.
-* Concurrency model, seqlock rationale, planes layout, and architecture diagrams.
-* API reference for the explicit canonical flow:
+- [`docs/INDEX.md`](./docs/INDEX.md) – map of all architecture docs and ADRs.
+- Concurrency model, seqlock rationale, planes layout, and architecture diagrams.
+- API reference for the explicit canonical flow:
 
-  * `defineSpec`
-  * `planLayout`
-  * `allocateShared`
-  * `buildHandoff`
-  * `receiveHandoff`
-  * `bindController` (spec + plan + backing)
-  * `bindProcessor`
-  * `bindObserver`
+  - `defineSpec`
+  - `planLayout`
+  - `allocateShared`
+  - `buildHandoff`
+  - `receiveHandoff`
+  - `bindController` (spec + plan + backing)
+  - `bindProcessor`
+  - `bindObserver`
 
 ---
 

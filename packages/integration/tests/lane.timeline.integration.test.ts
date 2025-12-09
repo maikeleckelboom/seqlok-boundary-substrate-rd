@@ -12,6 +12,7 @@
  *   Host side:
  *     - Creates a SwapTicketRT with atFrame, fadeFrames, preWarmBlocks
  *     - Calls scheduleSwap(config, ticket) → validates ticket → enqueues HotswapCommand into mailbox
+ *       and returns a SwapResult describing acceptance / rejection
  *
  *   RT side (per audio block):
  *     - Drains mailbox.consumer → projects HotswapCommand to TimelineCommand
@@ -26,12 +27,12 @@
 
 import {
   createTicketId,
+  scheduleSwap,
   type SwapTicketRT,
   type TicketId,
 } from "@seqlok/hotswap";
 import { describe, expect, it } from "vitest";
 
-import { scheduleSwap } from "../src";
 import {
   createLaneTimelineHarness,
   EngineKind,
@@ -56,9 +57,8 @@ describe("lane timeline integration: scheduleSwap → mailbox → timeline → h
       preWarmBlocks,
     };
 
-    expect(() => {
-      scheduleSwap(schedulerConfig, ticket);
-    }).not.toThrow();
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     const { completed, blocksRun } = harness.runUntilSwapComplete(
       blockFrames,
@@ -114,7 +114,8 @@ describe("lane timeline integration: scheduleSwap → mailbox → timeline → h
       preWarmBlocks: 0,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     const { completed } = harness.runUntilSwapComplete(blockFrames, 50);
     expect(completed).toBe(true);
@@ -145,7 +146,8 @@ describe("lane timeline integration: scheduleSwap → mailbox → timeline → h
       preWarmBlocks,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     harness.runUntilSwapComplete(blockFrames, 50);
 
@@ -173,7 +175,8 @@ describe("lane timeline integration: scheduleSwap → mailbox → timeline → h
       preWarmBlocks: 0,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     harness.runUntilSwapComplete(blockFrames, 50);
 
@@ -206,7 +209,8 @@ describe("lane timeline integration: scheduleSwap → mailbox → timeline → h
       preWarmBlocks: 1,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     harness.simulateBlock(blockFrames);
 
@@ -232,7 +236,8 @@ describe("lane timeline integration: scheduleSwap → mailbox → timeline → h
       preWarmBlocks: 0,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     expect(timeline.frame).toBe(0);
 
@@ -266,7 +271,8 @@ describe("lane timeline integration: edge cases", () => {
       preWarmBlocks: 0,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     harness.simulateBlock(blockFrames);
 
@@ -287,7 +293,8 @@ describe("lane timeline integration: edge cases", () => {
       preWarmBlocks: 3,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     harness.simulateBlock(blockFrames);
     expect(timeline.hotswapSlot.hasState).toBe(true);
@@ -308,11 +315,11 @@ describe("lane timeline integration: edge cases", () => {
 
 // Back-to-back swaps and overlapping policy.
 //
-// Current runtime policy is "reject while busy" at the HotswapSlot level:
+// Current runtime policy is "reject while busy" at the host scheduling layer:
 //   - Sequential swaps A→B→C are allowed if tickets are scheduled such that
 //     each swap completes before the next one's atFrame.
-//   - Overlapping attempts while a swap is in-flight must be ignored and must
-//     not perturb the current swap or get the protocol stuck.
+//   - Overlapping attempts while a swap is in-flight must be rejected by the
+//     host and must not perturb the current swap or get the protocol stuck.
 describe("lane timeline integration: back-to-back swaps", () => {
   it("ignores overlapping replacement while swap is busy (reject-while-busy)", () => {
     const harness = createLaneTimelineHarness();
@@ -329,7 +336,8 @@ describe("lane timeline integration: back-to-back swaps", () => {
     };
 
     // Start A→B and advance into a non-idle phase so the slot is "busy".
-    scheduleSwap(schedulerConfig, ticketAtoB);
+    const firstResult = scheduleSwap(schedulerConfig, ticketAtoB);
+    expect(firstResult.accepted).toBe(true);
 
     harness.simulateBlock(blockFrames);
     harness.simulateBlock(blockFrames);
@@ -352,8 +360,10 @@ describe("lane timeline integration: back-to-back swaps", () => {
       preWarmBlocks: 0,
     };
 
-    // This overlapping ticket should be ignored by HotswapSlotDriver.acceptTicket.
-    scheduleSwap(schedulerConfig, ticketBtoA);
+    // This overlapping ticket should be rejected by the host scheduling layer.
+    const overlapResult = scheduleSwap(schedulerConfig, ticketBtoA);
+    expect(overlapResult.accepted).toBe(false);
+    expect(overlapResult.reason).toBe("lane-busy");
 
     const { completed } = harness.runUntilSwapComplete(blockFrames, 50);
     expect(completed).toBe(true);
@@ -387,7 +397,8 @@ describe("lane timeline integration: back-to-back swaps", () => {
         preWarmBlocks: 0,
       };
 
-      scheduleSwap(schedulerConfig, ticket);
+      const result = scheduleSwap(schedulerConfig, ticket);
+      expect(result.accepted).toBe(true);
     }
 
     const { completed } = harness.runUntilSwapComplete(blockFrames, 100);
@@ -418,7 +429,8 @@ describe("lane timeline integration: back-to-back swaps", () => {
       preWarmBlocks: 0,
     };
 
-    scheduleSwap(schedulerConfig, ticket1);
+    const firstResult = scheduleSwap(schedulerConfig, ticket1);
+    expect(firstResult.accepted).toBe(true);
 
     // Drive until we are definitely in crossfade.
     for (let i = 0; i < 5; i++) {
@@ -441,7 +453,9 @@ describe("lane timeline integration: back-to-back swaps", () => {
     };
 
     // This is an overlapping replacement attempt during crossfade.
-    scheduleSwap(schedulerConfig, ticket2);
+    const overlapResult = scheduleSwap(schedulerConfig, ticket2);
+    expect(overlapResult.accepted).toBe(false);
+    expect(overlapResult.reason).toBe("lane-busy");
 
     const { completed } = harness.runUntilSwapComplete(blockFrames, 50);
     expect(completed).toBe(true);
@@ -474,9 +488,10 @@ describe("lane timeline integration: invalid ticket rejection", () => {
       preWarmBlocks: 0,
     };
 
-    expect(() => {
-      scheduleSwap(schedulerConfig, invalidTicket);
-    }).toThrow();
+    const result = scheduleSwap(schedulerConfig, invalidTicket);
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toBe("invalid-ticket");
   });
 
   it("rejects ticket with negative preWarmBlocks", () => {
@@ -491,9 +506,10 @@ describe("lane timeline integration: invalid ticket rejection", () => {
       preWarmBlocks: -1, // Invalid: must be >= 0
     };
 
-    expect(() => {
-      scheduleSwap(schedulerConfig, invalidTicket);
-    }).toThrow();
+    const result = scheduleSwap(schedulerConfig, invalidTicket);
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toBe("invalid-ticket");
   });
 
   it("rejects ticket with ticketId = 0", () => {
@@ -509,9 +525,10 @@ describe("lane timeline integration: invalid ticket rejection", () => {
       preWarmBlocks: 0,
     };
 
-    expect(() => {
-      scheduleSwap(schedulerConfig, invalidTicket);
-    }).toThrow();
+    const result = scheduleSwap(schedulerConfig, invalidTicket);
+
+    expect(result.accepted).toBe(false);
+    expect(result.reason).toBe("invalid-ticket");
   });
 
   it("createTicketId rejects 0 as reserved", () => {
@@ -536,7 +553,8 @@ describe("lane timeline integration: additional edge cases", () => {
       preWarmBlocks: 0,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     harness.simulateBlock(blockFrames);
 
@@ -560,7 +578,8 @@ describe("lane timeline integration: additional edge cases", () => {
       preWarmBlocks: 0,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     const { completed, blocksRun } = harness.runUntilSwapComplete(
       blockFrames,
@@ -592,7 +611,8 @@ describe("lane timeline integration: additional edge cases", () => {
       preWarmBlocks: 1,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     const { completed } = harness.runUntilSwapComplete(blockFrames, 50);
     expect(completed).toBe(true);
@@ -623,7 +643,8 @@ describe("lane timeline integration: additional edge cases", () => {
       preWarmBlocks: 3,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     harness.runUntilSwapComplete(blockFrames, 50);
 
@@ -660,7 +681,8 @@ describe("lane timeline integration: additional edge cases", () => {
       preWarmBlocks: 0,
     };
 
-    scheduleSwap(schedulerConfig, ticket);
+    const result = scheduleSwap(schedulerConfig, ticket);
+    expect(result.accepted).toBe(true);
 
     // Add a non-mailbox command (stop) at the same frame to test priority ordering
     // The installSwap comes from mailbox drain, stopCmd is pushed directly

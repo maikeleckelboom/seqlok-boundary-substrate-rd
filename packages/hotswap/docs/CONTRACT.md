@@ -19,8 +19,12 @@ Given a valid ticket and a cooperating caller:
   every block.
 - `progress` is monotonic from 0 → 1 over the lifecycle of a swap.
 
-These properties are captured in the TLA+ spec (`HotSwapProtocol.tla`)
-and model-checked with TLC.
+These properties are captured in the TLA⁺ specs:
+
+- **Base protocol:** `formal/tla/HotSwapSingle.tla`
+- **Multi-swap (reject-while-busy):** `formal/tla/HotSwapRejectBusy.tla`
+
+and are model-checked with TLC.
 
 ## What the caller is responsible for
 
@@ -29,25 +33,27 @@ The caller (engine host / driver) must:
 - Construct the **next** engine and associate it with the slot before
   calling `initSwapStateRT(ticket)`.
 - Call `stepSwapStateRT` exactly once per audio block, passing:
+
   - `blockFrames`: number of frames in the current block
   - `activeKind`: kind of the current engine
   - `nextKind`: kind of the staged next engine, or a sentinel
-  - `noneKindSentinel`: sentinel value representing “no engine”
+  - `noneKindSentinel`: sentinel value representing "no engine"
+
 - Interpret `SwapStepDecisionRT.kind` as follows:
 
-  - `runCurrentOnly`
+  - `runCurrentOnly`  
     Run the current engine for output. Do not run the next engine.
 
-  - `runCurrentAndPrewarmNext`
+  - `runCurrentAndPrewarmNext`  
     Run the current engine for output. Run the next engine in
     prewarm mode and discard its output.
 
-  - `runBothForCrossfade`
+  - `runBothForCrossfade`  
     Run both engines, then mix their outputs according to a
     crossfade curve derived from `fadeFramesRemaining` and the
     ticket’s `fadeFrames`.
 
-  - `retireNow`
+  - `retireNow`  
     After this block, swap engine handles (next → current), and
     arrange for the retiring engine to be destroyed on a non-RT
     thread after a suitable memory barrier.
@@ -65,8 +71,9 @@ The caller (engine host / driver) must:
 
   On native targets, ensure that all writes performed by the
   retiring engine are visible before it is destroyed or returned
-  to a pool (e.g. `std::atomic_thread_fence(std::memory_order_release)`
-  before signalling a reclamation thread).
+  to a pool (for example with
+  `std::atomic_thread_fence(std::memory_order_release)` before
+  signalling a reclamation thread).
 
 The protocol deliberately does **not** define:
 
@@ -76,4 +83,34 @@ The protocol deliberately does **not** define:
 - How tickets are delivered to the audio thread (command ring,
   lock-free queue, etc.).
 
-Those are left to the surrounding host (Dekzer, native engine, etc.).
+These are left to the surrounding host (Dekzer, native engine, etc).
+
+## Multi-swap behavior: reject-while-busy policy
+
+For scenarios where multiple swap requests occur with the currently
+implemented policy:
+
+- If a swap is **idle**: accept the new swap request.
+- If a swap is **active** (any phase except idle): **reject** the new request.
+
+This reject-while-busy policy is proven correct in
+`formal/tla/HotSwapRejectBusy.tla`.
+
+Future policies (queued swaps, retargeting) are not yet
+implemented. See `adr/hotswap-advanced-multi-swap-exploratory.md` for vision.
+
+## Formal verification
+
+All properties are formally verified using TLA⁺ model checking:
+
+- **Base protocol** (single swap): `formal/tla/HotSwapSingle.tla`
+  - Millions of states explored.
+  - Proves: `AtMostTwoEngines`, `NoGapDuringCrossfade`,
+    `EventuallyIdle`, etc.
+
+- **Multi-swap** (reject-while-busy): `formal/tla/HotSwapRejectBusy.tla`
+  - Tens of thousands of states explored.
+  - Proves: sequential swaps work, overlapping requests are safely
+    rejected under the policy above.
+
+See `formal/README.md` for how to run the model checker.

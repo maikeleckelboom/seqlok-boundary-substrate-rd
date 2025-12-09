@@ -24,37 +24,6 @@ export { createHotswapSlotDriver } from "./hotswap/slot-driver";
 export type { HotswapSlotDriver } from "./hotswap/slot-driver";
 
 /**
- * Configuration for {@link scheduleSwap}.
- *
- * @typeParam EngineKind - Numeric engine-kind discriminator used by the host.
- * @typeParam Command - Concrete command union carried over the command ring.
- *
- * @remarks
- * Binds the generic scheduler to:
- * - a specific mailbox (`mailboxId`, `producer`), and
- * - a concrete "install swap" command encoder.
- */
-export type { HotswapSchedulerConfig } from "./hotswap/schedule-swap";
-
-/**
- * Host-side helper to schedule a hotswap.
- *
- * @typeParam EngineKind - Numeric engine-kind discriminator used by the host.
- * @typeParam Command - Concrete command union carried over the command ring.
- *
- * @remarks
- * Responsibilities:
- * - Dry-runs `initSwapStateRT` off the audio thread to validate tickets.
- * - Raises `hotswap.invalidTicket` for protocol violations.
- * - Encodes and pushes an "install swap" command into the mailbox.
- * - Maps transport failures to `commands.*` errors
- *   (e.g. `commands.mailboxClosed`, `commands.ringOverflow`).
- *
- * This function is intended for host/control code, not for audio callbacks.
- */
-export { scheduleSwap } from "./hotswap/schedule-swap";
-
-/**
  * Timeline transport helpers
  *
  * @remarks
