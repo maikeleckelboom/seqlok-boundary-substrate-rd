@@ -25,12 +25,13 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
-    "lint": "eslint src tests",
-    "lint:fix": "eslint src tests --fix",
+    "lint": "eslint src tests bench",
+    "lint:fix": "eslint src tests bench --fix",
     "format": "prettier --ignore-path ../../.prettierignore --write .",
     "clean": "rimraf dist .eslintcache node_modules/.vite node_modules/.cache pnpm-debug.log",
-    "test:types": "pnpm --filter seqlok test:types",
-    "dev": "pnpm run test:watch"
+    "test:types": "pnpm --workspace-root test:types",
+    "dev": "pnpm run test:watch",
+    "bench": "vitest bench --reporter=verbose --run"
   },
   "dependencies": {
     "@seqlok/base": "workspace:*",

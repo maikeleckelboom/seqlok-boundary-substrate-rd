@@ -3,46 +3,148 @@ import { resolve } from "node:path";
 import { spawn } from "node:child_process";
 
 type HotswapMode = "invonly" | "full";
+type HotswapPolicy = "single" | "reject-busy" | "queued";
 
-const TOOLS_JAR = resolve("tools/tla/tla2tools.jar");
-const SPEC_PATH = resolve("packages/hotswap/docs/HotSwapProtocol.tla");
+const TOOLS_JAR = resolve("tools", "tla", "tla2tools.jar");
+const HOTSWAP_TLA_DIR = resolve("packages", "hotswap", "docs", "formal", "tla");
 
-function getConfigPath(mode: HotswapMode): string {
-  if (mode === "full") {
-    return resolve("packages/hotswap/docs/HotSwapProtocol.cfg");
+/**
+ * Policy-to-cpp base name mapping
+ * - single: Base single-swap protocol
+ * - reject-busy: Multi-swap with reject-while-busy
+ * - queued: Multi-swap with queueing (future)
+ */
+function getSpecBaseName(policy: HotswapPolicy): string {
+  switch (policy) {
+    case "single":
+      return "HotSwapSingle";
+    case "reject-busy":
+      return "HotSwapRejectBusy";
+    case "queued":
+      return "HotSwapQueued";
   }
+}
 
-  return resolve("packages/hotswap/docs/HotSwapProtocol.invonly.cfg");
+function getSpecPath(policy: HotswapPolicy): string {
+  return resolve(HOTSWAP_TLA_DIR, `${getSpecBaseName(policy)}.tla`);
+}
+
+function getConfigPath(policy: HotswapPolicy, mode: HotswapMode): string {
+  const baseName = getSpecBaseName(policy);
+  const suffix = mode === "full" ? "" : ".invonly";
+  return resolve(HOTSWAP_TLA_DIR, `${baseName}${suffix}.cfg`);
 }
 
 interface ParsedArgs {
-  mode: HotswapMode;
-  extraTlcArgs: string[];
+  readonly mode: HotswapMode;
+  readonly policy: HotswapPolicy;
+  readonly extraTlcArgs: readonly string[];
 }
 
-function parseArgs(argv: string[]): ParsedArgs {
-  // argv[0] node
-  // argv[1] script path
-  // argv[2] mode
-  // argv[3...] optional TLC flags after a `--` from pnpm
+function parsePolicy(raw: string): HotswapPolicy {
+  if (raw === "single" || raw === "reject-busy" || raw === "queued") {
+    return raw;
+  }
+
+  console.error(
+    `Unknown policy "${raw}". Supported: "single", "reject-busy", "queued"`,
+  );
+  console.error(
+    'Examples: "--policy single" (default), "--policy reject-busy"',
+  );
+
+  process.exitCode = 1;
+  // eslint-disable-next-line no-process-exit
+  process.exit(1);
+}
+
+function parseArgs(argv: readonly string[]): ParsedArgs {
   const [, , rawMode, ...rest] = argv;
 
-  if (rawMode !== "full" && rawMode !== "invonly") {
+  // --- Mode parsing ---
+  let mode: HotswapMode | null = null;
+
+  if (rawMode === "full" || rawMode === "invonly") {
+    mode = rawMode;
+  } else {
     console.log(
       `Unknown mode "${rawMode ?? ""}". Supported modes are "invonly" and "full".`,
     );
-    console.log("Examples");
-    console.log("  pnpm tla:hotswap");
-    console.log("  pnpm tla:hotswap:full");
-    console.log("  pnpm tla:hotswap:full -- -nowarning");
+    console.log("\nExamples:");
+    console.log(
+      "  pnpm tla:hotswap                                # single, invonly",
+    );
+    console.log(
+      "  pnpm tla:hotswap:full                           # single, full",
+    );
+    console.log(
+      "  pnpm tla:hotswap --policy reject-busy           # reject-busy, invonly",
+    );
+    console.log(
+      "  pnpm tla:hotswap:full --policy reject-busy      # reject-busy, full",
+    );
+    console.log("  pnpm tla:hotswap:full --policy=reject-busy -nowarning");
 
     process.exitCode = 1;
+    // eslint-disable-next-line no-process-exit
+    process.exit(1);
+  }
+
+  // --- Policy parsing + extra TLC args ---
+  let policy: HotswapPolicy = "single";
+  const extraTlcArgs: string[] = [];
+
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+
+    if (typeof arg !== "string") {
+      // Keeps noUncheckedIndexedAccess happy; should not happen in practice.
+      continue;
+    }
+
+    // Ignore bare "--" so pnpm-style separators don't get passed to TLC.
+    if (arg === "--") {
+      continue;
+    }
+
+    if (arg === "--policy") {
+      const next = rest[index + 1];
+
+      if (typeof next !== "string") {
+        console.error(
+          'Missing value for "--policy". Expected "single", "reject-busy", or "queued".',
+        );
+        process.exitCode = 1;
+        // eslint-disable-next-line no-process-exit
+        process.exit(1);
+      }
+
+      policy = parsePolicy(next);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--policy=")) {
+      const value = arg.slice("--policy=".length);
+      policy = parsePolicy(value);
+      continue;
+    }
+
+    // Everything else is forwarded directly to TLC.
+    extraTlcArgs.push(arg);
+  }
+
+  if (mode === null) {
+    console.error("Internal error: failed to determine TLC mode.");
+    process.exitCode = 1;
+    // eslint-disable-next-line no-process-exit
     process.exit(1);
   }
 
   return {
-    mode: rawMode,
-    extraTlcArgs: rest,
+    mode,
+    policy,
+    extraTlcArgs,
   };
 }
 
@@ -55,15 +157,45 @@ function ensureToolsJar(): void {
     `Missing tla2tools.jar at ${TOOLS_JAR}. Run "pnpm tla:fetch" first.`,
   );
   process.exitCode = 1;
+  // eslint-disable-next-line no-process-exit
   process.exit(1);
 }
 
-function runTlc(mode: HotswapMode, extraTlcArgs: string[]): void {
+function ensureFileExists(label: string, path: string): void {
+  if (existsSync(path)) {
+    return;
+  }
+
+  console.error(`${label} not found at: ${path}`);
+  process.exitCode = 1;
+  // eslint-disable-next-line no-process-exit
+  process.exit(1);
+}
+
+function runTlc(
+  policy: HotswapPolicy,
+  mode: HotswapMode,
+  extraTlcArgs: readonly string[],
+): void {
   ensureToolsJar();
 
-  const configPath = getConfigPath(mode);
+  const specPath = getSpecPath(policy);
+  const configPath = getConfigPath(policy, mode);
 
-  const javaArgs = [
+  ensureFileExists("TLA cpp", specPath);
+  ensureFileExists("TLA config", configPath);
+
+  if (policy === "queued") {
+    console.error(
+      'The "queued" policy cpp is reserved but not implemented yet.',
+    );
+    console.error('Use "single" or "reject-busy" instead.');
+    process.exitCode = 1;
+    // eslint-disable-next-line no-process-exit
+    process.exit(1);
+  }
+
+  const javaArgs: string[] = [
     "-XX:+UseParallelGC",
     "-cp",
     TOOLS_JAR,
@@ -73,13 +205,16 @@ function runTlc(mode: HotswapMode, extraTlcArgs: string[]): void {
     "4",
     "-config",
     configPath,
-    SPEC_PATH,
+    specPath,
   ];
 
-  console.log(`Running TLC for HotSwapProtocol in mode "${mode}" with config`);
+  const specName = getSpecBaseName(policy);
+  console.log(
+    `Running TLC for ${specName} (policy: "${policy}") in mode "${mode}" with config:`,
+  );
   console.log(`  ${configPath}`);
   if (extraTlcArgs.length > 0) {
-    console.log("Extra TLC args", extraTlcArgs.join(" "));
+    console.log("Extra TLC args:", extraTlcArgs.join(" "));
   }
 
   const child = spawn("java", javaArgs, {
@@ -98,8 +233,8 @@ function runTlc(mode: HotswapMode, extraTlcArgs: string[]): void {
 }
 
 function main(): void {
-  const { mode, extraTlcArgs } = parseArgs(process.argv);
-  runTlc(mode, extraTlcArgs);
+  const { mode, policy, extraTlcArgs } = parseArgs(process.argv);
+  runTlc(policy, mode, extraTlcArgs);
 }
 
 main();

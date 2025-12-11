@@ -1,217 +1,149 @@
-# Hot-Swap Protocol: TLA+ Formal Specification
+# @seqlok/hotswap docs
 
-## What This Is
+> Map of the hotswap docs folder: where to start and what is normative.
 
-This is a **formal specification** of the `@seqlok/hotswap` protocol using TLA+ (Temporal Logic of Actions). Unlike code, which describes *how* to compute something, this specification describes *what* properties the system must satisfy.
+This directory explains the hot-swap protocol from three angles:
 
-The TLC model checker exhaustively explores every possible sequence of states and verifies that safety invariants always hold and liveness properties are eventually satisfied.
+- **Contract:** what the host and engines MUST do.
+- **Implementation:** how Seqlok/Dekzer actually wires it.
+- **Formal + reference:** TLA+ spec and cross-checked C++/TS state machines.
 
-## Files
+---
 
-```
-HotSwapProtocol.tla   # The specification
-HotSwapProtocol.cfg   # Model checking configuration
-```
+## 1. Document map
 
-## Properties We Prove
+### Core docs
 
-### Safety Invariants (must ALWAYS hold)
+- [CONTRACT.md](./CONTRACT.md)  
+  Normative contract between the hotswap driver and engines (Level 2.5).  
+  Read this first if you are changing protocol behavior or driver semantics.
 
-| Property | Meaning |
-|----------|---------|
-| `TypeOK` | All variables are in valid domains |
-| `AtMostTwoEngines` | Never more than 2 engines instantiated |
-| `NoGapDuringCrossfade` | Both engines active during crossfade (no audio gap) |
-| `NoOrphanedNextEngine` | Next engine only exists when ticket is active |
-| `PhaseTicketConsistency` | Non-idle phases require an active ticket |
-| `PrewarmCounterConsistency` | Prewarm counter only positive in valid phases |
-| `FadeFramesConsistency` | Fade frame tracking is sane |
+- [IMPLEMENTATION_GUIDE.md](./IMPLEMENTATION_GUIDE.md)  
+  How the composite driver, SwapTicket, and command ring glue together in
+  real code. This is the "how to wire it in a real system" companion to the
+  contract.
 
-### Liveness Properties (must EVENTUALLY hold)
+### Engine author docs
 
-| Property | Meaning |
-|----------|---------|
-| `EventuallyIdle` | Every swap eventually completes |
-| `ProgressNeverDecreases` | `stepIndex` is monotonically non-decreasing |
-| `NoLivelockPrewarm` | System doesn't get stuck in prewarm |
-| `NoLivelockCrossfade` | System doesn't get stuck in crossfade |
+- [engine/engine-architecture-vision.md](./engine/engine-architecture-vision.md)  
+  High-level vision for the engine ecosystem and how hotswap fits into it.
 
-## How to Run
+- [engine/engine-lifecycle-spec.md](./engine/engine-lifecycle-spec.md)  
+  Concrete lifecycle for engines: create -> prime -> pre-warm -> crossfade ->
+  retire. If you are implementing an engine, this is your main spec.
 
-### Option 1: TLA+ Toolbox (GUI)
+- [engine/engine-sdk-guide.md](./engine/engine-sdk-guide.md)  
+  SDK-style guide for DSP authors who want their engines to plug into Seqlok
+  and benefit from sample-accurate swaps.
 
-1. Download [TLA+ Toolbox](https://lamport.azurewebsites.net/tla/toolbox.html)
-2. File → Open Spec → Add New Spec
-3. Select `HotSwapProtocol.tla`
-4. TLC Model Checker → New Model
-5. In "What is the behavior spec?": select `Spec`
-6. Add invariants and properties from the lists above
-7. Run
+### Formal + reference bundle
 
-### Option 2: Command Line (tla2tools.jar)
+- [formal/README.md](./formal/README.md)  
+  Entry point for the formal model and reference artefacts:
+  - TLA+ specs (single-swap and multi-swap)
+  - Reference C++ header
+  - English formal specs
+
+If you care about **invariants, model checking, or cross-language parity**,
+start there.
+
+### ADRs and archive
+
+- [adr/hotswap-multi-swap-requirements.md](adr/hotswap-multi-swap-requirements.md)  
+  Requirements and constraints for multi-swap / Level 2.5 behavior.
+
+- [adr/hotswap-advanced-multi-swap-exploratory.md](adr/hotswap-advanced-multi-swap-exploratory.md)  
+  Exploratory Level 3+ behavior (queues, retarget, fancy policies). Vision
+  only; **not** binding for v0.3.x.
+
+- [archive/stretch-engine-config-v0-design.md](./archive/stretch-engine-config-v0-design.md)  
+  Older stretch-engine configuration design kept for historical context.
+
+---
+
+## 2. Who should read what?
+
+- **Seqlok/Dekzer core devs**  
+  Start with:
+  - [CONTRACT.md](./CONTRACT.md)
+  - [IMPLEMENTATION_GUIDE.md](./IMPLEMENTATION_GUIDE.md)
+  - [formal/HotSwapSingle.md](./formal/HotSwapSingle.md) for base invariants
+  - [formal/HotSwapRejectBusy.md](./formal/HotSwapRejectBusy.md) for multi-swap
+
+- **Engine authors (DSP / C++)**  
+  Start with:
+  - [engine/engine-lifecycle-spec.md](./engine/engine-lifecycle-spec.md)
+  - [engine/engine-sdk-guide.md](./engine/engine-sdk-guide.md)
+  - [formal/hotswap_spec.reference.hpp](formal/cpp/hotswap_spec.reference.hpp) as
+    the reference state machine (kept in sync with the TS spec).
+
+- **Formal / verification people**  
+  Start with:
+  - [formal/README.md](./formal/README.md)
+  - [formal/HotSwapSingle.md](./formal/HotSwapSingle.md)
+  - [formal/HotSwapRejectBusy.md](./formal/HotSwapRejectBusy.md)
+  - `formal/tla/*.tla` specs and configs
+
+---
+
+## 3. Invariants and levels
+
+The protocol docs assume the Level 2.5 scope:
+
+- Single deck, at most one active swap ticket.
+- No queued or retargeted swaps (those live in Level 3 ADRs).
+- Strict "spawn + prime + prewarm + crossfade + retire" discipline
+  (no live configure on the active engine).
+
+For the full list of invariants (safety + liveness), see:
+
+- [formal/HotSwapSingle.md](./formal/HotSwapSingle.md) - Base protocol invariants
+- [formal/HotSwapRejectBusy.md](./formal/HotSwapRejectBusy.md) - Multi-swap invariants
+- The TLA+ specs in `formal/tla/` contain formal definitions
+
+---
+
+## 4. Running formal verification
+
+From the repo root:
 
 ```bash
-# Download TLA+ tools
-wget https://github.com/tlaplus/tlaplus/releases/download/v1.8.0/tla2tools.jar
+# Base protocol (single swap)
+pnpm tla:hotswap              # Fast invariants-only
+pnpm tla:hotswap:full         # Full with liveness
 
-# Run model checker
-java -jar tla2tools.jar -config HotSwapProtocol.cfg HotSwapProtocol.tla
+# Multi-swap with reject-while-busy
+pnpm tla:hotswap -- --policy reject-busy
+pnpm tla:hotswap:full -- --policy reject-busy
 ```
 
-### Option 3: VS Code Extension
+See [formal/README.md](./formal/README.md) for detailed instructions.
 
-1. Install "TLA+" extension by Alyssa-P-Hacker
-2. Open `HotSwapProtocol.tla`
-3. Use command palette: "TLA+: Check Model with TLC"
+---
 
-## Interpreting Results
+## 5. Policy-based naming
 
-### Success Output
+The TLA+ specs use policy-based names instead of arbitrary level numbers:
 
-```
-Model checking completed. No error has been found.
-  Checking 4 temporal properties...
-  ...
-  1234 states generated, 567 distinct states found, 0 states left on queue.
-```
+| Policy        | Spec                    | Level | Description               |
+|---------------|-------------------------|-------|---------------------------|
+| `single`      | HotSwapSingle.tla       | 2.0   | Base single-swap protocol |
+| `reject-busy` | HotSwapRejectBusy.tla   | 2.5   | Multi-swap with rejection |
+| `queued`      | HotSwapQueued.tla (TBD) | 3.0   | Queued swaps (future)     |
 
-This means TLC explored all reachable states and found no violations.
+ADRs still use level numbers for requirements tracking, but specs use
+descriptive policy names.
 
-### Failure Output
+---
 
-```
-Error: Invariant AtMostTwoEngines is violated.
-Error: The following behavior constitutes a counter-example:
+## 6. Cross-language conformance
 
-State 1: <Initial predicate>
-  phase = "idle"
-  hasTicket = FALSE
-  ...
+All implementations (TypeScript, C++, future Rust/Zig) must:
 
-State 2: <AcceptTicket(2, 4)>
-  phase = "spawn"
-  ...
-```
+1. Implement the same state machine as defined in the TLA+ specs
+2. Pass the same test vectors in `archive/test-vectors.json`
+3. Maintain the same invariants (verified by property tests)
 
-TLC shows you the exact sequence of states that led to the violation. This is invaluable for debugging protocol design.
-
-## Understanding the Spec
-
-### State Machine Diagram
-
-```
-                    ┌─────────────────────────────────────┐
-                    │                                     │
-                    ▼                                     │
-    ┌───────┐  AcceptTicket  ┌───────┐  step   ┌───────┐ │
-    │ idle  │ ──────────────▶│ spawn │────────▶│ prime │ │
-    └───────┘                └───────┘         └───────┘ │
-        ▲                                          │     │
-        │                               ┌──────────┴──────────┐
-        │                               │                     │
-        │                               ▼ (if prewarm > 0)    ▼ (if prewarm = 0)
-        │                         ┌─────────┐           ┌───────────┐
-        │                         │ prewarm │──────────▶│ crossfade │
-        │                         └─────────┘           └───────────┘
-        │                               │                     │
-        │                               └─────────────────────┘
-        │                                          │
-        │                                          ▼
-        │                                    ┌─────────┐
-        └────────────────────────────────────│ retire  │
-                                             └─────────┘
-```
-
-### Key Insight: What TLA+ Captures That Code Doesn't
-
-The specification captures **all possible interleavings**. When you write:
-
-```tla
-AcceptTicket(prewarm, fade) ==
-    /\ phase = "idle"
-    /\ hasTicket = FALSE
-    /\ prewarm \in 0..MAX_PREWARM_BLOCKS
-    /\ fade \in 1..MAX_FADE_FRAMES
-    ...
-```
-
-TLC will try AcceptTicket with *every* valid combination of `prewarm` and `fade`. It doesn't just test one path; it tests them all.
-
-Similarly, the liveness property:
-
-```tla
-EventuallyIdle == [](phase # "idle" => <>(phase = "idle"))
-```
-
-is checked against *every possible infinite behavior* of the system. TLC proves this holds universally, not just for your test cases.
-
-## Extending the Spec
-
-### Adding Cancellation
-
-To model mid-swap cancellation:
-
-```tla
-CancelSwap ==
-    /\ phase \in {"spawn", "prime", "prewarm", "crossfade"}
-    /\ hasTicket = TRUE
-    /\ phase' = "retire"        \* Jump to cleanup
-    /\ UNCHANGED <<hasTicket, preWarmBlocksRemaining, fadeFramesRemaining,
-                   totalFadeFrames, currentEngineActive, nextEngineActive, stepIndex>>
-```
-
-Then add to `Next`:
-```tla
-Next ==
-    \/ ...existing actions...
-    \/ CancelSwap
-```
-
-### Adding Queued Swaps
-
-To model accepting a new swap while one is in progress:
-
-```tla
-VARIABLES
-    ...,
-    pendingTicket       \* A ticket waiting to be processed
-
-AcceptWhileBusy(prewarm, fade) ==
-    /\ phase # "idle"
-    /\ hasTicket = TRUE
-    /\ pendingTicket = NULL     \* No existing pending
-    /\ pendingTicket' = [prewarm |-> prewarm, fade |-> fade]
-    /\ UNCHANGED <<phase, hasTicket, ...>>
-```
-
-Then modify `StepRetire` to check for pending tickets.
-
-## Relationship to Implementation
-
-The TLA+ spec is the **source of truth**. TypeScript and C++ implementations should:
-
-1. Implement the same state transitions
-2. Maintain the same invariants
-3. Be testable against the same state sequences
-
-You can export test vectors from TLC (state traces) and run them against both implementations to verify conformance.
-
-## Further Reading
-
-- [Lamport's TLA+ Home](https://lamport.azurewebsites.net/tla/tla.html)
-- [Learn TLA+ (Practical Guide)](https://learntla.com/)
-- [Specifying Systems (Free Book)](https://lamport.azurewebsites.net/tla/book.html)
-- [Hillel Wayne's TLA+ Guide](https://www.hillelwayne.com/post/tla-messages/)
-
-## Why This Matters for Real-Time Audio
-
-In RT audio, bugs don't just cause crashes — they cause **audible glitches** that destroy user experience. The constraints are unforgiving:
-
-- No allocation in the hot path
-- No blocking
-- Bounded, predictable execution time
-- No race conditions or torn reads
-
-By formally specifying the protocol and proving safety/liveness properties, we have mathematical confidence that the *design* is correct before writing a single line of implementation code.
-
-The implementation can still have bugs (wrong array index, off-by-one, etc.), but the **protocol structure** is proven sound.
+The reference C++ implementation (`formal/hotswap_spec.reference.hpp`) is kept
+in lockstep with the TypeScript implementation and both are traceable to the
+TLA+ models.

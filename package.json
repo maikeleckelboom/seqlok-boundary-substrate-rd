@@ -14,8 +14,11 @@
     "test:core": "pnpm -F @seqlok/core run test",
     "test:cov": "pnpm -F @seqlok/core run test:cov",
     "test:watch": "pnpm -F @seqlok/core run test:watch",
-    "bench": "pnpm -F @seqlok/core run bench",
-    "bench:report": "pnpm -F @seqlok/core run bench:report",
+    "bench:core": "pnpm -F @seqlok/core run bench",
+    "bench:core:report": "pnpm -F @seqlok/core run bench:report",
+    "bench": "pnpm run bench:core",
+    "bench:report": "pnpm run bench:core:report",
+    "bench:hotswap": "pnpm -F @seqlok/hotswap run bench",
     "lint": "pnpm -r -F \"@seqlok/*\" run lint",
     "lint:fix": "pnpm -r -F \"@seqlok/*\" run lint:fix",
     "lint:md": "markdownlint-cli2",
@@ -31,7 +34,8 @@
     "tla:hotswap": "tsx scripts/tla/run-hotswap.ts invonly",
     "tla:hotswap:full": "tsx scripts/tla/run-hotswap.ts full -nowarning",
     "schema:errors:json": "pnpm -F @seqlok/introspect run errors:registry:schema",
-    "schema:errors:snapshots": "pnpm -F @seqlok/introspect run errors:registry:schema:snapshots"
+    "schema:errors:snapshots": "pnpm -F @seqlok/introspect run errors:registry:schema:snapshots",
+    "tsc": "echo \"Use 'pnpm dev:types' or 'pnpm -F @seqlok/<pkg> run build' – direct 'tsc' is disabled\" && exit 1"
   },
   "simple-git-hooks": {
     "commit-msg": "pnpm commitlint --edit $1"
@@ -58,6 +62,7 @@
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "@tailwindcss/vite": "catalog:"
   }
 }

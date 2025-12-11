@@ -139,3 +139,85 @@ hotswap forward into `dev` so the new error system becomes the baseline.
 Updated the top-level README and architecture wording to emphasize Seqlok as
 a generic real-time substrate rather than a single-client solution, and lined
 up the next commands/hotswap work on top of the cleaned-up dev branch.
+
+## 2025-12-03 (7h)
+
+[playground, hotswap UI] 3.5h  
+Refined the Hotswap Lab Vue playground into a proper three-panel layout
+(Config panel, Progress viewport, Inspector). Extracted `HotswapViewport`,
+`HotswapConfigPanel`, and `HotswapInspector` components and wired them against
+the composable. Added zoom + follow controls, improved phase band rendering,
+added an overview minimap with loop/step transport controls, and polished the
+A/B engine markers so the swap feels like a proper deck timeline.
+
+[perf, scroll/animation] 2h  
+Profiled the viewport with Chrome DevTools and hunted down layout thrash and
+forced reflows. Introduced cached geometry for the scroll container, rAF-throttled
+scroll handlers, and pointer-based scrubbing that auto-scrolls near edges.
+Switched playback from frame-based stepping to a time-based rAF loop, so
+GC / UI stalls no longer cause visible pauses in the swap animation.
+
+[ghost DJ, data model & AI arch] 1.5h  
+Drafted `ghost-dj-data-model.md` to formalize the session logging and state
+representation for Ghost DJ: track features, timeline event schema, and the
+state/action view over a session. Explored how large-context cloud models
+(Gemini-style) fit into the architecture as an offline/nearline policy planner,
+with Seqlok providing the hard real-time execution layer via scheduled
+commands.
+
+## 2025-12-04 (4h)
+
+[docs, alignment] 1.5h  
+Re-aligned the core documentation with the current Seqlok codebase. Rewrote the
+Seqlok Primer to match the layered package layout and the final canonical flow,
+removed or collapsed outdated planning/DoD/critical-path matrices, and trimmed
+the Gravity Well docs down to a small set of evergreen files. Cleaned up references
+so nothing points at the old monolithic core or obsolete error/interop plans.
+
+[playground, commands lab] 1.5h  
+Extended `@seqlok/playground` with Vue Router and a tabbed layout in `App.vue`,
+splitting the Hotswap Lab and the new Command Ring Lab into separate routes.
+Scaffolded the commands playground: `CommandRingLab`, `CommandRingConfig`,
+`CommandRingVisualizer`, `CommandRingMetrics`, `CommandRingEventLog`, and the
+`useCommandRingLab` composable. Wired the new components into the router and
+ensured the playground builds cleanly with the expanded commands/hotswap UI.
+
+## 2025-12-06 (6h)
+
+[hotswap, multi-swap] 3h  
+Finished Level 2.5 multi-swap behavior for lanes. Locked in **Reject-While-Busy** as the policy at the host/integration
+boundary: `scheduleSwap` now returns a `SwapResult` with `accepted` and `reason` (`"lane-busy"` vs `"invalid-ticket"`),
+and uses an `isLaneBusy` callback so overlapping requests never enqueue a second ticket while a swap is in flight.
+Extended the lane engine-bank harness and added an overlaps integration test (A→B plus mid-swap B→C) to prove C never
+appears in decisions or audio and that the final idle plateau matches a pure A→B swap. Left the TLA+ extension and
+lane-level observability (counters / introspect surface) as explicit follow-ups to 2.5.
+
+[substrate, naming] 1.5h  
+Evicted “deck” from the Seqlok substrate in favor of **lane**. Updated core specs, hotswap/integration harnesses, and
+tests so public IDs and narratives are lane-centric while keeping DJ “deck” terminology scoped to Dekzer-level docs.
+Cleaned up the duplicated mailbox/timeline drain code between the lane timeline and engine-bank harnesses by extracting
+a shared helper, keeping the hot path identical while reducing test noise.
+
+[docs, alignment] 1.5h  
+Brought the hot-swap docs in line with the new behavior and naming. Updated `HOTSWAP_INTEGRATION.md` to describe the
+lane-centric flow and engine-bank application, refreshed the `hotswap-multi-swap-requirements.md` spec to mark overlaps
+(2.5-O1) as PASS under Reject-While-Busy, and wired in references to the new `lane.timeline` and `lane.engine-bank`
+integration tests so Level 2.5 is backed by explicit, greppable scenarios rather than hand-wavy prose.
+
+## 2025-12-09 (6h)
+
+[hotswap, formal specs] 3h
+Split the old monolithic hot-swap spec into two clear policies (single-swap and reject-while-busy), with their own
+configs and bounded state spaces. Refined invariants and liveness so the specs read like neutral protocol definitions,
+not tutorials, and wired the TLA runner to select policies via flags while handling extra TLC args robustly.
+
+[hotswap, benches & integration] 2h
+Added a small benchmark stack around hotswap: pure RT state machine, reject-while-busy scheduling under mixed
+accept/reject load, and a short mailbox+driver lane run. Verified the numbers are sane and align with the spec bounds.
+Centralized `scheduleSwap` in the hotswap package, removed the integration duplicate, and refreshed the lane integration
+tests so the reject-while-busy contract is exercised end-to-end.
+
+[tooling, eslint and shared config] 1h
+Tightened shared Vitest and ESLint configuration across
+base/commands/hotswap/integration/introspect/playground/primitives. Aligned hotswap with the shared error-domain system,
+cleaned up minor lint fallout, and kept the workspace green under tests, type checks, and the new hotswap bench command.

@@ -1,7 +1,8 @@
 # @seqlok/core
 
 **Seqlok**
-Lock-free shared-memory sync for real-time audio, workers, and WebAssembly.
+
+Lock-free shared-memory sync for real-time systems: audio, simulations, workers, WebAssembly.
 
 ---
 
@@ -19,22 +20,24 @@ Seqlok v0.2.0 ships the **single-writer, multi-reader (SWMR)** seqlock core, plu
 - Range-only v1 DSL: numeric scalars, fixed-length arrays, and enum / enum.array.
 - **SWSR ring primitive** (`primitives/swsr-ring`) as the building block for future MWMR command buses.
 - Decoupled mode only (JS + SAB); future MWMR/compose modes live in the design docs.
-- Diagnostics surface (`@seqlok/core/diagnostics`) for counters, env probing, and debug tools.
+- Diagnostics / introspection surface (`@seqlok/core/introspect`) for counters, env probing, and debug tools.
 
 **Zero-copy, seqlock-based state synchronization for real-time systems.**
 
 A typed shared-memory layer between:
 
 - a **Controller** (main/UI thread),
-- a **Processor** (Worker / AudioWorklet),
+- a **Processor** (Worker / AudioWorklet / simulation loop),
 - and optionally an **Observer** (telemetry / monitoring role),
 
 all sharing a single backing:
 
-- **Controller** writes **params** (what you want the engine to do).
-- **Processor** writes **meters** (what the engine is actually doing).
+- **Controller** writes **params** (what you want the engine / lane to do).
+- **Processor** writes **meters** (what the engine / lane is actually doing).
 - **Observer** reads both params/meters, but never writes.
 - All readers use coherent snapshots guarded by a seqlock so no one ever sees torn state.
+
+Properties:
 
 - **Zero allocations** – direct typed-array access over `SharedArrayBuffer`.
 - **Type-safe** – full TypeScript inference from spec → plan → backing → bindings.
@@ -109,15 +112,16 @@ If you want shortcuts, you build them _on top_ of this flow.
 
 ## Quick sketch: controller ↔ processor
 
-This is the minimal shape of a typical setup.
+This is the minimal shape of a typical setup. Think “lane” of control: it could be an audio lane, a simulation lane, a
+render lane, etc.
 
 ### 1. Define a spec
 
 ```ts
 import { defineSpec } from "@seqlok/core";
 
-export const deckSpec = defineSpec(({ param, meter }) => ({
-  id: "deck",
+export const laneSpec = defineSpec(({ param, meter }) => ({
+  id: "lane",
   params: {
     timeRatio: param.f32({ min: 0.25, max: 4 }),
     eqBands: param.f32.array({ length: 8 }),
@@ -130,7 +134,7 @@ export const deckSpec = defineSpec(({ param, meter }) => ({
   },
 }));
 
-export type DeckSpec = typeof deckSpec;
+export type LaneSpec = typeof laneSpec;
 ```
 
 ### 2. Owner thread: spec → plan → backing → controller + handoff
@@ -143,15 +147,15 @@ import {
   bindController,
   type Handoff,
 } from "@seqlok/core";
-import { deckSpec, type DeckSpec } from "./spec";
+import { laneSpec, type LaneSpec } from "./spec";
 
-const plan = planLayout(deckSpec);
+const plan = planLayout(laneSpec);
 const backing = allocateShared(plan);
-const controller = bindController(deckSpec, plan, backing);
+const controller = bindController(laneSpec, plan, backing);
 
-const handoff: Handoff<DeckSpec> = buildHandoff(plan, backing);
+const handoff: Handoff<LaneSpec> = buildHandoff(plan, backing);
 
-// handoff is what you post to a Worker / AudioWorklet
+// handoff is what you post to a Worker / AudioWorklet / simulation worker
 worker.postMessage({ type: "handoff", handoff });
 
 // Example controller usage
@@ -177,14 +181,14 @@ import {
   type Handoff,
   type ProcessorBinding,
 } from "@seqlok/core";
-import type { DeckSpec } from "./spec";
+import type { LaneSpec } from "./spec";
 
 type InitMessage = {
   type: "handoff";
-  handoff: Handoff<DeckSpec>;
+  handoff: Handoff<LaneSpec>;
 };
 
-let processor: ProcessorBinding<DeckSpec> | undefined;
+let processor: ProcessorBinding<LaneSpec> | undefined;
 
 self.onmessage = (ev: MessageEvent<InitMessage>) => {
   if (ev.data.type !== "handoff") return;
@@ -193,23 +197,22 @@ self.onmessage = (ev: MessageEvent<InitMessage>) => {
   processor = bindProcessor(received);
 };
 
-// Somewhere in your audio loop / worker loop
-function processBlock() {
+// Somewhere in your audio loop / worker loop / simulation step
+function processBlock(): void {
   if (!processor) return;
 
   processor.params.within((params) => {
-    const { timeRatio, eqBands } = params;
+    const { timeRatio } = params;
     const framesForBlock = Math.floor(128 * timeRatio);
+
+    // Use framesForBlock in your engine logic...
 
     processor.meters.publish((writer) => {
       writer.rms(0.5);
       writer.peak(0.9);
 
-      writer.stage("framesProcessed", () => {
-        // could be a scalar or array depending on the spec
-      });
-
-      // etc.
+      // Scalar meter: write via function, not stage.
+      writer.framesProcessed(framesForBlock);
     });
   });
 }
@@ -225,44 +228,47 @@ samples them coherently.
 ### Host-side: bind from spec/plan/backing or SharedContext
 
 ```ts
+import { bindObserver, type ObserverBinding } from "@seqlok/core";
+import { laneSpec, type LaneSpec } from "./spec";
+
+// Directly from spec + plan + backing
+const plan = planLayout(laneSpec);
+const backing = allocateShared(plan);
+
+const observer: ObserverBinding<LaneSpec> = bindObserver(
+  laneSpec,
+  plan,
+  backing,
+);
+```
+
+Or, if you built a shared context (see next section), you can bind from that.
+
+### Worker-side: bind from a received handoff
+
+```ts
 import {
+  receiveHandoff,
   bindObserver,
   type ObserverBinding,
   type Handoff,
   type ReceivedHandoff,
 } from "@seqlok/core";
+import type { LaneSpec } from "./spec";
 
-// Directly from spec + plan + backing
-const observer: ObserverBinding<DeckSpec> = bindObserver(
-  deckSpec,
-  plan,
-  backing,
-);
-
-// Or, if you built a SharedContext:
-import { createSharedContext } from "@seqlok/core";
-
-const ctx = createSharedContext(deckSpec);
-const controller = bindController(ctx);
-const observerFromCtx = bindObserver(ctx);
-```
-
-### Worker-side: bind from a received handoff
-
-```ts
-let observer: ObserverBinding<DeckSpec> | undefined;
+let observer: ObserverBinding<LaneSpec> | undefined;
 
 self.onmessage = (
-  ev: MessageEvent<{ type: "handoff"; handoff: Handoff<DeckSpec> }>,
+  ev: MessageEvent<{ type: "handoff"; handoff: Handoff<LaneSpec> }>,
 ) => {
   if (ev.data.type !== "handoff") return;
 
-  const received: ReceivedHandoff<DeckSpec> = receiveHandoff(ev.data.handoff);
+  const received: ReceivedHandoff<LaneSpec> = receiveHandoff(ev.data.handoff);
   observer = bindObserver(received);
 };
 
 // Periodic introspect sampling loop
-function sampleTelemetry() {
+function sampleTelemetry(): void {
   if (!observer) return;
 
   const meters = observer.meters.snapshot(["rms", "peak"]);
@@ -289,9 +295,9 @@ import {
   buildHandoff,
   type SharedContext,
 } from "@seqlok/core";
-import { deckSpec, type DeckSpec } from "./spec";
+import { laneSpec, type LaneSpec } from "./spec";
 
-const ctx: SharedContext<DeckSpec> = createSharedContext(deckSpec);
+const ctx: SharedContext<LaneSpec> = createSharedContext(laneSpec);
 
 // Reuse the same triple everywhere
 const controller = bindController(ctx);
@@ -343,7 +349,7 @@ Treat these numbers as **regression guardrails**, not marketing claims.
 
 ---
 
-## Diagnostics
+## Diagnostics / introspection
 
 Diagnostics live on a separate entry point:
 

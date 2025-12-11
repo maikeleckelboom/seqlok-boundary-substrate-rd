@@ -39,7 +39,7 @@ const paths = {
     "**/docs/**",
   ],
   src: ["src/**/*.{ts,tsx}"],
-  tests: ["tests/**/*.{ts,tsx}", "**/*.test.ts", "**/*.spec.ts"],
+  tests: ["tests/**/*.{ts,tsx}", "**/*.test.ts", "**/*.cpp.ts"],
   bench: ["bench/**/*.{ts,tsx}"],
   scripts: ["scripts/**/*.{ts,tsx}"],
   config: ["*.config.ts", "vite.config.ts"],
