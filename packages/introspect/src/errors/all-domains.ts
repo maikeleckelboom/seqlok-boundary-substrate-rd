@@ -150,10 +150,16 @@ const COMMANDS_DOMAIN_DESCRIPTOR: DomainDescriptor = buildDomainDescriptor(
   DOMAIN_IDS.commands,
 );
 
-const HOTSWAP_DOMAIN_DESCRIPTOR = buildDomainDescriptor(
+const STREAMBUF_DOMAIN_DESCRIPTOR: DomainDescriptor = buildDomainDescriptor(
+  "streambuf",
+  DOMAIN_IDS.streambuf,
+);
+
+const HOTSWAP_DOMAIN_DESCRIPTOR: DomainDescriptor = buildDomainDescriptor(
   "hotswap",
   DOMAIN_IDS.hotswap,
 );
+
 /**
  * All error domains exported by Seqlok.
  *
@@ -172,6 +178,7 @@ export const ALL_DOMAINS: readonly DomainDescriptor[] = [
   HANDOFF_DOMAIN_DESCRIPTOR,
   INTROSPECT_DOMAIN_DESCRIPTOR,
   COMMANDS_DOMAIN_DESCRIPTOR,
+  STREAMBUF_DOMAIN_DESCRIPTOR,
   HOTSWAP_DOMAIN_DESCRIPTOR,
 ];
 

@@ -12,6 +12,7 @@
       "@seqlok/introspect": ["packages/introspect/src/index.ts"],
       "@seqlok/core": ["packages/core/src/index.ts"],
       "@seqlok/commands": ["packages/commands/src/index.ts"],
+      "@seqlok/streambuf": ["packages/streambuf/src/index.ts"],
       "@seqlok/hotswap": ["packages/hotswap/src/index.ts"],
       "@seqlok/integration": ["packages/integration/src/index.ts"],
       "@seqlok/playground": ["packages/playground/src/index.ts"]

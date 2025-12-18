@@ -69,7 +69,7 @@ The `adr/` folder records discrete design decisions with long half-life.
 
 Examples:
 
-- **[0001 – Error system v1.0 audit](./adr/0001-error-system-audit.md)**  
+- **[0001 – Error system v1.0 audit](adr/ADR-001-error-system-audit.md)**  
   Split of the error system out of `@seqlok/core` and the move to
   domain-scoped numeric codes.
 

@@ -43,6 +43,3 @@ onlyBuiltDependencies:
   - simple-git-hooks
   - unrs-resolver
   - vue-demi
-
-overrides:
-  hotswap: link:../../maikel/.local/share/pnpm/global/5/node_modules/@seqlok/hotswap

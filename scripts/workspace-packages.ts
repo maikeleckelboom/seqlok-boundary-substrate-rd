@@ -5,6 +5,7 @@
 export const SEQLOK_PACKAGES = [
   "base",
   "primitives",
+  "streambuf",
   "introspect",
   "core",
   "commands",

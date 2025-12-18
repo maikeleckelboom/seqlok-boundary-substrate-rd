@@ -61,3 +61,17 @@ export {
 export type { CommandBus, CommandBusDrainStats, CommandBusHooks } from "./bus";
 
 export { createCommandBus } from "./bus";
+
+// Ring definition helpers
+export type {
+  RingLayout,
+  RingDefinition,
+  CommandRingDefinition,
+  EventRingDefinition,
+  DefineRingConfig,
+} from "./ring-definition";
+export {
+  defineRing,
+  defineCommandRing,
+  defineEventRing,
+} from "./ring-definition";

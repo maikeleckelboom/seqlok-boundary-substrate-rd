@@ -23,7 +23,7 @@ import type { ErrorNumericCode } from "./numeric";
  * - `code` is the fully-qualified string (e.g. "env.unsupported")
  * - `numericCode` is the encoded numeric value derived from:
  *   - domain id (high byte)
- *   - domain-local index (low byte)
+ *   - domain-local ordinal (low 24 bits)
  */
 export interface DomainEntry {
   /**
@@ -42,7 +42,7 @@ export interface DomainEntry {
 
   /**
    * Encoded numeric error code derived from the domain id
-   * and a domain-local index.
+   * and a domain-local ordinal.
    */
   readonly numericCode: ErrorNumericCode;
 }
@@ -85,11 +85,44 @@ export interface DomainDescriptor {
  * - 10–49:    @seqlok/core
  * - 50–59:    @seqlok/introspect (observatory, registry)
  * - 60–69:    @seqlok/commands
- * - 70–79:    @seqlok/hotswap
+ * - 70–79:    @seqlok/streambuf
+ * - 80–89:    @seqlok/hotswap
  * - 200–254:  user / extension domains (3rd-party engines, plugins)
  * - 255:      reserved sentinel (never assign)
  */
-export const DOMAIN_IDS = {
+export interface DomainIdsTable {
+  // Reserved / fallback
+  readonly unknown: 0;
+
+  // @seqlok/base
+  readonly internal: 1;
+
+  // @seqlok/core (10–49)
+  readonly env: 10;
+  readonly backing: 11;
+  readonly primitives: 12;
+  readonly binding: 13;
+  readonly spec: 14;
+  readonly plan: 15;
+  readonly handoff: 16;
+
+  // @seqlok/introspect (50–59)
+  readonly introspect: 50;
+
+  // @seqlok/commands (60–69)
+  readonly commands: 60;
+
+  // @seqlok/streambuf (70–79)
+  readonly streambuf: 70;
+
+  // @seqlok/hotswap (80–89)
+  readonly hotswap: 80;
+
+  // Reserved sentinel (never assign)
+  readonly reserved: 255;
+}
+
+export const DOMAIN_IDS: DomainIdsTable = {
   // Reserved / fallback
   unknown: 0,
 
@@ -111,12 +144,15 @@ export const DOMAIN_IDS = {
   // @seqlok/commands (60–69)
   commands: 60,
 
-  // @seqlok/hotswap (70–79)
-  hotswap: 70,
+  // @seqlok/streambuf (70–79)
+  streambuf: 70,
+
+  // @seqlok/hotswap (80–89)
+  hotswap: 80,
 
   // Reserved
   reserved: 255,
-} as const;
+};
 
 /**
  * String name of a domain id as used in this table.
@@ -125,7 +161,7 @@ export const DOMAIN_IDS = {
  * Includes sentinel entries (`unknown`, `reserved`) so you can round-trip
  * through the table for debugging / schema export.
  */
-export type DomainIdName = keyof typeof DOMAIN_IDS;
+export type DomainIdName = keyof DomainIdsTable;
 
 /**
  * Numeric domain id for built-in domains.
@@ -134,7 +170,7 @@ export type DomainIdName = keyof typeof DOMAIN_IDS;
  * Does not attempt to model the user range (200–254); third-party code
  * can still use those ids via explicit casts when defining domains.
  */
-export type DomainId = (typeof DOMAIN_IDS)[DomainIdName];
+export type DomainId = DomainIdsTable[DomainIdName];
 
 /**
  * Domain name for non-sentinel domains (real error domains).
@@ -159,18 +195,22 @@ export interface DomainRange {
  * This is intentionally runtime data (not just comments) so that
  * tooling and schema generators can consume it directly.
  */
-export const DOMAIN_RANGES: Readonly<{
-  base: DomainRange;
-  core: DomainRange;
-  introspect: DomainRange;
-  commands: DomainRange;
-  hotswap: DomainRange;
-  user: DomainRange;
-}> = {
+export interface DomainRangesTable {
+  readonly base: DomainRange;
+  readonly core: DomainRange;
+  readonly introspect: DomainRange;
+  readonly commands: DomainRange;
+  readonly streambuf: DomainRange;
+  readonly hotswap: DomainRange;
+  readonly user: DomainRange;
+}
+
+export const DOMAIN_RANGES: Readonly<DomainRangesTable> = {
   base: { min: DOMAIN_IDS.internal, max: DOMAIN_IDS.internal },
   core: { min: DOMAIN_IDS.env, max: DOMAIN_IDS.handoff },
   introspect: { min: DOMAIN_IDS.introspect, max: DOMAIN_IDS.introspect },
   commands: { min: DOMAIN_IDS.commands, max: DOMAIN_IDS.commands },
+  streambuf: { min: DOMAIN_IDS.streambuf, max: DOMAIN_IDS.streambuf },
   hotswap: { min: DOMAIN_IDS.hotswap, max: DOMAIN_IDS.hotswap },
   user: { min: 200, max: 254 },
 } as const;
@@ -185,7 +225,7 @@ export const DOMAIN_RANGES: Readonly<{
 export function isBuiltinDomainId(domainId: number): domainId is DomainId {
   // Small table, called off the hot path; linear scan is fine.
   // If this ever moves into hot code, replace with a switch.
-  return (Object.values(DOMAIN_IDS) as number[]).includes(domainId);
+  return (Object.values(DOMAIN_IDS) as readonly number[]).includes(domainId);
 }
 
 /**

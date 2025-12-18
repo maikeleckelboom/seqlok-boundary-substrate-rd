@@ -23,6 +23,10 @@ Each package is a node in a strict one-way dependency graph.
   Command transport  
   Rings, mailboxes and control channels
 
+- `@seqlok/streambuf`  
+  Stream transport  
+  Bulk SWSR buffers for PCM, bytes and frame streams (complements commands)
+
 - `@seqlok/hotswap`  
   Engine lifecycle and swap protocol built on top of core and commands
 
@@ -57,6 +61,7 @@ flowchart LR
     hotswap
     commands
     core
+    streambuf
     primitives
   end
 
@@ -77,12 +82,15 @@ flowchart LR
   core --> base
   commands --> core
   commands --> primitives
+  streambuf --> primitives
+  streambuf --> base
   hotswap --> commands
   hotswap --> core
 %% Host
   integration --> hotswap
   integration --> commands
   integration --> core
+  integration --> streambuf
   integration --> introspect
   playground --> integration
   playground --> introspect

@@ -1,0 +1,65 @@
+{
+  "name": "@seqlok/streambuf",
+  "version": "0.3.0-next.0",
+  "license": "MIT",
+  "author": "Seqlok Contributors",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seqlok/seqlok"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "description": "Bulk SWSR stream transport in shared memory (SharedArrayBuffer/WebAssembly.Memory).",
+  "keywords": [
+    "seqlok",
+    "streambuf",
+    "ring",
+    "swsr",
+    "sharedarraybuffer",
+    "audio"
+  ],
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "source": "./src/index.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "clean": "rimraf dist *.tsbuildinfo .eslintcache pnpm-debug.log",
+    "build": "vite build && rollup -c rollup.dts.config.mts",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:types": "pnpm --workspace-root test:types"
+  },
+  "dependencies": {
+    "@seqlok/base": "workspace:*",
+    "@seqlok/primitives": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "eslint-import-resolver-typescript": "catalog:",
+    "eslint-plugin-import": "catalog:",
+    "eslint-plugin-regex": "catalog:",
+    "fast-check": "catalog:",
+    "globals": "catalog:",
+    "rimraf": "catalog:",
+    "rollup": "catalog:",
+    "rollup-plugin-dts": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}

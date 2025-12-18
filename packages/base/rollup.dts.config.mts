@@ -10,6 +10,7 @@ export default [
     plugins: [
       dts({
         tsconfig: "tsconfig.json",
+        respectExternal: true,
       }),
     ],
   },

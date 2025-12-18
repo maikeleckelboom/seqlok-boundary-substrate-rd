@@ -11,6 +11,7 @@
     ".": {
       "types": "./dist/index.d.ts",
       "source": "./src/index.ts",
+      "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./package.json": "./package.json"
@@ -44,7 +45,8 @@
     "@seqlok/primitives": "workspace:*",
     "@seqlok/core": "workspace:*",
     "@seqlok/commands": "workspace:*",
-    "@seqlok/hotswap": "workspace:*"
+    "@seqlok/hotswap": "workspace:*",
+    "@seqlok/streambuf": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

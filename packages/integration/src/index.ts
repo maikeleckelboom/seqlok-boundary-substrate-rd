@@ -67,3 +67,21 @@ export type {
   LaneObserverPlugin,
   LanePluginPack,
 } from "./lane/lane-plugins";
+
+export type {
+  EngineSpecBuilders,
+  EngineSpecBuilder,
+  EngineConstructorOptions,
+  EngineConstructor,
+  DefineEngineConfig,
+  EngineDefinition,
+} from "./engine/definition";
+export { defineEngine } from "./engine/definition";
+
+export type { LanePluginDefinition, PluginRegistry } from "./plugin/registry";
+export { definePlugin, createPluginRegistry } from "./plugin/registry";
+
+export type { LaneTypeConfig, LaneType } from "./lane/lane-type";
+export { defineLaneType } from "./lane/lane-type";
+export { mountLane } from "./lane/mount-lane";
+export { type MountLaneOptions, type MountedLane } from "./lane/mount-lane";

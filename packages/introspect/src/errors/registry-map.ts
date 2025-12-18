@@ -23,6 +23,7 @@ import {
 } from "@seqlok/core";
 import { HOTSWAP_ERRORS } from "@seqlok/hotswap";
 import { PRIMITIVES_ERRORS } from "@seqlok/primitives";
+import { STREAMBUF_ERRORS } from "@seqlok/streambuf";
 
 import { INTROSPECT_ERRORS } from "./introspect";
 
@@ -35,8 +36,6 @@ import type { DomainName } from "./all-domains";
  */
 export type RegistryEntry = BaseErrorDescriptor;
 
-// Concrete registry types per domain, inferred from the actual exports.
-// No need to import internal `*ErrorMap` types.
 type InternalRegistry = typeof INTERNAL_ERRORS;
 type EnvRegistry = typeof ENV_ERRORS;
 type BackingRegistry = typeof BACKING_ERRORS;
@@ -48,6 +47,7 @@ type HandoffRegistry = typeof HANDOFF_ERRORS;
 type CommandsRegistry = typeof COMMANDS_ERRORS;
 type IntrospectRegistry = typeof INTROSPECT_ERRORS;
 type HotswapRegistry = typeof HOTSWAP_ERRORS;
+type StreamBufRegistry = typeof STREAMBUF_ERRORS;
 
 /**
  * Registry map for a single domain.
@@ -68,6 +68,7 @@ export type DomainRegistry =
   | PlanRegistry
   | HandoffRegistry
   | CommandsRegistry
+  | StreamBufRegistry
   | IntrospectRegistry
   | HotswapRegistry;
 
@@ -138,9 +139,12 @@ export function getRegistryForDomain(domain: DomainName): DomainRegistry {
     case "hotswap":
       return HOTSWAP_ERRORS;
 
+    case "streambuf":
+      return STREAMBUF_ERRORS;
+
     default:
-      // DomainName is currently just `string`, so this is a runtime guard,
-      // not an exhaustiveness check.
+      // DomainName is currently just `string`,
+      // so this is a runtime guard, not an exhaustiveness check.
       panic(`Unhandled error domain in registry lookup: ${domain}`);
   }
 }

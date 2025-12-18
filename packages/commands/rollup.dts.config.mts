@@ -1,5 +1,7 @@
 import dts from "rollup-plugin-dts";
 
+const external = ["@seqlok/base", "@seqlok/primitives", "@seqlok/core"];
+
 export default [
   {
     input: "src/index.ts",
@@ -10,7 +12,9 @@ export default [
     plugins: [
       dts({
         tsconfig: "tsconfig.json",
+        respectExternal: true,
       }),
     ],
+    external,
   },
 ];
