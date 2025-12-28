@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview
  * Shared helpers for snapshot implementations.
@@ -41,7 +42,7 @@ export function requireIndex(
   return value;
 }
 
-export type ParamArray = Float32Array | Int32Array | Uint8Array;
+export type ParamArray = Float32Array | Int32Array | Uint32Array | Uint8Array;
 export type MeterArray = Float32Array | Float64Array | Uint32Array;
 
 function copyTypedArray<T extends ParamArray | MeterArray>(
@@ -77,6 +78,10 @@ export function copyParamArray(
   into?: Float32Array,
 ): Float32Array;
 export function copyParamArray(src: Int32Array, into?: Int32Array): Int32Array;
+export function copyParamArray(
+  src: Uint32Array,
+  into?: Uint32Array,
+): Uint32Array;
 export function copyParamArray(src: Uint8Array, into?: Uint8Array): Uint8Array;
 export function copyParamArray(src: ParamArray, into?: ParamArray): ParamArray {
   return copyTypedArray(src, into);
@@ -142,6 +147,12 @@ export function readParamScalar(
   if (plane === "PI32") {
     const raw = requireIndex(views.PI32, start, key, "Param PI32 scalar OOB");
     const def = defs[key];
+
+    // u32 scalar params are stored in PI32 bits; decode as unsigned.
+    if (def?.kind === "u32") {
+      return raw >>> 0;
+    }
+
     return isEnumDef(def) ? getEnumLabelForIndex(def, raw) : raw;
   }
 

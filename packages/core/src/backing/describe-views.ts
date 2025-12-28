@@ -1,3 +1,5 @@
+// File: packages/core/src/backing/describe-views.ts
+
 /**
  * @fileoverview
  * Human-readable description of memory views and layout.
@@ -8,13 +10,12 @@
  * - Provides clear, readable representations of memory planes.
  */
 
-import { BACKING_PLANE_PACK_ORDER_V1 } from "./map-views";
+import { PLANE_PACK_ORDER, type PlaneKey } from "@seqlok/primitives";
 
 import type { Plan } from "../plan/types";
 import type { SpecInput } from "../spec/types";
-import type { PlaneKey } from "@seqlok/primitives";
 
-function label(key: PlaneKey) {
+function label(key: PlaneKey): string {
   switch (key) {
     case "PU":
       return "Param seqlock";
@@ -24,6 +25,7 @@ function label(key: PlaneKey) {
       return "Param i32/enum";
     case "PB":
       return "Param bool (u8)";
+
     case "MF32":
       return "Meter f32";
     case "MU32":
@@ -64,7 +66,7 @@ export function describeViews<S extends SpecInput>(plan: Plan<S>): string[] {
   let totalBytes = 0;
   let offset = 0;
 
-  for (const key of BACKING_PLANE_PACK_ORDER_V1) {
+  for (const key of PLANE_PACK_ORDER) {
     const byteLength = planes[key];
     const present = byteLength > 0;
     const byteOffset = present ? offset : undefined;

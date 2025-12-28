@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview
  * Processor binding implementation for worker/worklet runtimes.
@@ -47,6 +48,15 @@ type WithinView<S extends SpecInput> =
  * Base layout information for a param/meter slot in a plane.
  */
 interface SlotBase {
+  /**
+   * Spec-authored kind string (e.g. "u32", "u32.array").
+   *
+   * @remarks
+   * Optional for backwards compatibility with older plans / received handoffs.
+   * When absent, PI32 slots are interpreted as signed by default.
+   */
+  readonly kind?: string;
+
   readonly offset: number;
   readonly length: number;
   readonly bytesPerElement: number;
@@ -146,7 +156,11 @@ function paramArrayViewFor(
     plane: ParamPlane;
     length: number;
   },
-): Ephemeral<Float32Array> | Ephemeral<Int32Array> | Ephemeral<Uint8Array> {
+):
+  | Ephemeral<Float32Array>
+  | Ephemeral<Int32Array>
+  | Ephemeral<Uint32Array>
+  | Ephemeral<Uint8Array> {
   invariant(slot.length > 1, () =>
     createInternalError("assertionFailed", {
       where: "param.array",
@@ -163,11 +177,17 @@ function paramArrayViewFor(
         start,
         end,
       ) as Ephemeral<Float32Array>;
-    case "PI32":
-      return ensurePlane(views.PI32, "param.array", "PI32").subarray(
-        start,
-        end,
-      ) as Ephemeral<Int32Array>;
+    case "PI32": {
+      const a = ensurePlane(views.PI32, "param.array", "PI32");
+      if (slot.kind === "u32.array") {
+        return new Uint32Array(
+          a.buffer,
+          a.byteOffset + slot.offset,
+          slot.length,
+        ) as Ephemeral<Uint32Array>;
+      }
+      return a.subarray(start, end) as Ephemeral<Int32Array>;
+    }
     case "PB":
       return ensurePlane(views.PB, "param.array", "PB").subarray(
         start,
@@ -200,7 +220,8 @@ function readParamScalar(
     }
     case "PI32": {
       const at = ensurePlane(views.PI32, "param.scalar", "PI32");
-      return readNumberAt(at, i, "param.scalar") | 0;
+      const raw = readNumberAt(at, i, "param.scalar") | 0;
+      return slot.kind === "u32" ? raw >>> 0 : raw;
     }
     case "PB": {
       const a = ensurePlane(views.PB, "param.scalar", "PB");

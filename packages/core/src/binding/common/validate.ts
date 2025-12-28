@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview
  * Shared validation and error helpers for binding implementations.
@@ -100,7 +101,7 @@ export type ParamPlane = "PF32" | "PI32" | "PB";
 /** @internal Meter planes (data) — binding-local union. */
 export type MeterPlane = "MF32" | "MF64" | "MU32";
 
-type ParamDst = Float32Array | Int32Array | Uint8Array;
+type ParamDst = Float32Array | Int32Array | Uint32Array | Uint8Array;
 type MeterDst = Float32Array | Float64Array | Uint32Array;
 
 /** Constructor shape for typed arrays (length → instance). */
@@ -147,13 +148,18 @@ export function assertParamInto(
   plane: ParamPlane,
   dst: ParamDst,
   expectedLength: number,
+  kind?: string,
 ): void {
   switch (plane) {
     case "PF32":
       validateIntoBuffer(key, Float32Array, expectedLength, dst);
       return;
     case "PI32":
-      validateIntoBuffer(key, Int32Array, expectedLength, dst);
+      if (kind === "u32.array") {
+        validateIntoBuffer(key, Uint32Array, expectedLength, dst);
+      } else {
+        validateIntoBuffer(key, Int32Array, expectedLength, dst);
+      }
       return;
     case "PB":
       validateIntoBuffer(key, Uint8Array, expectedLength, dst);
@@ -182,6 +188,13 @@ export function assertMeterInto(
 }
 
 interface SlotBase {
+  /**
+   * Spec-authored kind string (e.g. "u32.array").
+   *
+   * @remarks
+   * Optional for backwards compatibility with older plans / received handoffs.
+   */
+  readonly kind?: string;
   readonly offset: number;
   readonly length: number;
   readonly bytesPerElement: number;
@@ -289,7 +302,9 @@ export function validateParamSlots(
       );
     }
 
+    const kind = slot.kind;
     validated[key] = {
+      ...(kind !== undefined ? { kind } : {}),
       plane: slot.plane,
       offset: slot.offset,
       length: slot.length,
@@ -365,7 +380,9 @@ export function validateMeterSlots(
       );
     }
 
+    const kind = slot.kind;
     validated[key] = {
+      ...(kind !== undefined ? { kind } : {}),
       plane: slot.plane,
       offset: slot.offset,
       length: slot.length,

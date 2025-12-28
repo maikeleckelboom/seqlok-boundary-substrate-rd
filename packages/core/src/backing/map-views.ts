@@ -1,3 +1,5 @@
+// File: packages/core/src/backing/map-views.ts
+
 /**
  * @fileoverview
  * Maps backing memory into typed views for all planes and lock arrays.
@@ -11,7 +13,12 @@
  */
 
 import { invariant } from "@seqlok/base";
-import { ALL_PLANES, BYTES_PER_ELEM, type PlaneKey } from "@seqlok/primitives";
+import {
+  ALL_PLANES,
+  BYTES_PER_ELEM,
+  PLANE_PACK_ORDER,
+  type PlaneKey,
+} from "@seqlok/primitives";
 
 import { getBackingBuffer } from "./buffers";
 import { createBackingError } from "../errors/backing";
@@ -19,27 +26,6 @@ import { createBackingError } from "../errors/backing";
 import type { Backing, SharedBacking, WasmSharedBacking } from "./types";
 import type { Plan, PlaneByteLengths } from "../plan/types";
 import type { SpecInput } from "../spec/types";
-
-/**
- * Defines the memory layout for packed plane storage.
- *
- * @remarks
- * - Determines byte offsets for planes in contiguous/WASM backings
- * - Changing requires a new version constant (V2, V3, etc.)
- * - Order affects memory locality and alignment
- *
- * @see {@link computeBackingPlaneBases} for usage
- */
-export const BACKING_PLANE_PACK_ORDER_V1: readonly PlaneKey[] = [
-  "MF64", // 8-byte aligned
-  "PF32", // 4-byte aligned
-  "PI32", // 4-byte aligned
-  "PU", // 4-byte aligned
-  "MF32", // 4-byte aligned
-  "MU32", // 4-byte aligned
-  "MU", // 4-byte aligned
-  "PB", // 1-byte aligned
-];
 
 /** Maps each plane to its byte offset in a packed backing. */
 export type PlaneBases = Readonly<Record<PlaneKey, number>>;
@@ -55,7 +41,7 @@ export interface ParamPlaneViews {
   readonly PI32: Int32Array;
   /** Boolean parameters (packed 8-bit) */
   readonly PB: Uint8Array;
-  /** Unsigned 32-bit parameters */
+  /** Param update counters (seqlock) */
   readonly PU: Uint32Array;
 }
 
@@ -67,7 +53,7 @@ export interface MeterPlaneViews {
   readonly MF64: Float64Array;
   /** 32-bit unsigned integer meters */
   readonly MU32: Uint32Array;
-  /** Meter update counters */
+  /** Meter update counters (seqlock) */
   readonly MU: Uint32Array;
 }
 
@@ -106,27 +92,47 @@ function createZeroPlaneBases(): MutablePlaneBases {
  * Calculates byte offsets for planes in a packed backing.
  *
  * @remarks
- * - Offsets are in bytes, not elements
- * - Follows {@link BACKING_PLANE_PACK_ORDER_V1} for layout
- * - Used by both contiguous and WASM backings
+ * - Offsets are in bytes, not elements.
+ * - `packOrder` defaults to `PLANE_PACK_ORDER` (the canonical packed backing ABI).
+ * - Passing an explicit order is primarily for tests and specialized tooling.
  *
  * @param planes - Byte lengths for each plane
- * @param startByteOffset
+ * @param startByteOffset - Base offset (e.g. WASM memory base)
+ * @param packOrder - Plane iteration order (defaults to canonical)
  * @returns Record mapping planes to their byte offsets
  */
 export function computeBackingPlaneBases(
   planes: PlaneByteLengths,
   startByteOffset = 0,
+  packOrder: readonly PlaneKey[] = PLANE_PACK_ORDER,
 ): PlaneBases {
   const bases = createZeroPlaneBases();
   let cursor = startByteOffset;
 
-  for (const plane of BACKING_PLANE_PACK_ORDER_V1) {
+  for (const plane of packOrder) {
     bases[plane] = cursor;
     cursor += planes[plane];
   }
 
   return bases;
+}
+
+function assertValidBaseOffsetBytes(baseOffsetBytes: number): void {
+  if (!Number.isSafeInteger(baseOffsetBytes) || baseOffsetBytes < 0) {
+    throw createBackingError("invalidBaseOffset", {
+      baseOffsetBytes,
+      alignmentBytes: BYTES_PER_ELEM.MF64,
+      where: "backing.mapPackedBacking",
+    });
+  }
+  // Packed mapping uses Float64Array, so we require 8-byte alignment.
+  if (baseOffsetBytes % BYTES_PER_ELEM.MF64 !== 0) {
+    throw createBackingError("invalidBaseOffset", {
+      baseOffsetBytes,
+      alignmentBytes: BYTES_PER_ELEM.MF64,
+      where: "backing.mapPackedBacking",
+    });
+  }
 }
 
 /**
@@ -148,20 +154,7 @@ function mapPackedBacking<S extends SpecInput>(
     backing.kind === "wasm-shared" ? (backing.baseOffsetBytes ?? 0) : 0;
 
   if (baseOffsetBytes !== 0) {
-    if (!Number.isSafeInteger(baseOffsetBytes) || baseOffsetBytes < 0) {
-      throw createBackingError("invalidBaseOffset", {
-        baseOffsetBytes,
-        alignmentBytes: BYTES_PER_ELEM.MF64,
-        where: "backing.mapPackedBacking",
-      });
-    }
-    if (baseOffsetBytes % BYTES_PER_ELEM.MF64 !== 0) {
-      throw createBackingError("invalidBaseOffset", {
-        baseOffsetBytes,
-        alignmentBytes: BYTES_PER_ELEM.MF64,
-        where: "backing.mapPackedBacking",
-      });
-    }
+    assertValidBaseOffsetBytes(baseOffsetBytes);
   }
 
   const requiredBytes = plan.bytesTotal + baseOffsetBytes;
@@ -169,8 +162,8 @@ function mapPackedBacking<S extends SpecInput>(
 
   invariant(actualBytes >= requiredBytes, () =>
     createBackingError("allocUndersized", {
-      allocatedBytes: 0,
-      requestedBytes: 0,
+      allocatedBytes: actualBytes,
+      requestedBytes: requiredBytes,
       where: "backing.mapViews.packed",
       plane: "all",
       requiredBytes,
@@ -240,13 +233,9 @@ function mapPartitionedBacking<S extends SpecInput>(
   plan: Plan<S>,
   partitionedBacking: Extract<Backing, { kind: "shared-partitioned" }>,
 ): MappedViews {
-  // In partitioned mode, each plane has its own SAB starting at offset 0
+  // In partitioned mode, each plane has its own SAB starting at offset 0.
   const bases = createZeroPlaneBases();
 
-  /**
-   * Validates and returns a plane's SharedArrayBuffer.
-   * @throws SeqlokError<'backing.allocUndersized'> if the plane's buffer is smaller than required
-   */
   const ensurePlaneBuffer = (plane: PlaneKey): SharedArrayBuffer => {
     const sab = partitionedBacking.planes[plane];
     const requiredBytes = plan.planes[plane] >>> 0;
@@ -254,8 +243,8 @@ function mapPartitionedBacking<S extends SpecInput>(
 
     invariant(actualBytes >= requiredBytes, () =>
       createBackingError("allocUndersized", {
-        allocatedBytes: 0,
-        requestedBytes: 0,
+        allocatedBytes: actualBytes,
+        requestedBytes: requiredBytes,
         where: "backing.mapViews.partitioned",
         plane,
         requiredBytes,
@@ -319,13 +308,6 @@ function mapPartitionedBacking<S extends SpecInput>(
  * @param plan - Memory layout specification
  * @param backing - Backing storage to map
  * @returns Typed array views for all planes and locks
- *
- * @example
- * ```typescript
- * const views = mapViews(plan, backing);
- * // Access parameter: views.params.PF32[paramIndex]
- * // Access meter: views.meters.MF32[meterIndex]
- * ```
  */
 export function mapViews<S extends SpecInput>(
   plan: Plan<S>,

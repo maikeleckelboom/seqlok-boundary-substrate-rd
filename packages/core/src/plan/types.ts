@@ -1,3 +1,4 @@
+
 /**
  * Canonical plan-facing types.
  *
@@ -59,6 +60,17 @@ export interface PlaneByteLengths {
 
 /** Slot describing one param/meter entry within its plane. */
 export interface EntrySlot {
+  /**
+   * Spec-authored kind string (e.g. "i32.array", "u32.array").
+   *
+   * @remarks
+   * Metadata only: does not affect packing or plane selection.
+   * This enables bindings created from received handoffs (defs unavailable)
+   * to still pick correct typed-array interpretations (e.g. Uint32 view over PI32).
+   *
+   * Optional for backwards compatibility with older plans.
+   */
+  readonly kind?: string;
   readonly plane: PlaneKey;
   /** Byte offset within the plane (not the global backing). */
   readonly offset: number;

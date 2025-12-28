@@ -1,80 +1,125 @@
 /**
  * @packageDocumentation
- * Plane identifiers and alignment helpers for Seqlok memory plans.
+ * Plane identifiers, packing order, and alignment helpers for Seqlok memory plans.
  *
- * Each plane groups values by storage type to guarantee deterministic plan
- * and correct TypedArray alignment:
+ * A “plane” is the ABI-level bucket that groups values by storage/TypedArray kind.
+ * Plan/backing/binding all speak this same vocabulary.
  *
- * - `PF32`  Float32 **params**
- * - `PI32`  Int32   **params** (enum indices)
- * - `PB`    Uint8   **params** (booleans, ABI v1)
- * - `PU`    Uint32  **Param** seqlock counters `[LOCK, SEQ]`
- * - `MF32`  Float32 **meters**
- * - `MU32`  Uint32  **meters**
- * - `MF64`  Float64 **meters**
- * - `MU`    Uint32  **Meter** seqlock counters `[LOCK, SEQ]`
+ * Notes:
+ * - `PU` and `MU` are the seqlock counter planes (Uint32 pairs like `[LOCK, SEQ]`).
+ * - Boolean data uses byte storage in `PB` (0/1), while meter booleans may ride `MU32`
+ *   at higher layers; that policy lives in `core/spec` catalogs, not here.
  */
+
 import { createInternalError } from "@seqlok/base";
 
-export type PlaneKey =
-  | "PF32"
-  | "PI32"
-  | "PB"
-  | "PU"
-  | "MF32"
-  | "MU32"
-  | "MF64"
-  | "MU";
-
-export const ALL_PLANES: readonly PlaneKey[] = [
+/**
+ * Canonical backing packing order.
+ *
+ * Keep this list stable: changing it is an ABI/layout change and must be done in a
+ * deliberate slice with corresponding planner + backing updates.
+ */
+export const PLANE_PACK_ORDER = [
+  "MF64",
   "PF32",
   "PI32",
-  "PB",
   "PU",
   "MF32",
-  "MF64",
   "MU32",
   "MU",
+  "PB",
 ] as const;
 
+export type PlaneKey = (typeof PLANE_PACK_ORDER)[number];
+
 /**
- * Specifies the number of bytes per element for various data types used in planes.
- * This constant maps plane keys to the size in bytes of their corresponding typed arrays.
- *
- * @property {number} PF32 - Represents the byte size for a Float32Array.
- * @property {number} PI32 - Represents the byte size for an Int32Array.
- * @property {number} PB - Represents the byte size for a Uint8Array.
- * @property {number} PU - Represents the byte size for a Uint32Array.
- * @property {number} MF32 - Represents the byte size for a Float32Array.
- * @property {number} MU32 - Represents the byte size for a Uint32Array.
- * @property {number} MF64 - Represents the byte size for a Float64Array.
- * @property {number} MU - Represents the byte size for a Uint32Array.
+ * Back-compat alias. Prefer `PLANE_PACK_ORDER`.
  */
-export const BYTES_PER_ELEM: Readonly<Record<PlaneKey, number>> = {
+export const ALL_PLANES: readonly PlaneKey[] = PLANE_PACK_ORDER;
+
+type BytesPerElem = 1 | 4 | 8;
+
+/**
+ * Exact record keyed by the current `PlaneKey` union.
+ * (No extra keys allowed; no missing keys allowed.)
+ */
+export type PlaneRecord<V> = Readonly<Record<PlaneKey, V>>;
+
+/**
+ * Bytes per element for each plane’s storage representation.
+ *
+ * This is also the *natural alignment* requirement for that plane’s typed view.
+ */
+export const BYTES_PER_ELEM: PlaneRecord<BytesPerElem> = {
   PF32: 4,
   PI32: 4,
   PB: 1,
   PU: 4,
+
   MF32: 4,
-  MU32: 4,
   MF64: 8,
+  MU32: 4,
   MU: 4,
 } as const;
+
+const PLANE_SET: ReadonlySet<string> = new Set<string>(PLANE_PACK_ORDER);
+
+/**
+ * Runtime type-guard for untrusted input.
+ */
+export function isPlaneKey(x: string): x is PlaneKey {
+  return PLANE_SET.has(x);
+}
+
+/**
+ * Assert helper for defensive parsing.
+ */
+export function assertPlaneKey(
+  x: string,
+  where: string,
+): asserts x is PlaneKey {
+  if (!isPlaneKey(x)) {
+    throw createInternalError("assertionFailed", {
+      where,
+      detail: `invalid PlaneKey: ${x}`,
+    });
+  }
+}
 
 /**
  * Round `n` up to the next multiple of `align`.
  *
  * @remarks
- * `align` must be a positive power-of-two. This is enforced to keep the bit
- * trick `(n + (align - 1)) & ~(align - 1)` valid and branch-free.
+ * - `n` and `align` must be safe non-negative integers.
+ * - `align` must be a positive power-of-two.
  */
 export function roundUpTo(n: number, align: number): number {
-  if (align <= 0 || (align & (align - 1)) !== 0) {
+  if (!Number.isSafeInteger(n) || n < 0) {
     throw createInternalError("assertionFailed", {
       where: "primitives.planes.roundUpTo",
-      detail: `align must be positive power-of-two, got ${String(align)}`,
+      detail: `n must be a non-negative safe integer, got ${String(n)}`,
     });
   }
 
-  return (n + (align - 1)) & ~(align - 1);
+  if (
+    !Number.isSafeInteger(align) ||
+    align <= 0 ||
+    (align & (align - 1)) !== 0
+  ) {
+    throw createInternalError("assertionFailed", {
+      where: "primitives.planes.roundUpTo",
+      detail: `align must be a positive power-of-two safe integer, got ${String(align)}`,
+    });
+  }
+
+  const out = Math.ceil(n / align) * align;
+
+  if (!Number.isSafeInteger(out)) {
+    throw createInternalError("assertionFailed", {
+      where: "primitives.planes.roundUpTo",
+      detail: `rounded result must be a safe integer, got ${String(out)}`,
+    });
+  }
+
+  return out;
 }

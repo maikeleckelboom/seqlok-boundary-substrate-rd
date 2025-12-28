@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview
  * Controller binding implementation.
@@ -138,7 +139,7 @@ type ArrayOp =
   | {
       readonly plane: "PI32";
       readonly slot: ValidatedParamSlot;
-      readonly src: Int32Array;
+      readonly src: Int32Array | Uint32Array;
     }
   | {
       readonly plane: "PB";
@@ -157,7 +158,7 @@ type F32RangeDef = Extract<ParamDef, { kind: "f32" }> & {
 /**
  * Range-bearing i32 scalar definition.
  */
-type I32RangeDef = Extract<ParamDef, { kind: "i32" }> & {
+type I32RangeDef = Extract<ParamDef, { kind: "i32" | "u32" }> & {
   readonly min: number;
   readonly max: number;
 };
@@ -184,7 +185,7 @@ const isF32RangeDef = (d: unknown): d is F32RangeDef =>
  */
 const isI32RangeDef = (d: unknown): d is I32RangeDef =>
   isObject(d) &&
-  d.kind === "i32" &&
+  (d.kind === "i32" || d.kind === "u32") &&
   typeof d.min === "number" &&
   typeof d.max === "number" &&
   Number.isInteger(d.min) &&
@@ -560,6 +561,23 @@ export function controllerImpl<const S extends SpecInput>(
             }
 
             case "PI32": {
+              const kind = slot.kind ?? paramDefs[key]?.kind;
+              if (kind === "u32.array") {
+                if (!(v instanceof Uint32Array)) {
+                  throwInvalidParamValue(key, "Uint32Array", toJsonDetail(v));
+                }
+                const src = v;
+                if (src.length !== expectedLength) {
+                  throwInvalidParamValue(
+                    key,
+                    `Uint32Array(length ${String(expectedLength)})`,
+                    src.length,
+                  );
+                }
+                arrayOps.push({ plane: "PI32", slot, src });
+                break;
+              }
+
               if (!(v instanceof Int32Array)) {
                 throwInvalidParamValue(key, "Int32Array", toJsonDetail(v));
               }
@@ -664,7 +682,16 @@ export function controllerImpl<const S extends SpecInput>(
           if (slot.plane === "PF32") {
             view = mapped.params.PF32.subarray(start, end);
           } else if (slot.plane === "PI32") {
-            view = mapped.params.PI32.subarray(start, end);
+            const kind = slot.kind ?? paramDefs[key]?.kind;
+            if (kind === "u32.array") {
+              view = new Uint32Array(
+                mapped.params.PI32.buffer,
+                mapped.params.PI32.byteOffset + start * slot.bytesPerElement,
+                slot.length,
+              );
+            } else {
+              view = mapped.params.PI32.subarray(start, end);
+            }
           } else {
             view = mapped.params.PB.subarray(start, end);
           }

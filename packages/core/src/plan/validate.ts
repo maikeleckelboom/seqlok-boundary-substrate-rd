@@ -1,3 +1,6 @@
+
+// File: packages/core/src/plan/validate.ts
+
 /**
  * @fileoverview
  * Validation and planning utilities for Seqlok memory layouts.
@@ -8,10 +11,11 @@
  * - Handles packing of parameters and meters into memory planes.
  */
 
-import { BYTES_PER_ELEM, type PlaneKey } from "@seqlok/primitives";
+import { BYTES_PER_ELEM } from "@seqlok/primitives";
 
 import { createPlanError } from "../errors/plan";
 import { createSpecError } from "../errors/spec";
+import { getMeterKindEntry, getParamKindEntry } from "../spec/kinds";
 
 import type { EntrySlot, LockStrideBytes, PlaneByteLengths } from "./types";
 import type {
@@ -126,72 +130,67 @@ export function assertValidSpecForPlanning(spec: SpecInput): void {
   }
 }
 
+type ParamDataPlane = "PF32" | "PI32" | "PB";
+type MeterDataPlane = "MF32" | "MF64" | "MU32";
+
 /**
  * Resolve a PARAM definition to its storage plane.
+ *
+ * NOTE: While slicing, we only allow current data planes. Missing kinds will be
+ * rejected as builderInvalid until the planner/backing/binding support expands.
  */
-export function planeOfParam(def: ParamDef): PlaneKey {
-  switch (def.kind) {
-    case "f32":
-      return "PF32";
-    case "i32":
-      return "PI32";
-    case "bool":
-      return "PB";
-    case "enum":
-      return "PI32";
-
-    case "f32.array":
-      return "PF32";
-    case "i32.array":
-      return "PI32";
-    case "bool.array":
-      return "PB";
-    case "enum.array":
-      return "PI32";
-
-    default: {
-      const kind = (def as { kind?: unknown }).kind;
-      throw createSpecError("builderInvalid", {
-        where: "plan.planeOfParam",
-        reason: "invalidKind",
-        detail: typeof kind === "string" ? kind : String(kind),
-      });
-    }
+function planeOfParam(def: ParamDef): ParamDataPlane {
+  const entry = getParamKindEntry(def.kind);
+  if (!entry) {
+    throw createSpecError("builderInvalid", {
+      where: "plan.planeOfParam",
+      reason: "invalidKind",
+      detail: def.kind,
+    });
   }
+
+  const plane = entry.plane;
+
+  // While we’re still in the “current planes only” slice:
+  if (plane !== "PF32" && plane !== "PI32" && plane !== "PB") {
+    // Keep within existing error-system vocabulary (no new reason strings).
+    throw createSpecError("builderInvalid", {
+      where: "plan.planeOfParam",
+      reason: "invalidKind",
+      detail: `${def.kind} -> ${plane}`,
+    });
+  }
+
+  return plane;
 }
 
 /**
  * Resolve a METER definition to its storage plane.
+ *
+ * NOTE: While slicing, we only allow current data planes. Missing kinds will be
+ * rejected as builderInvalid until the planner/backing/binding support expands.
  */
-export function planeOfMeter(def: MeterDef): "MF32" | "MF64" | "MU32" {
-  switch (def.kind) {
-    case "f32":
-      return "MF32";
-    case "f64":
-      return "MF64";
-    case "u32":
-      return "MU32";
-    case "bool":
-      return "MU32";
-
-    case "f32.array":
-      return "MF32";
-    case "f64.array":
-      return "MF64";
-    case "u32.array":
-      return "MU32";
-    case "bool.array":
-      return "MU32";
-
-    default: {
-      const kind = (def as { kind?: unknown }).kind;
-      throw createSpecError("builderInvalid", {
-        where: "plan.planeOfMeter",
-        reason: "invalidKind",
-        detail: typeof kind === "string" ? kind : String(kind),
-      });
-    }
+function planeOfMeter(def: MeterDef): MeterDataPlane {
+  const entry = getMeterKindEntry(def.kind);
+  if (!entry) {
+    throw createSpecError("builderInvalid", {
+      where: "plan.planeOfMeter",
+      reason: "invalidKind",
+      detail: def.kind,
+    });
   }
+
+  const plane = entry.plane;
+
+  if (plane !== "MF32" && plane !== "MF64" && plane !== "MU32") {
+    throw createSpecError("builderInvalid", {
+      where: "plan.planeOfMeter",
+      reason: "invalidKind",
+      detail: `${def.kind} -> ${plane}`,
+    });
+  }
+
+  return plane;
 }
 
 /**
@@ -254,6 +253,7 @@ export function packParamSlots(params: Readonly<Record<string, ParamDef>>): {
     } else if (plane === "PI32") {
       offset = PI32;
       PI32 += length * elemBytes;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     } else if (plane === "PB") {
       offset = PB;
       PB += length * elemBytes;
@@ -264,7 +264,7 @@ export function packParamSlots(params: Readonly<Record<string, ParamDef>>): {
       });
     }
 
-    slots[key] = { plane, offset, length, bytesPerElement: elemBytes };
+    slots[key] = { kind: def.kind, plane, offset, length, bytesPerElement: elemBytes };
   }
 
   return { slots, bytes: { PF32, PI32, PB } };
@@ -307,7 +307,7 @@ export function packMeterSlots(meters: Readonly<Record<string, MeterDef>>): {
       });
     }
 
-    slots[key] = { plane, offset, length, bytesPerElement: elemBytes };
+    slots[key] = { kind: def.kind, plane, offset, length, bytesPerElement: elemBytes };
   }
 
   return { slots, bytes: { MF32, MF64, MU32 } };

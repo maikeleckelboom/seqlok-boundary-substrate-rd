@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview
  * Snapshot utilities for controller bindings.
@@ -29,6 +30,13 @@ import type { ParamDef, SpecInput } from "../../spec/types";
 import type { ControllerMeters, ControllerParams } from "../common/types";
 
 type SnapshotParamSlot = Readonly<{
+  /**
+   * Spec-authored kind string (e.g. "u32.array").
+   *
+   * @remarks
+   * Optional for backwards compatibility with older plans / received handoffs.
+   */
+  kind?: string;
   plane: ParamPlane;
   index: number;
   length: number;
@@ -49,11 +57,17 @@ function paramsSnapshotRaw(
   knownParamKeys: readonly string[],
   options?: {
     readonly keys: readonly string[];
-    readonly into?: Record<string, Float32Array | Int32Array | Uint8Array>;
+    readonly into?: Record<string, Float32Array | Int32Array | Uint32Array | Uint8Array>;
   },
 ): Record<
   string,
-  number | boolean | string | Float32Array | Int32Array | Uint8Array
+  | number
+  | boolean
+  | string
+  | Float32Array
+  | Int32Array
+  | Uint32Array
+  | Uint8Array
 > {
   const keysList = options ? options.keys : knownParamKeys;
 
@@ -68,7 +82,13 @@ function paramsSnapshotRaw(
   const into = options?.into;
   const out: Record<
     string,
-    number | boolean | string | Float32Array | Int32Array | Uint8Array
+    | number
+    | boolean
+    | string
+    | Float32Array
+    | Int32Array
+    | Uint32Array
+    | Uint8Array
   > = {};
 
   for (const key of keysList) {
@@ -88,11 +108,21 @@ function paramsSnapshotRaw(
       const dst = into?.[key];
 
       if (dst) {
-        assertParamInto(key, slot.plane, dst, slot.length);
+        const kind = slot.kind ?? defs[key]?.kind;
+        assertParamInto(key, slot.plane, dst, slot.length, kind);
         if (slot.plane === "PF32") {
           (dst as Float32Array).set(views.PF32.subarray(start, end));
         } else if (slot.plane === "PI32") {
-          (dst as Int32Array).set(views.PI32.subarray(start, end));
+          if (kind === "u32.array") {
+            const src = new Uint32Array(
+              views.PI32.buffer,
+              views.PI32.byteOffset + start * slot.bytesPerElement,
+              slot.length,
+            );
+            (dst as Uint32Array).set(src);
+          } else {
+            (dst as Int32Array).set(views.PI32.subarray(start, end));
+          }
         } else {
           (dst as Uint8Array).set(views.PB.subarray(start, end));
         }
@@ -100,7 +130,17 @@ function paramsSnapshotRaw(
       } else if (slot.plane === "PF32") {
         out[key] = copyParamArray(views.PF32.subarray(start, end));
       } else if (slot.plane === "PI32") {
-        out[key] = copyParamArray(views.PI32.subarray(start, end));
+        const kind = slot.kind ?? defs[key]?.kind;
+        if (kind === "u32.array") {
+          const src = new Uint32Array(
+            views.PI32.buffer,
+            views.PI32.byteOffset + start * slot.bytesPerElement,
+            slot.length,
+          );
+          out[key] = copyParamArray(src);
+        } else {
+          out[key] = copyParamArray(views.PI32.subarray(start, end));
+        }
       } else {
         out[key] = copyParamArray(views.PB.subarray(start, end));
       }
@@ -122,7 +162,7 @@ export function createParamSnapshot<S extends SpecInput>(
 
   return ((options?: {
     readonly keys?: readonly string[];
-    readonly into?: Record<string, Float32Array | Int32Array | Uint8Array>;
+    readonly into?: Record<string, Float32Array | Int32Array | Uint32Array | Uint8Array>;
   }) => {
     if (!options) {
       return paramsSnapshotRaw(defs, slots, views, allParamKeys);

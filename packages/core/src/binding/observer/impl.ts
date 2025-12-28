@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview
  * Observer binding implementation.
@@ -57,6 +58,13 @@ import type { SeqPair } from "@seqlok/primitives";
  * We drop the raw byte offset and just keep the logical index.
  */
 type SnapshotParamSlot = Readonly<{
+  /**
+   * Spec-authored kind string (e.g. "u32.array").
+   *
+   * @remarks
+   * Optional for backwards compatibility with older plans / received handoffs.
+   */
+  kind?: string;
   plane: ParamPlane;
   index: number;
   length: number;
@@ -172,6 +180,7 @@ export function observerImpl<const S extends SpecInput>(
     const mapped = mapViews(plan, backing);
 
     interface ParamSlotForValidate {
+      readonly kind?: string;
       readonly plane: ParamPlane | "PU";
       readonly offset: number;
       readonly length: number;
@@ -179,6 +188,7 @@ export function observerImpl<const S extends SpecInput>(
     }
 
     interface MeterSlotForValidate {
+      readonly kind?: string;
       readonly plane: MeterPlane | "MU";
       readonly offset: number;
       readonly length: number;
@@ -200,7 +210,9 @@ export function observerImpl<const S extends SpecInput>(
     for (const [key, slot] of Object.entries<ValidatedParamSlot>(
       validatedParams,
     )) {
+      const kind = slot.kind;
       paramSnapshotSlots[key] = {
+        ...(kind !== undefined ? { kind } : {}),
         plane: slot.plane,
         index: slot.index,
         length: slot.length,

@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview
  * Observer snapshot helpers.
@@ -41,6 +42,13 @@ import type {
 } from "../common/types";
 
 type SnapshotParamSlot = Readonly<{
+  /**
+   * Spec-authored kind string (e.g. "u32.array").
+   *
+   * @remarks
+   * Optional for backwards compatibility with older plans / received handoffs.
+   */
+  kind?: string;
   plane: ParamPlane;
   index: number;
   length: number;
@@ -88,7 +96,13 @@ function paramsSnapshotRawObserver(
   keys?: readonly string[],
 ): Record<
   string,
-  number | boolean | string | Float32Array | Int32Array | Uint8Array
+  | number
+  | boolean
+  | string
+  | Float32Array
+  | Int32Array
+  | Uint32Array
+  | Uint8Array
 > {
   const keysList = keys && keys.length > 0 ? keys : knownParamKeys;
 
@@ -102,7 +116,13 @@ function paramsSnapshotRawObserver(
 
   const out: Record<
     string,
-    number | boolean | string | Float32Array | Int32Array | Uint8Array
+    | number
+    | boolean
+    | string
+    | Float32Array
+    | Int32Array
+    | Uint32Array
+    | Uint8Array
   > = {};
 
   for (const key of keysList) {
@@ -123,7 +143,16 @@ function paramsSnapshotRawObserver(
       if (slot.plane === "PF32") {
         out[key] = views.PF32.subarray(start, end);
       } else if (slot.plane === "PI32") {
-        out[key] = views.PI32.subarray(start, end);
+        const kind = slot.kind ?? defs[key]?.kind;
+        if (kind === "u32.array") {
+          out[key] = new Uint32Array(
+            views.PI32.buffer,
+            views.PI32.byteOffset + start * slot.bytesPerElement,
+            slot.length,
+          );
+        } else {
+          out[key] = views.PI32.subarray(start, end);
+        }
       } else {
         out[key] = views.PB.subarray(start, end);
       }

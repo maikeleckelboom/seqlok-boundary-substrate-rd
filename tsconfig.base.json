@@ -51,5 +51,6 @@
     "esModuleInterop": true,
     "stripInternal": true,
     "incremental": true
-  }
+  },
+  "exclude": ["__CORE_NEXT__"]
 }

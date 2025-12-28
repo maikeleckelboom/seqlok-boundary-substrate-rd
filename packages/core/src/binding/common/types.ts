@@ -1,3 +1,4 @@
+
 /**
  * @fileoverview
  * Binding-domains public types shared by controller and processor bindings.
@@ -63,10 +64,12 @@ type EnumValuesOf<D> = D extends { values: readonly (infer V)[] } ? V : never;
 type ParamKind =
   | "f32"
   | "i32"
+  | "u32"
   | "bool"
   | "enum"
   | "f32.array"
   | "i32.array"
+  | "u32.array"
   | "u8.array"
   | "bool.array"
   | "enum.array";
@@ -93,10 +96,12 @@ type MeterKind =
 interface ParamProcessorMap {
   f32: number;
   i32: number;
+  u32: number;
   bool: boolean;
   enum: number;
   "f32.array": Float32Array;
   "i32.array": Int32Array;
+  "u32.array": Uint32Array;
   "u8.array": Uint8Array;
   "bool.array": Uint8Array;
   "enum.array": Int32Array;
@@ -131,9 +136,11 @@ interface MeterProcessorMap {
 interface ParamControllerMap {
   f32: number;
   i32: number;
+  u32: number;
   bool: boolean;
   "f32.array": Readonly<Float32Array>;
   "i32.array": Readonly<Int32Array>;
+  "u32.array": Readonly<Uint32Array>;
   "u8.array": Readonly<Uint8Array>;
   "bool.array": Readonly<Uint8Array>;
   "enum.array": Readonly<Int32Array>; // indices

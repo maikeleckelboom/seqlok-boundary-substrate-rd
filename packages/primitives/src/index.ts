@@ -41,7 +41,16 @@ export {
   endWrite,
 } from "./seqlock";
 
-export { ALL_PLANES, BYTES_PER_ELEM, roundUpTo, type PlaneKey } from "./planes";
+export {
+  ALL_PLANES,
+  BYTES_PER_ELEM,
+  PLANE_PACK_ORDER,
+  isPlaneKey,
+  assertPlaneKey,
+  type PlaneRecord,
+  roundUpTo,
+  type PlaneKey,
+} from "./planes";
 export { addU32, loadU32, spinUntilEven } from "./atomics";
 export {
   SWSR_HEADER_DROPPED,

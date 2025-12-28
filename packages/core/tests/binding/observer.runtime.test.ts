@@ -249,9 +249,7 @@ describe("observer binding - coverage edges", () => {
       PB: makePlane(plan.planes.PB),
       PU: makePlane(plan.planes.PU),
       MF32:
-        plan.planes.MF32 > 0
-          ? makePlane(plan.planes.MF32 - 4) // deliberately undersized
-          : makePlane(0),
+        plan.planes.MF32 > 0 ? makePlane(plan.planes.MF32 - 4) : makePlane(0),
       MF64: makePlane(plan.planes.MF64),
       MU32: makePlane(plan.planes.MU32),
       MU: makePlane(plan.planes.MU),
