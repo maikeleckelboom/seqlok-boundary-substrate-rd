@@ -114,7 +114,7 @@ Typical successful output:
 ```text
 Model checking completed. No error has been found.
 ...
-2979221 states generated, 2339348 distinct states found, 0 states left on queue.
+2979221 states generated, 2339348 distinct states found, 0 states remaining.
 Finished in 01min 38s
 ```
 

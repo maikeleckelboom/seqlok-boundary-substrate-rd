@@ -19,7 +19,7 @@ This document describes the hot-swap protocol under the **mailbox-latest** polic
   engine**.
 
 This policy is a good fit for **responsive UI spam** (knobs/sliders, preset
-auditioning) where you want “latest intent wins” without queue growth.
+auditioning) where you want “latest intent wins” without unbounded accumulation.
 
 ---
 

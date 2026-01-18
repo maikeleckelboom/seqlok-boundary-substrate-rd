@@ -95,13 +95,12 @@ This docs tree uses a small, *historical* level taxonomy for what is supported:
   Base single-swap protocol: at most one in-flight swap per lane/slot.
 
 - **Level 2 = policy `reject-busy`**  
-  Overlap is explicitly defined as: **reject while busy**. No queue, no retarget,
-  no coalesce.
+  Overlap is explicitly defined as: **reject while busy**.
 
 - **Level 3+ = Experimental / Future (not part of supported Levels 1–2)**  
   Anything beyond “reject while busy” lives here. Today that includes:
   - `mailbox-latest` (**EXPERIMENTAL**, treat as “Level 3” if you want a number)
-  - Retarget/coalesce concepts are future-only (Level 3+); see adr/hotswap-advanced-multi-swap-exploratory.md.
+  - Advanced overlap-handling semantics (future-only; see adr/hotswap-advanced-multi-swap-exploratory.md)
 
 For the full list of invariants (safety + liveness), see:
 

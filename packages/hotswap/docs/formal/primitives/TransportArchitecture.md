@@ -22,7 +22,7 @@ they require.
 - Consumer samples at RT cadence and may skip intermediate values.
 - Often paired with a **monotonic seqno** to detect missed updates.
 
-This is a **signal transport**, not a queue.
+This is a **signal transport**, not a FIFO buffer.
 
 **Best when:**
 
@@ -34,12 +34,12 @@ This is a **signal transport**, not a queue.
 
 - `mailbox-latest` policy (hotswap overlap: latest intent wins)
 
-### 1.2 Ring (FIFO command queue)
+### 1.2 Ring (FIFO command buffer)
 
 **Model:** bounded SPSC ring buffer, FIFO.
 
-- Producer enqueues commands in order.
-- Consumer dequeues in order.
+- Producer inserts commands in order.
+- Consumer removes commands in order.
 - Capacity is bounded; full-ring behavior must be explicit (reject, overwrite-oldest, etc.).
 
 This is a **command transport**.

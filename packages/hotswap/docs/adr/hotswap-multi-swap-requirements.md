@@ -199,7 +199,7 @@ is in progress.
   * `scheduleSwap` consults an optional `isLaneBusy()` hook on the config.
   * If it returns `true`, the function returns a `SwapResult` with
     `accepted: false` and `reason: "lane-busy"`.
-  * The ticket is **not** enqueued into the mailbox.
+  * The ticket is **not** inserted into the mailbox.
 
 * On the RT side, if an overlapping `installSwap` command somehow appears
   (e.g. from a non-conforming sender), the `HotswapSlotDriver` is required
@@ -232,8 +232,7 @@ The overlapping integration test in `lane.timeline.integration.test.ts` asserts 
 
 ### 2.3 Out of scope for Level 2
 
-Level 2 does not define queue/retarget/coalesce behavior; see
-`adr/hotswap-advanced-multi-swap-exploratory.md`.
+This is Level 3+ design territory; see adr/hotswap-advanced-multi-swap-exploratory.md.
 
 ---
 
@@ -473,9 +472,7 @@ The existing TLA+ specification must be extended to prove, for each lane:
 
 ### Out of scope (deferred to Level 3):
 
-* Queue semantics (`queue-until-idle`).
-* Retarget/coalesce policies.
-* Cross-lane / cross-deck interactions (multi-lane coordination).
+This is Level 3+ design territory; see adr/hotswap-advanced-multi-swap-exploratory.md.
 
 **Verification commitment:**
 The model must prove the existing 2-engine invariant under Level 2 rules; anything beyond that is explicitly deferred.

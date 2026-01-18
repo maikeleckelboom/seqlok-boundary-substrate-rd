@@ -373,7 +373,7 @@ Host/UI side reads snapshots for display.
 * Ticket arrives during active swap
   Base protocol is Level 1 (`single`): one in-flight swap per slot. Overlap
   handling is a host-side policy choice. Supported Level 2 behavior is
-  `reject-busy` (reject while busy). Any queue/retarget/coalesce behavior is
+  `reject-busy` (reject while busy). Advanced overlap-handling behavior is
   Level 3+ (experimental/future) and must be treated as out of scope for the
   shipped contract.
 
@@ -401,4 +401,4 @@ same restrictions apply: no allocation, no locks, deterministic control flow.
 
 | Version | Changes                                             |
 |--------:|-----------------------------------------------------|
-|   0.1.0 | Initial protocol. No cancellation, no queued swaps. |
+|   0.1.0 | Initial protocol. No cancellation. Single-swap only. |

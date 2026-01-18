@@ -2,6 +2,7 @@
 #pragma once
 
 #include <cstdint>
+#include <algorithm> // std::max
 
 namespace seqlok::hotswap {
 
@@ -211,4 +212,3 @@ inline SwapStepDecisionRT step_swap_state_rt(
 }
 
 } // namespace seqlok::hotswap
-

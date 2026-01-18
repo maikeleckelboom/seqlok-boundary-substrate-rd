@@ -17,8 +17,7 @@
 // NOTE: Keep behavior in sync with `include/seqlok/hotswap_spec.hpp`.
 // That header defines the concrete EngineKind = uint8_t ABI surface.
 
-namespace seqlok {
-namespace hotswap {
+namespace seqlok::hotswap::reference {
 
 // ============================================================================
 // Phase Enumeration
@@ -54,6 +53,23 @@ enum class SwapStepKind : std::uint8_t {
     RunBothForCrossfade      = 3,  ///< Run both; blend outputs
     RetireNow                = 4,  ///< Run current final time; then swap handles
 };
+
+// --------------------------------------------------------------------------
+// Sync checks vs canonical spec header (prevents accidental drift).
+// --------------------------------------------------------------------------
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapPhase::Idle) == static_cast<std::uint8_t>(SwapPhase::Idle));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapPhase::Spawn) == static_cast<std::uint8_t>(SwapPhase::Spawn));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapPhase::Prime) == static_cast<std::uint8_t>(SwapPhase::Prime));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapPhase::Prewarm) == static_cast<std::uint8_t>(SwapPhase::Prewarm));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapPhase::Crossfade) == static_cast<std::uint8_t>(SwapPhase::Crossfade));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapPhase::Retire) == static_cast<std::uint8_t>(SwapPhase::Retire));
+
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapStepKind::Idle) == static_cast<std::uint8_t>(SwapStepKind::Idle));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapStepKind::RunCurrentOnly) == static_cast<std::uint8_t>(SwapStepKind::RunCurrentOnly));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapStepKind::RunCurrentAndPrewarmNext) == static_cast<std::uint8_t>(SwapStepKind::RunCurrentAndPrewarmNext));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapStepKind::RunBothForCrossfade) == static_cast<std::uint8_t>(SwapStepKind::RunBothForCrossfade));
+static_assert(static_cast<std::uint8_t>(::seqlok::hotswap::SwapStepKind::RetireNow) == static_cast<std::uint8_t>(SwapStepKind::RetireNow));
+
 
 // ============================================================================
 // RT Ticket
@@ -379,6 +395,4 @@ inline constexpr const char* stepKindToString(SwapStepKind kind) noexcept {
     }
 }
 
-} // namespace hotswap
-} // namespace seqlok
-
+} // namespace seqlok::hotswap::reference

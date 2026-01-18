@@ -178,7 +178,7 @@ A successful run prints output similar to:
 ```text
 Model checking completed. No error has been found.
 ...
-252978 states generated, 14881 distinct states found, 0 states left on queue.
+252978 states generated, 14881 distinct states found, 0 states remaining.
 ```
 
 Key points:

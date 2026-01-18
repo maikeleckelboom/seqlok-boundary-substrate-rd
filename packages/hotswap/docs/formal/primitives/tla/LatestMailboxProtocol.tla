@@ -14,7 +14,7 @@
  *       * Each read returns the most recently written value at that moment.
  *   - Monotonic seqno allows consumer to detect missed updates.
  *
- * This is NOT a FIFO queue. It is a coalescing signal transport.
+ * This is NOT a FIFO. It is a coalescing signal transport.
  *)
 
 EXTENDS Integers, Sequences, FiniteSets

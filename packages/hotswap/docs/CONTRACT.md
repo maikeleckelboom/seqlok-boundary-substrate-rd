@@ -90,7 +90,7 @@ The protocol deliberately does **not** define:
 - How `atFrame` is aligned with transport / tempo.
 - How engines are constructed or pooled.
 - How tickets are delivered to the audio thread (command ring,
-  lock-free queue, etc.).
+  lock-free transport, etc.).
 
 These are left to the surrounding host (Dekzer, native engine, etc).
 
@@ -105,9 +105,7 @@ implemented policy:
 This reject-while-busy policy is proven correct in
 `formal/policies/reject-busy/tla/HotSwapRejectBusy.tla`.
 
-**Experimental / future policies:** `mailbox-latest` (latest-wins mailbox),
-Retarget/coalesce are intentionally **out of scope** for Levels 1–2. See
-`adr/hotswap-advanced-multi-swap-exploratory.md` for design context.
+Experimental / future policies (Level 3+) are intentionally out of scope for Levels 1–2; see adr/hotswap-advanced-multi-swap-exploratory.md.
 
 ## Formal verification
 

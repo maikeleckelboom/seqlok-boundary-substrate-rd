@@ -23,7 +23,6 @@
     "bench": "vitest bench --reporter=verbose --run",
     "bench:format": "tsx scripts/format-bench.ts",
     "bench:report": "pnpm run bench && pnpm run bench:format",
-    "bench:charts": "python3 scripts/plot_bench.py",
     "lint": "eslint src tests scripts",
     "lint:fix": "eslint src tests scripts --fix",
     "format": "prettier --ignore-path ../../.prettierignore --write .",
