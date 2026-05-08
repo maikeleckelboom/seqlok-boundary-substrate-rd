@@ -710,21 +710,21 @@ Continuous bidirectional state between:
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         CONTROLLER THREAD                               │
-│   (Main thread: UI events, MIDI, automation, requestAnimationFrame)    │
+│   (Main thread: UI events, MIDI, automation, requestAnimationFrame)     │
 └─────────────────────────────────────────────────────────────────────────┘
-         │                                                   ▲
-         │ params.set() / update() / hydrate()               │ meters.snapshot()
-         ▼                                                   │
+         │                                                  ▲
+         │ params.set() / update() / hydrate()              │ meters.snapshot()
+         ▼                                                  │
     ┌─────────┐                                        ┌─────────┐
     │  Param  │   SharedArrayBuffer (seqlock-backed)   │ Metric  │
     │  State  │◄──────────────────────────────────────►│  State  │
     └─────────┘                                        └─────────┘
-         │                                                   ▲
-         │ params.within()                                   │ meters.publish()
-         ▼                                                   │
+         │                                                  ▲
+         │ params.within()                                  │ meters.publish()
+         ▼                                                  │
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         PROCESSOR THREAD                                │
-│      (Real-time callback, e.g. AudioWorkletProcessor.process())        │
+│      (Real-time callback, e.g. AudioWorkletProcessor.process())         │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -769,8 +769,8 @@ Commands are discrete, ordered events. They marry the mailbox layer (`@seqlok/co
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                           HOST / CONTROLLER                             │
-│   "seek to 2:30", "swap engine", "trigger cue", ...                     │
+│                           HOST / CONTROLLER                              │
+│   "seek to 2:30", "swap engine", "trigger cue", ...                      │
 └──────────────────────────────────────────────────────────────────────────┘
                                    │
                                    │ producer.push(cmd)
@@ -784,7 +784,7 @@ Commands are discrete, ordered events. They marry the mailbox layer (`@seqlok/co
                                    │ consumer.drain(hooks)
                                    ▼
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                               PROCESSOR                                 │
+│                               PROCESSOR                                  │
 │                                                                          │
 │   ┌──────────────────────────────────────────────────────────────────┐   │
 │   │                             TIMELINE                             │   │
@@ -925,8 +925,8 @@ A second playground tab is planned:
 
 ```text
 ┌──────────────────────────────────────────────────────────────┐
-│                      @seqlok/* packages                     │
-│      (substrate: primitives, core, commands, hotswap)       │
+│                      @seqlok/* packages                      │
+│      (substrate: primitives, core, commands, hotswap)        │
 └──────────────────────────────────────────────────────────────┘
                               │
                               │ imported directly
