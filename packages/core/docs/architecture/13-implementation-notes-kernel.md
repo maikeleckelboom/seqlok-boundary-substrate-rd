@@ -547,7 +547,7 @@ The following are implementation options, **not** part of the v0.1.0 public cont
 - Dedicated boolean planes if/when runtimes expose atomic 8-bit operations with suitable semantics.
 - [moved to core] A first-class observer binding in `@seqlok/core` for seqlock
   readers is now implemented (`bindObserver`, see ADR-00Z). The remaining future
-  toggles are about *how* observers budget and degrade, not about their existence.
+  toggles are about _how_ observers budget and degrade, not about their existence.
 
 Any such feature must preserve the core invariants:
 

@@ -3,13 +3,13 @@
 **"You are not in the Event Loop anymore."**
 
 If you are coming from standard React, Node, or Vue development, Seqlok requires you to unlearn a few habits. In
-standard JavaScript, you wait for an event (click, fetch) and then react. In Seqlok's hot path, we do not wait. We *
-*poll**.
+standard JavaScript, you wait for an event (click, fetch) and then react. In Seqlok's hot path, we do not wait. We \*
+\*poll\*\*.
 
 ## The Mental Shift: Standard JS vs. Seqlok
 
 | Feature       | Standard JavaScript (The "easy" way)                   | Seqlok Hot Path (The "fast" way)                                        |
-|:--------------|:-------------------------------------------------------|:------------------------------------------------------------------------|
+| :------------ | :----------------------------------------------------- | :---------------------------------------------------------------------- |
 | **Execution** | **Event-Driven:** "Wake me up when the user clicks."   | **Loop-Driven:** "Check the user status. Check again. Check again."     |
 | **Memory**    | **Garbage Collected:** `const x = { val: 1 }` is fine. | **Static Allocation:** Creating objects is forbidden. Reuse everything. |
 | **Data Flow** | **Pass-by-Reference:** Passing objects is cheap.       | **Shared Memory:** Objects don't exist. We read raw bytes.              |
@@ -53,13 +53,13 @@ Instead of writing a class with getters and setters, you describe the layout dat
 import { defineSpec } from "@seqlok/core";
 
 // 1. Define the structure (the "schema")
-export const boidSpec = defineSpec(({param, meter}) => ({
+export const boidSpec = defineSpec(({ param, meter }) => ({
   params: {
     // Scalars are just numbers
-    separation: param.f32({min: 0, max: 10}),
-    alignment: param.f32({min: 0, max: 10}),
+    separation: param.f32({ min: 0, max: 10 }),
+    alignment: param.f32({ min: 0, max: 10 }),
     // Arrays are fixed-length blocks
-    target: param.f32.array({length: 3}), // [x, y, z]
+    target: param.f32.array({ length: 3 }), // [x, y, z]
   },
   meters: {
     // The processor writes these back to us
@@ -229,11 +229,7 @@ to a crash.
 This is particularly useful for UI feedback ("Do I tell the user to reload, or just retry?").
 
 ```ts
-import {
-  SeqlokError,
-  isSeqlokError,
-  interpretHealth,
-} from "@seqlok/base";
+import { SeqlokError, isSeqlokError, interpretHealth } from "@seqlok/base";
 import { getErrorMeta } from "@seqlok/introspect";
 
 try {

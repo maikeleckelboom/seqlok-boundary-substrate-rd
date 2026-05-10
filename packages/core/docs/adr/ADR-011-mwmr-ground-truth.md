@@ -90,13 +90,13 @@ No code outside these bindings writes to Seqlok planes, regardless of system com
 
 ### 2.4 Package Ownership
 
-| Component | Package |
-|-----------|---------|
-| Ring primitive | `@seqlok/primitives` |
-| Typed command transport | `@seqlok/commands` |
+| Component                    | Package               |
+| ---------------------------- | --------------------- |
+| Ring primitive               | `@seqlok/primitives`  |
+| Typed command transport      | `@seqlok/commands`    |
 | Runtime telemetry structures | `@seqlok/diagnostics` |
-| Tooling/analysis | `@seqlok/introspect` |
-| Spec/plan/backing/bindings | `@seqlok/core` |
+| Tooling/analysis             | `@seqlok/introspect`  |
+| Spec/plan/backing/bindings   | `@seqlok/core`        |
 
 ---
 
@@ -297,9 +297,9 @@ const deckObserver = bindObserver(deckSpec, deckPlan, deckBacking);
 
 // Producer from @seqlok/commands or @seqlok/primitives
 const { producer: uiRing } = createCommandMailbox({
-  mailboxId: 'ui-main',
+  mailboxId: "ui-main",
   codec: transportCodec,
-  layout: { capacity: 256, wordsPerSlot: transportCodec.wordsPerSlot }
+  layout: { capacity: 256, wordsPerSlot: transportCodec.wordsPerSlot },
 });
 
 slider.onInput = (value) => {
@@ -319,9 +319,9 @@ const midiAccepted = acceptHandoff(handoff);
 const midiObserver = bindObserver(midiAccepted);
 
 const { producer: midiRing } = createCommandMailbox({
-  mailboxId: 'midi-bridge',
+  mailboxId: "midi-bridge",
   codec: transportCodec,
-  layout: { capacity: 128, wordsPerSlot: transportCodec.wordsPerSlot }
+  layout: { capacity: 128, wordsPerSlot: transportCodec.wordsPerSlot },
 });
 
 midiController.on("fader", (value) => {
@@ -340,9 +340,9 @@ const deckController = bindController(deckSpec, deckPlan, deckBacking);
 
 // Mailbox consumer
 const { consumer: transportRing } = createCommandMailbox({
-  mailboxId: 'transport',
+  mailboxId: "transport",
   codec: transportCodec,
-  layout: { capacity: 256, wordsPerSlot: transportCodec.wordsPerSlot }
+  layout: { capacity: 256, wordsPerSlot: transportCodec.wordsPerSlot },
 });
 
 function deckWorkerTick() {

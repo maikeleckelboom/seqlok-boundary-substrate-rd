@@ -8,10 +8,10 @@ This folder contains **implementation patterns and design notes** for Seqlok.
 
 ## Current Patterns
 
-| File | Description |
-|------|-------------|
-| `DESIGN-002-webgpu-digital-twin-pattern.md` | WebGPU "digital twin" pattern: meters → observer → GPU buffer → WGSL shaders. |
-| `DESIGN-003-telemetry-bridge-pattern.md` | Mirroring Seqlok state into external telemetry or hardware without violating SWMR. |
+| File                                        | Description                                                                        |
+| ------------------------------------------- | ---------------------------------------------------------------------------------- |
+| `DESIGN-002-webgpu-digital-twin-pattern.md` | WebGPU "digital twin" pattern: meters → observer → GPU buffer → WGSL shaders.      |
+| `DESIGN-003-telemetry-bridge-pattern.md`    | Mirroring Seqlok state into external telemetry or hardware without violating SWMR. |
 
 ---
 

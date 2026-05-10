@@ -1,725 +1,610 @@
-# Seqlok Spec & DSL: Overview and Rationale
+# Seqlok Spec and DSL: Overview and Rationale
 
-> _The spec is the "truth of the device"; everything else is derived._
+> The spec is an authored contract. The builder DSL is an authoring surface over that contract.
 
 This document explains:
 
-- What a **Spec** is in Seqlok
-- How the **DSL** is structured
-- What the design **does and does not** allow
-- How the spec feeds into the **Spec → Plan → Backing → Handoff → Bindings** pipeline
+- what a spec is in Seqlok
+- how authored input enters the system
+- how nested authored structure relates to runtime identity
+- where `keysOf(spec)` fits
+- how authored input becomes planning input
 
-If you're defining devices, binding controllers/processors, or extending Seqlok, this is your reference.
-
----
-
-## 1. What is a Spec?
-
-In Seqlok, a **spec** is a _pure description_ of:
-
-- Which **params** (inputs) a device exposes
-- Which **meters** (outputs) it produces
-- Their **types**, **ranges**, and **shapes**
-
-A spec is:
-
-- **Pure data definition** — no references to `SharedArrayBuffer`, `Atomics`, or workers
-- **Schema-only** — structure and constraints, no behavior
-- **Deterministic** — same spec → same plan → same bindings
-
-Example:
-
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    gain: param.f32({ min: 0, max: 2 }),
-    cutoff: param.f32({ min: 20, max: 20_000 }),
-    bypass: param.bool(),
-    mode: param.enum(["normal", "granular", "freeze"]),
-    bands: param.f32.array({ length: 8 }),
-  },
-  meters: {
-    peak: meter.f32(),
-    rms: meter.f32(),
-    spectrum: meter.f32.array({ length: 1024 }),
-  },
-}));
-```
-
-From here, the rest of the pipeline is:
-
-```ts
-// owner / controller side
-const plan = planLayout(spec);
-const backing = allocateShared(plan);
-const handoff = buildHandoff(plan, backing);
-
-const controller = bindController(spec, plan, backing, {
-  params: { rangePolicy: "clamp" },
-});
-
-// processor / engine side (worker, AudioWorklet, etc.)
-const accepted = acceptHandoff(handoff);
-const processor = bindProcessor(accepted);
-```
-
-The **Spec** is the only place you describe the shared state. Everything else (plan, shared memory, handoff, bindings) is
-derived.
+If you are defining a Seqlok contract, this is the doc that should leave your mental model straight.
 
 ---
 
-## 2. Design Principles of the DSL
+## 1. What a spec is
 
-The DSL is intentionally narrow and opinionated.
+In Seqlok, a spec is an **authored contract** describing shared state across an execution boundary.
 
-### 2.1 Structural, Not Behavioral
+It defines:
 
-The spec defines:
+- which **params** exist
+- which **meters** exist
+- their **kinds**, **ranges**, **enum vocabularies**, and **fixed shapes**
 
-- **Types**: float, int, bool, enum, arrays of these
-- **Shapes**: scalar vs fixed-length array
-- **Constraints**: numeric ranges, enum domains
+It does **not** define backing memory, thread wiring, worker setup, UI policy, or runtime behavior above the
+shared-memory boundary.
 
-The spec does **not** define:
+That distinction matters.
 
-- Default values (those are handled at a higher layer)
-- UI hints like step size, units, labels, color
-- Automation curves, smoothing, ramps
-- Behavior flags ("this param is smoothed", "this meter is decimated")
-
-Reason: the spec must be:
-
-- Stable across contexts (UI, worker, Wasm)
-- Easy to map to **raw memory**
-- Easy to reason about in terms of plan and type inference
-
-Behavior and UI concerns live in _other_ layers.
+A Seqlok spec is not “the callback you pass to `defineSpec(...)`.”
+It is the authored meaning that `defineSpec(...)` receives, validates, normalizes, and turns into the runtime contract
+consumed by planning.
 
 ---
 
-### 2.2 Schema-First and Deterministic
+## 2. The pipeline, in the right order
 
-Given the same `defineSpec` call, Seqlok must always:
-
-- Produce the same **plan** (same plane sizes, same offsets)
-- Allocate the same **backing** for shared memory
-- Compute the same **spec hash** for compatibility checks
-
-This is why:
-
-- All containers (arrays) are **fixed-length**.
-- Enums are **closed sets** of string literals.
-- Numeric ranges are simple `{ min, max }` shapes.
-
-No dynamic field addition, no polymorphic shapes.
-
----
-
-### 2.3 Type-Safe
-
-The DSL is designed so TypeScript can:
-
-- Infer controller param types from the spec
-- Infer processor param/meter view types from the spec
-- Reject invalid keys and values at compile time
-
-A typical pattern:
-
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    filterType: param.enum(["lowpass", "highpass", "bandpass"]),
-    drive: param.f32({ min: 0, max: 24 }),
-  },
-  meters: {
-    driveRms: meter.f32(),
-  },
-}));
-
-const plan = planLayout(spec);
-const backing = allocateShared(plan);
-const controller = bindController(spec, plan, backing);
-
-// TS knows filterType is 'lowpass' | 'highpass' | 'bandpass'
-controller.params.set("filterType", "lowpass"); // ✅
-controller.params.set("filterType", "notch"); // ❌ compile-time error
-```
-
-The DSL itself is structured to preserve good literal types and avoid leakage.
-
----
-
-## 3. High-Level Shape of the DSL
-
-The canonical pattern is:
-
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    // param definitions here
-  },
-  meters: {
-    // meter definitions here
-  },
-}));
-```
-
-- `param` and `meter` are _builder namespaces_.
-- You use them to construct **typed descriptors**.
-- The return value is a plain object with `params` and `meters` fields.
-
-### 3.1 Param Families
-
-The `param` builder offers (core families):
-
-- `param.f32({ min, max })`
-- `param.i32({ min, max })`
-- `param.bool()`
-- `param.enum([...])`
-- `param.f32.array({ length })`
-- `param.i32.array({ length })`
-- `param.enum.array({ values, length })`
-
-Example:
-
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    gain: param.f32({ min: 0, max: 2 }),
-    voices: param.i32({ min: 1, max: 16 }),
-    bypass: param.bool(),
-    waveform: param.enum(["sine", "square", "saw"]),
-    bands: param.f32.array({ length: 8 }),
-    steps: param.enum.array({ values: ["off", "on"], length: 16 }),
-  },
-  meters: {
-    /* ... */
-  },
-}));
-```
-
-### 3.2 Meter Families
-
-The `meter` builder parallels the param shapes (but meters are always processor-written):
-
-- `meter.f32()`
-- `meter.f32.array({ length })`
-
-Depending on the implementation, there may also be integer or 64-bit families (e.g. `meter.u32()`, `meter.f64()`),
-but the core idea remains:
-
-- Scalars for simple metrics (`peak`, `rms`, `latencyMs`).
-- Fixed-length arrays for spectra, histograms, etc.
-
-Example:
-
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    /* ... */
-  },
-  meters: {
-    peak: meter.f32(),
-    rms: meter.f32(),
-    latencyMs: meter.f32(),
-    spectrum: meter.f32.array({ length: 1024 }),
-  },
-}));
-```
-
----
-
-## 4. Param Types in Detail
-
-### 4.1 `param.f32({ min, max })`
-
-Represents a **single precision float** control value.
-
-- Stored in a float param plane (e.g. `PF32`).
-- Logically constrained to `[min, max]` (enforced at the Controller layer).
-- Exposed as `number` in both controller and processor bindings.
-
-Example:
-
-```ts
-frequency: param.f32({ min: 20, max: 20_000 });
-```
-
-Usage:
-
-```ts
-// controller
-controller.params.set("frequency", 440);
-
-// processor
-processor.params.within((p) => {
-  const f = p.frequency; // number
-});
-```
-
----
-
-### 4.2 `param.i32({ min, max })`
-
-Represents a **32-bit signed integer** param.
-
-Example:
-
-```ts
-voices: param.i32({ min: 1, max: 16 });
-```
-
-Usage:
-
-```ts
-controller.params.set("voices", 8); // ✅
-controller.params.set("voices", 2.5); // ❌ logically invalid (integer domains)
-
-processor.params.within((p) => {
-  const voices = p.voices; // number (int domains), but logically integral
-});
-```
-
----
-
-### 4.3 `param.bool()`
-
-Represents a **boolean control**.
-
-Example:
-
-```ts
-bypass: param.bool();
-```
-
-Usage:
-
-```ts
-controller.params.set("bypass", true);
-
-processor.params.within((p) => {
-  if (p.bypass) {
-    // quickly copy input to output
-  }
-});
-```
-
----
-
-### 4.4 `param.enum([...])`
-
-Represents a **closed-set string enum**.
-
-Example:
-
-```ts
-filterType: param.enum(["lowpass", "highpass", "bandpass"]);
-```
-
-Usage:
-
-```ts
-// controller
-controller.params.set("filterType", "lowpass"); // ✅
-controller.params.set("filterType", "notch"); // ❌ compile error
-
-// processor
-processor.params.within((p) => {
-  switch (p.filterType) {
-    case "lowpass":
-      // ...
-      break;
-    case "highpass":
-      // ...
-      break;
-    case "bandpass":
-      // ...
-      break;
-  }
-});
-```
-
-Internally, Seqlok stores **indices** (e.g. `0, 1, 2`) in an integer plane, not raw strings. This keeps the memory plan
-compact and friendly to Wasm/FFI.
-
-> **Note:** See `14-enum-arrays-runtime-behavior.md` for details on how enum arrays map strings to indices at runtime.
-
----
-
-### 4.5 Array Params
-
-Arrays are always **fixed-length** and represent structured control inputs:
-
-- `param.f32.array({ length })`
-- `param.i32.array({ length })`
-- `param.enum.array({ values, length })`
-
-Examples:
-
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    // 8-band gain curve
-    bandGains: param.f32.array({ length: 8 }),
-
-    // 16-step sequencer (on / off)
-    steps: param.enum.array({ values: ["off", "on"], length: 16 }),
-  },
-  meters: {
-    /* ... */
-  },
-}));
-```
-
-Usage:
-
-```ts
-// controller: full-array write via update
-controller.params.update({
-  bandGains: [
-    /* full array content */
-  ],
-});
-
-// processor: read as read-only view
-processor.params.within((p) => {
-  const bands = p.bandGains; // readonly-ish Float32Array-like view
-  const first = bands[0];
-});
-```
-
-**Design choice:** arrays have **fixed length**; you don’t resize them at runtime. If length needs to change, define a
-new spec.
-
----
-
-## 5. Meter Types in Detail
-
-Meters follow similar shapes, but they are written by the Processor and read by the Controller.
-
-### 5.1 Scalar Meters
-
-Examples:
-
-```ts
-const spec = defineSpec(({ meter, param }) => ({
-  params: {
-    /* ... */
-  },
-  meters: {
-    peak: meter.f32(),
-    rms: meter.f32(),
-    latencyMs: meter.f32(),
-    xruns: meter.f32(),
-  },
-}));
-```
-
-Usage:
-
-```ts
-// processor
-processor.meters.publish((m) => {
-  m.peak(peak);
-  m.rms(rms);
-  m.latencyMs(latency);
-  m.xruns(xruns);
-});
-
-// controller
-const meters = controller.meters.snapshot();
-console.log(meters.peak, meters.rms, meters.latencyMs);
-```
-
----
-
-### 5.2 Array Meters
-
-Examples:
-
-```ts
-const spec = defineSpec(({ meter, param }) => ({
-  params: {
-    /* ... */
-  },
-  meters: {
-    spectrum: meter.f32.array({ length: 2048 }),
-    histogram: meter.f32.array({ length: 256 }),
-  },
-}));
-```
-
-Usage:
-
-```ts
-// processor
-processor.meters.publish((m) => {
-  m.stage("spectrum", (buf) => {
-    buf.set(computedSpectrum); // entire array commit
-  });
-});
-
-// controller
-const { spectrum } = controller.meters.snapshot();
-drawSpectrum(spectrum);
-```
-
-The `stage` pattern ensures:
-
-- Arrays are updated **as a whole** under the meter seqlock.
-- The Controller never sees half-updated arrays.
-
----
-
-## 6. Why the DSL Looks Like This (Rationale)
-
-### 6.1 No `step`, `origin`, `default`, or UI Hints
-
-We deliberately **do not** include:
-
-- `step`, `origin`, `unit`, `logScale`, etc.
-- `defaultValue` at the spec level
-
-Reasons:
-
-- Specs must be **platform-neutral**:
-
-  - A DAW, a web UI, and a CLI tool might all interpret the same spec differently.
-
-- UI/UX is higher-level:
-
-  - React/Vue components can attach their own stepping/labels.
-
-- Keep plan & concurrency simple:
-
-  - Behavior hints don't belong in a memory-planning/concurrency kernel.
-
-If you need defaults or UI metadata, define them in a separate layer (e.g. a `deviceManifest` that references fields of
-the spec).
-
----
-
-### 6.2 Fixed-Length Arrays Only
-
-Variable-length arrays would cause:
-
-- Dynamic layouts (breaking deterministic planning)
-- Complex updates (potentially multi-step within seqlock)
-- Harder TS typing (length not known at compile time)
-
-So arrays are always:
-
-```ts
-param.f32.array({ length: N });
-meter.f32.array({ length: N });
-param.enum.array({ values, length: N });
-```
-
-If you _must_ support variable sizes:
-
-- Treat a param like `numBands` as an **active count**.
-- Keep the underlying array length fixed and only use the first `numBands` entries.
-- Or create multiple specs for different sizes.
-
----
-
-### 6.3 Enums as Closed Sets
-
-Enums are explicitly closed:
-
-```ts
-param.enum(["a", "b", "c"]);
-param.enum.array({ values: ["off", "on"], length: 16 });
-```
-
-We don't support:
-
-- Open string enums
-- Arbitrary `string` / `number` keys
-
-This helps:
-
-- TS: gives precise union types instead of `string`
-- Layout: store as `[0..N-1]` indices in an integer plane
-- Compatibility: spec hashes are stable and predictable
-
----
-
-### 6.4 Spec is Structural, Not Identity
-
-Specs can have optional identifiers (if you add them), but the **important identity** is:
-
-- The _structure_ (field names, types, shapes)
-- The resulting **plan** and optionally a **spec hash**
-
-We do not rely on:
-
-- Random IDs
-- Class-based inheritance
-- Global registries
-
-Two specs that describe the same structure should be treated as equivalent for the purposes of plan and bindings.
-
----
-
-## 7. Anti-Patterns and Misuses
-
-Some patterns are _possible_ in TypeScript, but break Seqlok's design assumptions.
-
-### 7.1 Storing Spec-Derived Views Globally
-
-❌ Bad:
-
-```ts
-let cachedParamsView: unknown;
-
-processor.params.within((params) => {
-  cachedParamsView = params; // storing for later
-});
-
-// later
-const f = (cachedParamsView as { frequency: number }).frequency; // undefined behavior
-```
-
-This breaks the **scoped access** rule. All views from `within`/`publish` must be treated as **ephemeral**.
-
-✅ Correct:
-
-```ts
-processor.params.within((params) => {
-  const f = params.frequency;
-  // use f, compute, done
-});
-```
-
-If you need to cache something, copy it into your own data structure.
-
----
-
-### 7.2 Treating the Spec as UI Metadata
-
-❌ Bad:
-
-```ts
-const spec = defineSpec(({ param }) => ({
-  params: {
-    gain: param.f32({
-      min: 0,
-      max: 2, // and I'll treat this as my slider range + step
-    }),
-  },
-  meters: {},
-}));
-
-// directly using spec shape as a full UI contract
-```
-
-While you _can_ derive UI from the spec, it's not meant to be a complete design system.
-
-✅ Better:
-
-- Use the spec as **one input** (type + rough constraints).
-- Layer a separate UI manifest that might refine or override behavior.
-
----
-
-### 7.3 Dynamic Field Creation
-
-❌ Not supported:
-
-```ts
-// constructing specs dynamically at runtime
-const dynamicParams: Record<string, unknown> = {};
-for (const name of someRuntimeArray) {
-  dynamicParams[name] = param.f32({ min: 0, max: 1 });
-}
-
-const spec = defineSpec(() => ({
-  params: dynamicParams, // this makes typing brittle and plan nondeterministic
-  meters: {},
-}));
-```
-
-Seqlok expects `defineSpec` calls to be:
-
-- Top-level
-- Deterministic
-- Type-checkable
-
-Dynamic spec mutation breaks those expectations.
-
----
-
-## 8. How the DSL Feeds the Pipeline
-
-The spec is the **root** of the Seqlok pipeline:
+The correct high-level pipeline is:
 
 ```text
-Spec → Plan → Backing → Handoff → Bindings
+authored contract
+  → semantic compilation via defineSpec(...)
+    → validated runtime contract
+      → planLayout(...)
+        → backing
+          → handoff
+            → bindings
 ```
 
-- **Spec**
+That order is not cosmetic.
 
-  - Describes `params` and `meters` structurally.
-  - Drives TypeScript types.
+It means:
 
-- **Plan** (`planLayout(spec)`)
+- authored meaning is settled **before** planning
+- planning consumes a validated runtime contract, not raw authored structure
+- bindings sit at the end of the flow, not the beginning
 
-  - Computes plane sizes, offsets, seqlock locations.
-  - Is pure and deterministic.
-
-- **Backing** (`allocateShared(plan)` / `allocateSharedPartitioned(plan)` / `allocateWasmShared(plan, ...)`)
-
-  - Allocates `SharedArrayBuffer` or shared `WebAssembly.Memory`.
-  - Creates the underlying typed views for the planes.
-
-- **Handoff** (`buildHandoff(plan, backing)` / `acceptHandoff(handoff)`)
-
-  - Compact, serializable description of "this plan + this memory".
-  - Lets other agents reconstruct compatible bindings without re-planning.
-
-- **Bindings** (`bindController` / `bindProcessor`)
-
-  - `bindController(spec, plan, backing, options?)` — controller-side view over the backing (owner side).
-  - `bindProcessor(accepted, options?)` — processor-side view constructed from an `AcceptedHandoff`.
-  - Expose the concurrency APIs:
-
-    - `controller.params.set` / `controller.params.update` / `controller.params.stage` / `controller.params.hydrate`
-    - `controller.meters.snapshot`
-    - `processor.params.within`
-    - `processor.meters.publish` / `processor.meters.stage`
-
-Changes to the DSL must preserve this pipeline: **spec remains structural**, everything else derives from it.
+Planning is not where authored meaning is first interpreted.
+That work already happened at the authored-contract boundary.
 
 ---
 
-## 9. Checklist for Spec Authors
+## 3. Authoring surfaces
 
-When you define a new spec, check:
+Seqlok accepts more than one authoring surface.
 
-- [ ] Every param and meter has a clear type family (`f32`, `i32`, `bool`, `enum`, `array`)
-- [ ] Arrays are fixed-length and that length is appropriate
-- [ ] Enums are closed sets of literals (no dynamic strings)
-- [ ] There are no behavior flags or UI concerns embedded in the spec
-- [ ] The spec is top-level, deterministic, and not dynamically mutated
-- [ ] You’re comfortable with the fact that the spec schema is **frozen** once planned and allocated
+### 3.1 Plain object authored input
 
-If all of these are true, you're using the DSL the way Seqlok's architecture expects.
+A plain object, AST-style authored input is valid:
+
+```ts
+const spec = defineSpec({
+  id: "lane",
+  params: {
+    transport: {
+      timeRatio: { kind: "f32", min: 0.25, max: 4 },
+      mode: { kind: "enum", values: ["normal", "granular"] },
+    },
+    mixer: {
+      eqBands: { kind: "f32.array", length: 8 },
+    },
+  },
+  meters: {
+    output: {
+      rms: { kind: "f32" },
+      peak: { kind: "f32" },
+    },
+    engine: {
+      framesProcessed: { kind: "u32" },
+    },
+  },
+});
+```
+
+This is the canonical authored-contract shape.
+It is serializable, toolable, and structurally honest.
+
+### 3.2 Builder callback authored input
+
+The most ergonomic TypeScript pattern is the builder callback:
+
+```ts
+const spec = defineSpec(({ param, meter }) => ({
+  id: "lane",
+  params: {
+    transport: {
+      timeRatio: param.f32({ min: 0.25, max: 4 }),
+      mode: param.enum(["normal", "granular"]),
+    },
+    mixer: {
+      eqBands: param.f32.array({ length: 8 }),
+    },
+  },
+  meters: {
+    output: {
+      rms: meter.f32(),
+      peak: meter.f32(),
+    },
+    engine: {
+      framesProcessed: meter.u32(),
+    },
+  },
+}));
+```
+
+This is premium TypeScript authoring ergonomics.
+It is not a second contract model.
+
+### 3.3 The important rule
+
+Both forms lower into the same authored-contract boundary.
+
+That means:
+
+- plain object authored input is valid
+- builder callback authored input is valid
+- neither owns a different runtime identity model
+- both end at the same semantic-compilation step
+
+So the right doctrine is:
+
+> the authored contract is primary
+> the builder surface is ergonomic sugar over that contract
 
 ---
 
-## 10. Summary
+## 4. What `defineSpec(...)` actually does
 
-The Seqlok DSL:
+`defineSpec(...)` is the public semantic-compilation boundary.
 
-- Describes **what** shared state exists (params + meters)
-- Avoids saying **how** it is used in UI or DSP
-- Keeps the spec:
+It does not merely “wrap the DSL.”
+It performs real normalization work before planning begins.
 
-  - Structural
-  - Deterministic
-  - Type-safe
-  - Easy to map to raw memory
+That includes:
 
-Everything else — plan, backing, handoff, bindings, concurrency — builds on top of this single, simple, _schema-first_
-definition.
+- validating authored structure
+- validating and defaulting numeric scalar ranges
+- compiling nested authored namespaces into canonical flat runtime keys
+- rejecting duplicate or conflicting canonical outcomes
+- producing deterministic anonymous identity when authored `id` is omitted
+- returning the validated runtime contract consumed by `planLayout(...)`
+
+So this:
+
+```ts
+const spec = defineSpec(authoredInput);
+const plan = planLayout(spec);
+```
+
+means:
+
+- `authoredInput` is still human-facing authored structure
+- `spec` is now the validated runtime contract
+- `plan` is derived from that normalized contract
+
+---
+
+## 5. Nested authored structure
+
+Nested authored structure is real.
+It is not decorative.
+
+Example:
+
+```ts
+const spec = defineSpec(({ param, meter }) => ({
+  id: "lane",
+  params: {
+    transport: {
+      timeRatio: param.f32({ min: 0.25, max: 4 }),
+      mode: param.enum(["normal", "granular"]),
+    },
+    mixer: {
+      eqBands: param.f32.array({ length: 8 }),
+    },
+  },
+  meters: {
+    output: {
+      rms: meter.f32(),
+      peak: meter.f32(),
+    },
+  },
+}));
+```
+
+That nested structure exists for human-facing authorship.
+It gives the contract semantic shape at the authoring layer.
+
+### 5.1 What nesting is for
+
+Nested namespaces are for:
+
+- readable authored structure
+- semantic grouping
+- better TypeScript ergonomics
+- better tooling and docs
+
+### 5.2 What nesting is not for
+
+Nested authored shape is **not** the ABI owner.
+
+Runtime identity is normalized into canonical flat dot-path keys.
+
+The contract above compiles into a runtime-facing keyspace like:
+
+```ts
+spec.params["transport.timeRatio"];
+spec.params["transport.mode"];
+spec.params["mixer.eqBands"];
+spec.meters["output.rms"];
+spec.meters["output.peak"];
+```
+
+That flat canonical keyspace is the runtime identity model.
+
+So the rule is:
+
+> author in structure
+> compile into canonical dot-path keys
+> do not pretend the authored tree is the runtime ABI
+
+---
+
+## 6. Canonical runtime identity
+
+Seqlok keeps one runtime identity model for fields: **canonical dot-path keys**.
+
+For example:
+
+```text
+transport.timeRatio
+transport.mode
+mixer.eqBands
+output.rms
+output.peak
+```
+
+Why this is the right runtime identity:
+
+- flat keys are stable and explicit
+- plans can assign offsets per canonical key deterministically
+- bindings can target one identity model without tree ambiguity
+- handoff and diagnostics do not need to preserve authored nesting as ABI
+- the same contract remains easy to map in other languages and runtimes
+
+The important thing is not that dot-paths are pretty.
+It is that they are singular.
+
+Seqlok should not drift into two runtime identity systems.
+That would be a naming lie.
+
+---
+
+## 7. `keysOf(spec)`
+
+`keysOf(spec)` exists to make canonical runtime keys ergonomic to consume.
+
+Example:
+
+```ts
+const keys = keysOf(spec);
+
+keys.params.transport.timeRatio;
+// "transport.timeRatio"
+
+keys.params.transport.mode;
+// "transport.mode"
+
+keys.meters.output.rms;
+// "output.rms"
+```
+
+### 7.1 What it does
+
+`keysOf(spec)` projects canonical runtime keys back into a structural mirror.
+
+That mirror:
+
+- follows the structural authored shape
+- has canonical dot-path strings at the leaves
+- is ergonomic for call sites
+
+### 7.2 What it is not
+
+`keysOf(spec)` is:
+
+- ergonomic sugar
+- the official ergonomic bridge
+- a projection of canonical identity back into structure
+
+It is **not**:
+
+- a second identity system
+- a second ABI
+- a second canonical source of field ownership
+
+The canonical runtime keys still own identity.
+`keysOf(spec)` just makes them pleasant to use.
+
+### 7.3 Why that distinction matters
+
+If people start treating the mirror itself as authority, the model decays.
+
+The actual order is:
+
+- authored structure
+- semantic compilation
+- canonical runtime keys
+- optional ergonomic mirror via `keysOf(spec)`
+
+Not the other way around.
+
+---
+
+## 8. Deterministic anonymous ids
+
+Authored `id` is authoritative when present.
+
+```ts
+const spec = defineSpec({
+  id: "lane",
+  params: {
+    gain: { kind: "f32", min: 0, max: 1 },
+  },
+});
+```
+
+In that case, the authored `id` wins.
+
+When authored `id` is omitted, Seqlok still normalizes the contract to a deterministic identity.
+
+That identity derives from canonical compiled meaning, not from placeholders, randomness, timestamps, or authoring
+noise.
+
+So the rule is:
+
+- explicit authored `id` wins
+- omitted authored `id` yields deterministic anonymous identity
+- identity comes from compiled meaning, not incidental authoring mechanics
+
+This matters for:
+
+- stable planning
+- compatibility checks
+- reproducible diagnostics
+- honest contract identity across authoring routes
+
+---
+
+## 9. Field families and constraints
+
+The spec stays deliberately narrow.
+
+### 9.1 Param families
+
+Core param families include:
+
+- `f32`
+- `i32`
+- `u32`
+- `bool`
+- `enum`
+- fixed-length arrays of supported param kinds
+
+Example:
+
+```ts
+const spec = defineSpec(({ param, meter }) => ({
+  params: {
+    transport: {
+      timeRatio: param.f32({ min: 0.25, max: 4 }),
+      mode: param.enum(["normal", "granular"]),
+    },
+    mixer: {
+      eqBands: param.f32.array({ length: 8 }),
+      pattern: param.enum.array({
+        values: ["off", "dim", "full"],
+        length: 16,
+      }),
+    },
+  },
+  meters: {},
+}));
+```
+
+### 9.2 Meter families
+
+Core meter families include:
+
+- `f32`
+- `f64`
+- `i32`
+- `u32`
+- `bool`
+- fixed-length arrays of supported meter kinds
+
+Example:
+
+```ts
+const spec = defineSpec(({ param, meter }) => ({
+  params: {},
+  meters: {
+    output: {
+      rms: meter.f32(),
+      peak: meter.f32(),
+      spectrum: meter.f32.array({ length: 1024 }),
+    },
+    engine: {
+      frameCount: meter.u32(),
+    },
+  },
+}));
+```
+
+### 9.3 Numeric ranges are scalar-only
+
+Numeric ranges apply to scalar numeric params.
+Arrays are shape-only.
+
+Examples:
+
+```ts
+gain: param.f32({ min: 0, max: 2 });
+voices: param.i32({ min: 1, max: 16 });
+bands: param.f32.array({ length: 8 });
+```
+
+That keeps planning deterministic and keeps the contract about structure, not behavioral policy.
+
+---
+
+## 10. What the spec does not own
+
+The spec does **not** own:
+
+- UI hints like labels, units, sliders, display ranges, or color
+- automation behavior
+- smoothing policy
+- runtime orchestration
+- backing choice
+- handoff lifecycle
+- binding lifecycle
+
+Those belong to other layers.
+
+The spec also does not own high-level app semantics.
+It owns the shared-memory contract boundary.
+
+That restraint is a feature.
+
+---
+
+## 11. From authored contract to live roles
+
+Once the authored contract is normalized, the rest of the flow is straightforward:
+
+```ts
+import {
+  defineSpec,
+  keysOf,
+  planLayout,
+  allocateShared,
+  buildHandoff,
+  acceptHandoff,
+  bindController,
+  bindProcessor,
+  bindObserver,
+} from "@seqlok/core";
+
+const spec = defineSpec(({ param, meter }) => ({
+  id: "lane",
+  params: {
+    transport: {
+      timeRatio: param.f32({ min: 0.25, max: 4 }),
+      mode: param.enum(["normal", "granular"]),
+    },
+  },
+  meters: {
+    output: {
+      rms: meter.f32(),
+      peak: meter.f32(),
+    },
+  },
+}));
+
+const keys = keysOf(spec);
+const plan = planLayout(spec);
+const backing = allocateShared(plan);
+
+const controller = bindController(spec, plan, backing);
+const handoff = buildHandoff(plan, backing);
+
+const accepted = acceptHandoff(handoff);
+const processor = bindProcessor(accepted);
+const observer = bindObserver(accepted);
+```
+
+That last line matters.
+
+Observer exists as a first-class role.
+Even though this doc is mainly about authorship, the authored contract feeds all three live roles:
+
+- controller
+- processor
+- observer
+
+---
+
+## 12. Common mistakes
+
+### 12.1 Treating the builder callback as the canonical contract
+
+Wrong model:
+
+> “The callback is the spec.”
+
+Correct model:
+
+> The callback is one authoring surface. The authored contract is the real input. `defineSpec(...)` is the boundary that
+> normalizes it.
+
+### 12.2 Treating nested authored shape as runtime identity
+
+Wrong model:
+
+> “The tree itself is the ABI.”
+
+Correct model:
+
+> The tree is for authorship. Canonical dot-path keys own runtime identity.
+
+### 12.3 Treating `keysOf(spec)` as authority
+
+Wrong model:
+
+> “The key mirror is another source of truth.”
+
+Correct model:
+
+> The mirror is projection sugar over canonical runtime keys.
+
+### 12.4 Smuggling higher-level semantics into the spec
+
+Wrong examples:
+
+- UI-only metadata
+- behavioral flags
+- runtime orchestration policy
+- variable-size layout ideas
+
+Correct model:
+
+> keep the spec structural, deterministic, and portable
+
+---
+
+## 13. Checklist for spec authors
+
+When authoring a Seqlok contract, check the following:
+
+- the contract is structural, not behavioral
+- plain object or builder input would describe the same authored meaning
+- nested namespaces are used for human-facing structure where helpful
+- canonical runtime identity remains flat dot-path keys
+- `keysOf(spec)` is used as ergonomic projection, not authority
+- arrays are fixed-length
+- enums are closed vocabularies
+- authored `id` is explicit when meaningful
+- omitted `id` is acceptable because deterministic anonymous identity exists
+- planning happens only after `defineSpec(...)` has normalized the contract
+
+---
+
+## 14. Summary
+
+The right mental model is:
+
+- the spec is an authored contract
+- Seqlok accepts more than one authoring surface
+- `defineSpec(...)` is the semantic-compilation boundary
+- nested authored structure is real and useful for humans
+- canonical flat dot-path keys own runtime identity
+- `keysOf(spec)` projects those keys back into a structural mirror for ergonomics
+- explicit authored ids win; omitted ids normalize deterministically
+- planning begins after authored meaning has already been normalized
+
+That is the Seqlok authorship model.
+Everything else in the pipeline should be read from there.

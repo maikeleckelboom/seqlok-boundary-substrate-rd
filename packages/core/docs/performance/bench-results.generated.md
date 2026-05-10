@@ -7,10 +7,11 @@ _Bench run (local time): 29 Nov 2025, 19:07:46_
 _Bench run (ISO 8601): 2025-11-29T18:07:46.683Z_
 
 ## Hot path micro-operations
+
 _Includes seqlock primitives, controller param writes, processor reads, and MeterWriter operations. Observer reads are broken out separately below._
 
 | Operation                                          | Mean time (µs) | Throughput (M ops/s) |
-|----------------------------------------------------|---------------:|---------------------:|
+| -------------------------------------------------- | -------------: | -------------------: |
 | seqlock publish uncontended                        |          0.091 |                11.05 |
 | controller.params.stage (eqBands f32[8])           |          0.146 |                 6.85 |
 | meter scalar: writer.level(0.75)                   |          0.159 |                 6.30 |
@@ -28,7 +29,7 @@ _Includes seqlock primitives, controller param writes, processor reads, and Mete
 ## E2E setup: `spec → plan → backing → handoff → bindings`
 
 | Spec size   | Mean setup time (ms) | Setups per second |
-|-------------|---------------------:|------------------:|
+| ----------- | -------------------: | ----------------: |
 | Small spec  |                0.021 |             47075 |
 | Medium spec |                0.033 |             30552 |
 | Large spec  |                0.043 |             23194 |

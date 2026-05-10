@@ -2,8 +2,7 @@
 
 > **Status:** Accepted
 > **Date:** 2026-05-10
-> **Owner:** `@seqlok/core`
-> **Decision area:** authored spec contract, semantic compilation, public ergonomic API
+> **Owner:** `@seqlok/core` > **Decision area:** authored spec contract, semantic compilation, public ergonomic API
 
 ---
 
@@ -73,7 +72,7 @@ defineSpec({
       swing: { kind: "f32" },
     },
   },
-})
+});
 ```
 
 That is a better authored surface than hand-writing flat string keys everywhere.
@@ -100,9 +99,9 @@ Consumers still need a typed ergonomic answer on the TypeScript side.
 It returns a tree-shaped mirror of the authored namespace surface, but its leaves are canonical runtime keys:
 
 ```ts
-const keys = keysOf(spec)
+const keys = keysOf(spec);
 
-keys.params.transport.tempo
+keys.params.transport.tempo;
 // "transport.tempo"
 ```
 
@@ -129,7 +128,7 @@ The dot-path key is runtime identity.
 
 Duplicate and conflict checks are enforced independently within `params` and within `meters`.
 
-A param key and a meter key may share the same dot-path spelling without conflict because they belong to 
+A param key and a meter key may share the same dot-path spelling without conflict because they belong to
 different ownership planes.
 
 ### 4.4 Ambiguous flattening is rejected
@@ -185,7 +184,7 @@ defineSpec({
   params: {
     "": { kind: "f32" },
   },
-})
+});
 ```
 
 ```ts
@@ -195,7 +194,7 @@ defineSpec({
       "tempo.bpm": { kind: "f32" },
     },
   },
-})
+});
 ```
 
 ### 5.2 Duplicate canonical key in one plane
@@ -212,7 +211,7 @@ defineSpec({
     },
     "transport.tempo": { kind: "f32" },
   },
-})
+});
 ```
 
 ### 5.3 Leaf/namespace prefix conflict in one plane
@@ -229,7 +228,7 @@ defineSpec({
       tempo: { kind: "f32" },
     },
   },
-})
+});
 ```
 
 ```ts
@@ -242,7 +241,7 @@ defineSpec({
       swing: { kind: "f32" },
     },
   },
-})
+});
 ```
 
 In plain language:

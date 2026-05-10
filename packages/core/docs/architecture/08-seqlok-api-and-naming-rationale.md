@@ -1,952 +1,597 @@
-# API & Naming Rationale
+# API and Naming Rationale
 
-**Audience:** future maintainers, contributors, and “why is it called that?” readers.
-**Status:** design rationale, not user-facing API docs.
+**Audience:** maintainers, contributors, and anyone asking why the public Seqlok surface is named and shaped the way it
+is.
 
-This file explains _why_ the core Seqlok API is shaped and named the way it is, which alternatives we tried, and which
-parts of the surface are considered "frozen" for v1.
+**Status:** design rationale, not the normative API reference.
 
-For how the pieces fit together at a systems level, see:
+This document explains why the core surface uses its current verbs and role names, what those names are trying to
+protect, and which naming temptations Seqlok deliberately rejects.
 
-- **08 – Primitives & Seqlock** (dual-counter seqlock)
-- **09 – Backing & Layout** (planes, offsets, hashing)
-- **11 – E2E Visual Guide** (spec → plan → backing → handoff → bindings)
-- **12 – Coherent Reads & Memory Planes** (snapshot/within + planes)
-- **13 – Implementation Notes (Kernel)** (low-level mechanics)
+For the live runtime role model and public signatures, see:
 
-This doc is the naming + semantics layer on top of that.
+- `03-seqlok-concurrency-model-and-roles.md`
+- `07-seqlok-api-shape-rationale.md`
+- `09-seqlok-api-reference.md`
 
 ---
 
 ## 1. Top-level mental model
 
-Seqlok is a **typed shared-memory wire** between:
+Seqlok is a typed shared-memory coordination kernel with three first-class roles:
 
-- a **controller side** (main/UI/host/orchestrator),
-- a **processor side** (worker / AudioWorklet / DSP loop), and
-- (v0.2.0+) one or more **observer sides** (HUDs, inspectors, telemetry-only workers).
+- **controller**
+- **processor**
+- **observer**
 
-The owner/main side is responsible for:
+But the runtime surface does not begin with those bindings.
+It begins with an authored contract.
 
-```ts
-// 1) Describe the schema.
-export const spec = defineSpec(({ param, meter }) => ({
-  id: "my-synth",
-  params: {
-    gain: param.f32({ min: 0, max: 1 }),
-    cutoff: param.f32({ min: 20, max: 20_000 }),
-    mode: param.enum(["off", "lp", "hp"]),
-    curve: param.f32.array({ length: 1024 }),
-  },
-  meters: {
-    peak: meter.f32(),
-    frame: meter.f32.array({ length: 256 }),
-  },
-}));
+That contract is normalized into a validated runtime contract, then planned, then realized in backing memory, then
+handed across a boundary, then bound into a role-specific surface.
 
-// 2) Plan a memory layout from the spec.
-const plan = planLayout(spec);
+The conceptual stack is:
 
-// 3) Allocate backing memory (SharedArrayBuffer + typed planes).
-// Contiguous golden path:
-const backing = allocateShared(plan);
-// Advanced: per-plane SABs via allocateSharedPartitioned(plan).
-
-// 4) Bind the controller role on the owner/main side.
-export const controller = bindController(spec, plan, backing);
-
-// 5) Build a handoff bundle for consumer side(s).
-export const handoff = buildHandoff(plan, backing);
+```text
+authored contract
+  → defineSpec(...)
+    → validated runtime contract
+      → planLayout(...)
+        → backing
+          → handoff
+            → accepted handoff
+              → role bindings
 ```
 
-The processor/observer side never sees the _value_ of `spec` at runtime. It only consumes the planned layout embedded in
-the handoff:
+This ordering matters because it keeps ownership honest:
 
-```ts
-// worker / AudioWorklet
-import { acceptHandoff, bindProcessor, bindObserver } from "@seqlok/core";
-import type { MySpec } from "./spec";
-import type { Handoff } from "@seqlok/core";
+- authored meaning is settled before planning
+- planning owns layout, not authored interpretation
+- handoff owns boundary transfer
+- bindings own role-specific runtime access
 
-type InitMessage = { type: "INIT"; handoff: Handoff<MySpec> };
-
-let proc: import("@seqlok/core").ProcessorBinding<MySpec> | undefined;
-let hud: import("@seqlok/core").ObserverBinding<MySpec> | undefined;
-
-self.onmessage = (ev: MessageEvent<InitMessage>) => {
-  if (ev.data.type !== "INIT") return;
-
-  const accepted = acceptHandoff(ev.data.handoff);
-  //    ^? AcceptedHandoff<MySpec>
-
-  proc = bindProcessor(accepted);
-  hud = bindObserver(accepted);
-  //  ^? ProcessorBinding<MySpec> / ObserverBinding<MySpec>
-};
-```
-
-Conceptually:
-
-1. `defineSpec` – describe the **schema** (params + meters).
-2. `planLayout` – derive a **memory layout plan** from the spec.
-3. `allocateShared` / `allocateSharedPartitioned` – allocate the **shared backing** (SAB(s) + planes).
-4. `bindController` – attach the **controller role** to that backing.
-5. `buildHandoff` / `acceptHandoff` – ship layout + backing across a boundary.
-6. `bindProcessor` – attach the **processor role** to the accepted layout.
-7. `bindObserver` – attach one or more **read-only observer roles** to that same layout/backing.
-
-The verbs are chosen to reflect those responsibilities; the rest of this doc is mostly "why this name and not the
-half-dozen other ones we tried".
+The names are chosen to reinforce that separation.
 
 ---
 
-## 2. Pipeline verbs: why these names
+## 2. The contract is primary, not the builder callback
 
-### 2.1 `defineSpec`
+One of the most important naming and teaching corrections in modern Seqlok is this:
 
-We kept `defineSpec` because it:
+> the builder callback is not the contract model
 
-- mirrors other modern DSLs (`defineConfig`, `defineStore`, etc.),
+The authored contract is primary.
 
-- reads clearly in code:
+Seqlok accepts more than one authoring surface:
 
-  ```ts
-  const spec = defineSpec(/* … */);
-  ```
+- a plain object / AST-style authored shape
+- a builder callback for premium TypeScript ergonomics
 
-- emphasizes **declarative description**, not “do work now”.
+Both routes lower into the same semantic boundary.
 
-Rejected variants:
+So when this document talks about names, it is doing so from the authored-contract model outward.
+Not from the callback DSL inward.
 
-- `createSpec`, `buildSpec` – more factory-ish, less obviously declarative.
-- `makeSpec` – cute but weaker semantic signal.
+That is why the surface centers on verbs like:
 
-The DSL lives here: keys, kinds, arrays vs scalars, enum vocabularies. All _types_ flow out of this one value.
+- `defineSpec`
+- `planLayout`
+- `buildHandoff`
+- `acceptHandoff`
+- `bindController`
+- `bindProcessor`
+- `bindObserver`
 
-### 2.2 `planLayout`
+and not on some “big builder object” story.
 
-We converged on:
+---
+
+## 3. Why `defineSpec`
+
+We keep `defineSpec(...)` because it says the right thing at the right layer.
+
+It does not merely mean “run some builder sugar.”
+It names the public semantic-compilation boundary where authored input becomes the validated runtime contract.
+
+Why this name works:
+
+- it reads declaratively
+- it matches established configuration DSL conventions without being vague
+- it does not overclaim runtime behavior
+- it allows both plain-object and builder-based authoring without changing the meaning of the call
+
+Rejected directions:
+
+- `buildSpec`
+- `createSpec`
+- `makeSpec`
+
+Those sound more like factories than a semantic boundary.
+They understate what the function actually does.
+
+`defineSpec(...)` is the correct name because the call is about establishing contract meaning, not merely manufacturing
+an object.
+
+---
+
+## 4. Why `planLayout`
+
+`planLayout(spec)` is one of the most important verbs in the public surface because it names the move from contract
+meaning into deterministic memory realization.
+
+Why this name works:
+
+- it foregrounds the output: a layout plan
+- it makes planning explicit rather than implicit
+- it avoids pretending this is just “build the next object”
+- it reinforces that layout is a real owned layer in the system
+
+Rejected directions:
+
+- `planSpec`
+- `createPlan`
+- `buildPlan`
+- `layoutSpec`
+
+Problems with those alternatives:
+
+- too generic
+- too spec-centric
+- too factory-like
+- too likely to blur semantics and layout together
+
+`planLayout(...)` tells the truth:
+
+- authored meaning has already been normalized
+- now we are planning layout
+
+That is exactly the distinction the system needs.
+
+---
+
+## 5. Why `allocateShared`, `allocateSharedPartitioned`, and `allocateWasmShared`
+
+These names are deliberately concrete.
+
+They name backing realization strategies, not abstract “resource creation.”
+
+### `allocateShared`
+
+This is the golden-path contiguous shared backing strategy.
+
+Why the name works:
+
+- it says allocation is happening
+- it says shared memory is central
+- it avoids vague nouns like “context” or “runtime”
+
+### `allocateSharedPartitioned`
+
+This says the same thing, but with the alternative packing strategy made explicit.
+
+That parallel naming is good because:
+
+- the plan stays the same
+- only the backing realization changes
+- the difference is visible in the API surface
+
+### `allocateWasmShared`
+
+This explicitly names Wasm-backed shared memory realization.
+
+Again, that is the right layer to be explicit.
+The contract and the plan do not become “Wasm contracts.”
+The backing realization becomes Wasm-backed shared memory.
+
+These names are better than something like:
+
+- `createBacking`
+- `createMemory`
+- `allocateMemory`
+
+because those names hide the part that matters most here: the backing strategy is not incidental.
+
+---
+
+## 6. Why `createSharedContext`
+
+`createSharedContext(spec)` is a convenience surface, not a second architecture.
+
+That is exactly why the name should sound like a helper and not like a hidden substrate owner.
+
+It bundles:
+
+- `spec`
+- `plan`
+- `backing`
+
+into one host-side value.
+
+Why the name works:
+
+- “context” signals bundled resources and setup locality
+- “shared” keeps the memory model visible
+- “create” is appropriate because this is convenience allocation/setup work
+
+The important doctrinal point is not the word “context.”
+It is that the convenience bundle does not replace the explicit pipeline.
+
+That is why Seqlok should not drift into teaching context as the real architecture.
+The real architecture remains:
+
+- contract
+- plan
+- backing
+- handoff
+- bindings
+
+Context is just a host-side convenience bundle over that.
+
+---
+
+## 7. Why `buildHandoff` and `acceptHandoff`
+
+These names encode one of the most important boundaries in the system.
+
+### `buildHandoff`
+
+This is the owner-side act of assembling the boundary envelope.
+
+The name works because it sounds like a protocol event, not a generic serialization helper.
+
+It says:
+
+- a boundary transfer object is being prepared
+- the owner side is doing the preparation
+- the object is meant to be handed across a boundary
+
+### `acceptHandoff`
+
+This is the consumer-side trust-boundary step.
+
+The name works because it says more than “parse” or “decode.”
+It says the receiving side is validating and accepting the boundary object into trusted runtime use.
+
+That distinction matters a lot.
+
+Seqlok should not collapse this into hidden work inside another binding call, because then the trust boundary disappears
+from the public story.
+
+That is why the canonical consumer-side shape is:
 
 ```ts
-const plan = planLayout(spec);
-```
-
-Technically this is "please plan this spec", but what we actually care about is:
-
-> derive a **memory layout** that we can implement in multiple languages.
-
-`planLayout` makes the _output_ explicit. It also reads well in the golden pipeline:
-
-```ts
-const spec = defineSpec(/* … */);
-const plan = planLayout(spec);
-const backing = allocateShared(plan);
-```
-
-Rejected variants:
-
-- `planSpec` – too spec-centric; downplays that the result _is_ the layout contract.
-- `planMemory` – low-level tone, makes it sound like sizeof-math rather than ABI.
-- `layoutSpec` – sounds like UI / layout engine territory.
-- `createPlan` / `buildPlan` – generic factory verbs; lose the “plan” concept.
-
-Final decision:
-
-- **Canonical name:** `planLayout`.
-- **Conceptual meaning:** “given this spec, plan a concrete layout across planes and seqlocks.”
-
-### 2.3 `allocateShared` (not `allocateMemory`)
-
-This step:
-
-```ts
-const backing = allocateShared(plan);
-```
-
-does something very specific:
-
-- allocates **shared** memory (`SharedArrayBuffer`), and
-- slices it into typed planes (`PF32`, `PI32`, `PB`, `PU`, `MF32`, `MF64`, `MU32`, `MU`) according to the plan.
-
-We wanted that "sharedness" up front.
-
-Alternatives and why they lost:
-
-- `allocateMemory(plan)` – too generic; misses the key fact that this is SAB + Atomics territory.
-- `allocateBacking(plan)` – call-site stutter: `const backing = allocateBacking(plan);`.
-- `allocateSharedMemory(plan)` – accurate but noisy; the “memory” part isn’t buying much.
-- `createBacking(plan)` – sounds soft; hides the fact this can realistically fail (out of memory / policy).
-
-We kept **`allocateShared`** to:
-
-- highlight shared memory,
-- keep call sites short,
-- leave room for a hypothetical `allocateLocal(plan)` story later (SSR / non-SAB simulations).
-
-With v0.2.0, we add a sibling:
-
-```ts
-const backing = allocateSharedPartitioned(plan);
-```
-
-for per-plane SABs. Naming stays parallel:
-
-- `allocateShared` – golden-path single SAB.
-- `allocateSharedPartitioned` – first-class alternative for per-plane SAB packing.
-
-Both are driven by the same `planLayout(spec)`; only the backing strategy changes.
-
-### 2.4 `bindController` / `bindProcessor` / `bindObserver`
-
-The two primary semantic roles:
-
-- **Controller** – main/UI/host side:
-
-  - writes params,
-  - reads meters,
-  - orchestrates intent.
-
-- **Processor** – worker/audio/DSP side:
-
-  - reads params,
-  - writes meters,
-  - runs the hot loop.
-
-Bindings attach those roles to a backing:
-
-```ts
-const controller = bindController(spec, plan, backing); // owner/main side
-const processor = bindProcessor(accepted); // processor side
-```
-
-Why **“controller”**?
-
-- Matches the intuitive "controller reacts to UI/events and drives state".
-- Reads cleanly in docs: `ControllerBinding<S>` vs `ProcessorBinding<S>`.
-- Makes invariants easy to phrase:
-
-  > “Each backing may have **at most one controller and one processor**.”
-
-Why not `Host` or `Thread`?
-
-- `Host` is overloaded in audio land (DAW/plugin host). The controller here might be one deck in a larger host.
-- `Thread` is too implementation-specific (we also bind in Worklets and "same-thread processors").
-- We want **semantic** names ("what they do"), not "where they live".
-
-On the processor side, v2 removes the requirement to pass `spec` at runtime:
-
-- **Old era:** `bindProcessor(spec, accepted)` – type + runtime spec on processor.
-- **Current:** `bindProcessor(accepted)` – processor uses `AcceptedHandoff<S>` only; `S` is purely a _type_.
-
-That aligns with the threat model (cooperative bundle, not hostile actors) and keeps processor code slim.
-
-For observers, v0.2.0 surfaces the previously "conceptual" role as a real binding:
-
-```ts
+const accepted = acceptHandoff(handoff);
+const processor = bindProcessor(accepted);
 const observer = bindObserver(accepted);
 ```
 
-- **Observer** is named to emphasize:
+That pipeline teaches the truth:
 
-  - read-only params/meters,
-  - HUD/visualization/telemetry use-cases,
-  - no impact on seqlock writers.
+- handoff acceptance is setup-path trust-boundary work
+- role binding happens after that trust boundary
 
-The naming trio:
+Rejected directions:
 
-- **Controller** – writes params, reads meters.
-- **Processor** – reads params, writes meters.
-- **Observer** – reads params, reads meters.
+- `decodeHandoff`
+- `parseHandoff`
+- `receiveEnvelope`
+- `buildEnvelope`
 
-makes roles self-explanatory while keeping the verbs symmetric (`bind*`).
-
-### 2.5 Param verbs: `set`, `update`, `stage`, `hydrate`
-
-The controller param API is intentionally small and verb-y:
-
-- `params.set(key, value)` – scalar one-off write (**hot path**).
-- `params.update(patch)` – atomic multi-param **scalar** write (**hot path**).
-- `params.stage(key, cb(view))` – RAII writes into array params with exactly one seqlock bump (**hot path**).
-- `params.hydrate(patch)` – bulk scalar + array patch for presets, snapshots, project restore, and IPC (**cold path**).
-
-We explicitly moved away from earlier names like `setMany`:
-
-```ts
-// old prototype
-controller.params.setMany({ gain: 0.5, cutoff: 2000 });
-
-// current
-controller.params.update({ gain: 0.5, cutoff: 2000 });
-```
-
-Reasons:
-
-- “setMany” sounds like a blunt blast of a map into backing.
-- “update” suggests **patch semantics** (“apply this update”) and reads better next to `publish` / `within`.
-
-We also didn't ship a public `transaction` API; see §7.2 for that design history.
-
-Key invariant:
-
-- `update` is **scalar-only forever**: array params are always written through `stage` on the hot path, or through
-  `hydrate` on the cold path.
-- `hydrate` is explicitly **cold-path**: great for presets and snapshots, not meant for per-frame or audio-rate loops.
-
-This keeps the cost profile of `update` obvious (no hidden large memcopies) while still making bulk state changes
-ergonomic via `hydrate`.
-
-### 2.6 Meter verbs: `publish`, `snapshot`, `version`
-
-Meters are inverted:
-
-- Processor side: `meters.publish(writer)` → single coherent commit.
-- Controller side: `meters.snapshot(keys?, opts?)` → coherent read.
-- Both sides: `meters.version()` → cheap change-detection counter (SEQ).
-
-The idea is to make "write vs read vs change-check" obvious from the name:
-
-- `publish` – push a new coherent set of meter values into shared memory.
-- `snapshot` – pull a coherent view from shared memory.
-- `version` – check whether the meter domain changed without reading payload.
-
-Example controller loop:
-
-```ts
-const buffers = { spectrum: new Float32Array(2048) };
-let lastVersion = 0;
-
-function frame() {
-  const v = controller.meters.version(); // MU.SEQ
-  if (v !== lastVersion) {
-    const { peak, spectrum } = controller.meters.snapshot(
-      ["peak", "spectrum"],
-      {
-        into: buffers,
-      },
-    );
-
-    drawMeters(peak, spectrum);
-    lastVersion = v;
-  }
-  requestAnimationFrame(frame);
-}
-```
-
-### 2.7 `buildHandoff` / `acceptHandoff` (not `Envelope`)
-
-We use:
-
-```ts
-const handoff = buildHandoff(plan, backing);
-const accepted = acceptHandoff(handoff);
-const processor = bindProcessor(accepted);
-```
-
-We liked "handoff" because it sounds like a **protocol event**:
-
-> one side builds a handoff, the other side accepts it.
-
-The object is literally a _handoff_ of:
-
-- the layout (plan metadata), and
-- the shared memory (SAB list + plane offsets).
-
-Why not `Envelope`?
-
-- We tried `buildEnvelope` / `receiveEnvelope`.
-- It _did_ match the `postMessage` vibe ("stick it in an envelope and send it").
-- But:
-
-  - too generic ("envelope for what?"),
-  - too object-shaped, not lifecycle-shaped,
-  - no implication of ownership/role.
-
-Other rejected variants:
-
-- `createHandoff`, `makeHandoff` – generic factory verbs, weaker semantics.
-- `serializeBacking` – too low-level; ignores plan/layout semantics.
-
-Final pairing:
-
-- **Producer:** `buildHandoff(plan, backing)`
-- **Consumer:** `acceptHandoff(handoff)` → `AcceptedHandoff<S>`
-- **Binder:** `bindProcessor(accepted)` (and `bindObserver(accepted)` for read-only roles)
+Those are either too mechanical or too generic.
+They do not express the ownership boundary strongly enough.
 
 ---
 
-## 3. DSL & layout: what belongs here vs other docs
+## 8. Why the role names are `controller`, `processor`, and `observer`
 
-This doc isn't the full DSL reference (that's for the API ref), but a few naming decisions are worth recording.
+Seqlok uses semantic role names, not location names.
 
-### 3.1 Range-only numeric DSL
+That is a deliberate choice.
 
-We converged on a **range-only** DSL for core numeric params:
+### Why `controller`
 
-```ts
-const params = {
-  gain: param.f32({ min: 0, max: 1 }),
-  index: param.i32({ min: 0, max: 1023 }),
-};
-```
+Controller is the role that:
 
-Deliberately _not_ included at DSL level:
+- writes params
+- reads meters
+- usually lives on the owner / host / UI side
 
-- `step`
-- `origin`
-- `default` / `initialValue`
+Why not `host`?
 
-Those now live in UI / host policy; the kernel just enforces:
+Because “host” is too overloaded and too topological.
+It says where something might live, not what it owns.
 
-- the type (f32 vs i32),
-- the allowed numeric **range**.
+Why not `mainThread`?
 
-This keeps the spec:
+Because that is too implementation-specific.
+A role should not be named after one possible runtime placement.
 
-- portable across very different UIs,
-- stable as an ABI, not a UX contract.
+`controller` works because it names the role's function.
 
-### 3.2 Enum & enum arrays
+### Why `processor`
 
-We stabilized the `enum` and `enum.array` story:
+Processor is the role that:
 
-```ts
-const params = {
-  mode: param.enum(["off", "lp", "hp"]),
-  pattern: param.enum.array({
-    values: ["off", "dim", "full"],
-    length: 64,
-  }),
-};
-```
+- reads params
+- writes meters
+- usually lives in the execution loop / worker / worklet side
 
-Naming decisions:
+Why not `engine`?
 
-- `values` – the enum vocabulary (labels), shared across all slots.
-- `length` – number of slots; fixed by spec.
-- Backing uses **indices** into `values` in the `PI32` plane.
+Because `engine` starts to imply too much domain meaning.
+Not every processor role is literally the engine identity of the application.
 
-We explicitly document this in "How Enum Arrays Work" so people don't assume we're repeating strings in memory.
+Why not `thread`?
+
+Because that confuses runtime placement with role ownership again.
+
+`processor` works because it names the functional role at the coordination boundary.
+
+### Why `observer`
+
+Observer is the read-only role that:
+
+- reads params
+- reads meters
+- never becomes a writer
+
+This name matters because Seqlok needed to stop hand-waving this role as “consumers” or “tools.”
+
+`observer` says:
+
+- read-only
+- substrate-aware
+- first-class
+
+It is a better role name than vague umbrella language because it locks the ownership model cleanly.
 
 ---
 
-## 4. Bindings: roles & responsibilities
+## 9. Why `bindController`, `bindProcessor`, and `bindObserver`
 
-### 4.1 ControllerBinding
+The shared verb `bind` is intentional.
 
-Rough shape (omitting all the generics noise):
+These APIs do not create the underlying substrate.
+They attach a role-specific runtime surface onto an already-determined substrate.
 
-- **Params**
+That is exactly what “bind” says.
 
-  - `params.set(key, value)` – single scalar write (range policy enforced, one commit).
-  - `params.update(patch)` – atomic multi-scalar write (one commit).
-  - `params.stage(key, cb(view))` – RAII array write with one commit.
-  - `params.hydrate(patch)` – cold-path bulk patch for scalars + arrays (one commit).
+Why not:
 
-- **Meters**
+- `createController`
+- `makeProcessor`
+- `openObserver`
 
-  - `meters.snapshot(keys?, opts?)` – coherent read.
-  - `meters.version()` – SEQ counter.
+Because those names either sound too factory-like or too disconnected from the shared substrate.
 
-This gives you:
+`bind*` keeps the ownership model visible:
 
-- obvious hot-path verbs (`set`/`update`/`stage`),
-- a single cold-path bulk verb (`hydrate`),
-- a consistent story about atomic commits (one seqlock bump per call).
+- substrate already exists
+- role surface is being attached to it
 
-### 4.2 ProcessorBinding
-
-Rough shape:
-
-- **Params**
-
-  - `params.within(cb)` – coherent read window.
-  - `params.version()` – SEQ for params (advanced).
-
-- **Meters**
-
-  - `meters.publish(cb)` – stage/write/commit meter changes.
-
-We intentionally don't expose `subscribe` here; see §7.3.
-
-### 4.3 Why `acceptHandoff` is separate from `bindProcessor` / `bindObserver`
-
-We **intentionally** keep:
-
-```ts
-const accepted = acceptHandoff(handoff);
-
-const proc = bindProcessor(accepted);
-const obs = bindObserver(accepted);
-```
-
-instead of collapsing it into a single:
-
-```ts
-// (intentionally *not* an API)
-const proc = bindProcessorFromHandoff(handoff);
-```
-
-This isn't accidental boilerplate; it encodes a few important invariants.
-
-> Note (v0.2.0): `bindObserver` started life as a purely conceptual role in design docs. It is now a real public binding
-> with the same trust-boundary story as `bindProcessor`. This section still talks about it conceptually; see the API
-> reference for the exact surface.
-
-#### 4.3.1 Trust boundary vs role binding
-
-Handoff decode and role binding have different responsibilities:
-
-- `acceptHandoff(handoff)`
-  → “I got this opaque envelope from somewhere. Decode it, validate it, and give me a **trusted** description of the
-  backing and layout."
-
-- `bindProcessor(accepted)` / `bindObserver(accepted)`
-  → “Given a **trusted** handoff, attach my role-specific API to it."
-
-Conceptually:
-
-```txt
-Owner side                     Wire                     Consumer side
------------             ------------------             --------------
-spec → plan → backing → Handoff<S>  → acceptHandoff → AcceptedHandoff<S> → bindProcessor / bindObserver
-```
-
-`acceptHandoff` is the **trust boundary**. Putting that logic _inside_ `bindProcessor` would hide this boundary and
-blur "decode & verify" with "attach a processor".
-
-#### 4.3.2 One decode, many bindings
-
-A single consumer environment often needs multiple bindings to the **same** memory:
-
-```ts
-const accepted = acceptHandoff(handoff);
-
-const proc = bindProcessor(accepted);
-const hudObs = bindObserver(accepted);
-const debugObs = bindObserver(accepted);
-```
-
-If `bindProcessor` internally did `acceptHandoff`:
-
-- you either pay multiple redundant decodes, or
-- you invent internal caching that entangles "decode the envelope" with "which bindings exist".
-
-By keeping `acceptHandoff` explicit:
-
-- the consumer decodes the envelope **once**, and
-- the resulting `AcceptedHandoff<S>` becomes the canonical "this layout+backing is now trusted" handle, reusable across
-  any bindings.
-
-This is crucial for multi-domain / MWMR-style topologies where the same SAB+layout is observed by many roles.
-
-#### 4.3.3 Not all consumers are processors
-
-Some consumers only want to **observe** state (HUD, inspector, logging) and might never host a processor:
-
-```ts
-const accepted = acceptHandoff(handoff);
-
-// This worker only inspects / visualizes state
-const observer = bindObserver(accepted);
-```
-
-If `acceptHandoff` were "hidden inside" `bindProcessor`, we would need parallel “do-everything” entrypoints for other
-roles or reintroduce `(spec, backing)` overloads for convenience. Keeping `acceptHandoff` as a standalone step gives
-all consumer roles a shared, explicit decode step.
-
-#### 4.3.4 Clear owner vs consumer split
-
-The public API encodes a sharp distinction:
-
-- **Owner side** (creates the world):
-
-  - `defineSpec`
-  - `planLayout`
-  - `allocateShared` / `allocateSharedPartitioned`
-  - `buildHandoff`
-  - `bindController(spec, plan, backing, ...)`
-
-- **Consumer side** (adopts the world):
-
-  - `acceptHandoff(handoff)`
-  - `bindProcessor(accepted, ...)`
-  - `bindObserver(accepted, ...)`
-
-Rule of thumb:
-
-- If you have `spec + plan + backing`, you’re on the **owner** side → you can only bind a **controller**.
-- If you only have a `Handoff<S>`, you’re on the **consumer** side → your first step is `acceptHandoff`.
-
-Putting `acceptHandoff` inside `bindProcessor` or `bindObserver` breaks that mental model and encourages overloaded
-“do-everything” entrypoints.
-
-#### 4.3.5 Orchestration, registry, and tooling
-
-Higher-level packages (`@seqlok/compose` / orchestration, registries, debug tools) work directly with handoff envelopes:
-
-```ts
-function attachDomain<S extends SpecInput>(handoff: Handoff<S>) {
-  const accepted = acceptHandoff(handoff);
-
-  // Decide role(s) based on context
-  const proc = bindProcessor(accepted);
-  const obs = bindObserver(accepted);
-}
-```
-
-These layers care about:
-
-- validating the envelope,
-- tracking generations / growth,
-- swapping bindings over time.
-
-They need the decoded form (`AcceptedHandoff<S>`) without being forced to “also stand up a processor right now”.
-
-#### 4.3.6 Performance vs semantics
-
-`acceptHandoff`:
-
-- runs **once per consumer per domain**, not per quantum,
-- does envelope validation + view materialization,
-- is firmly in the setup/boot path, not in the DSP/render hot path.
-
-The cost is negligible compared to the clarity we gain:
-
-- a clean pipeline: `Handoff<S> → AcceptedHandoff<S> → Binding`,
-- a well-defined trust boundary,
-- reusable decoded handoffs for multiple bindings,
-- a stable owner/consumer split that scales to more roles and complex topologies.
-
-Slogan:
-
-> `acceptHandoff` is where a consumer says **“I trust this envelope now.”** > `bindProcessor` / `bindObserver` are how a consumer says **“Given that trusted memory, this is my role.”**
-
-We keep them separate so the API surface permanently encodes that distinction, even when everything happens to run on
-the same thread.
+That is why the shared verb is one of the cleanest parts of the naming system.
 
 ---
 
-## 5. Handoff & verification semantics
+## 10. Why controller param verbs are split
 
-The v2 canonical flow is:
+Controller param verbs are deliberately not collapsed into one giant update surface.
 
-- main side:
+The core split is:
 
-  - `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff`
+- `set`
+- `update`
+- `stage`
+- `hydrate`
 
-- processor side:
+Each one carries cost and intent information.
 
-  - `acceptHandoff` → `bindProcessor(accepted)`
+### `set`
 
-The **plan compatibility** story is:
+Single scalar write.
 
-- `planLayout` is deterministic for a given spec + options.
-- The `Plan` carries a spec hash and layout metadata.
-- `buildHandoff` embeds that plan into the handoff.
-- `acceptHandoff` reconstructs an `AcceptedHandoff<S>` containing:
+Why the name works:
 
-  - the SAB(s),
-  - the per-plane offsets and lengths,
-  - the plan metadata used by `bindProcessor`.
+- obvious
+- narrow
+- no mystery about scale
 
-Where to do deep verification (plan diffing, extra paranoia) is left to higher-level tooling:
+### `update`
 
-- core can expose `verifyHandoff(plan, accepted)` for test/dev usage;
-- `bindProcessor(accepted)` is the slim golden path for production, matching the cooperative threat model.
+Atomic multi-scalar patch.
 
-We explicitly _do not_ require re-planning on the processor side in v2; `bindProcessor` works purely from
-`AcceptedHandoff<S>`.
+Why this is better than old “setMany”-style language:
 
----
+- it reads like patch semantics, not dumb blasting
+- it keeps the surface honest about being a grouped scalar update
 
-## 6. Error model: why a structured error type
+### `stage`
 
-We use a dedicated `SeqlokError` with:
+Array mutation through an explicit mutable view.
 
-- `code` – machine-readable identifier (e.g. `spec.invalid`, `plan.overflowRisk`, `binding.doubleBind`),
-- `details` – structured per-throw payload (where, key, expected, received, etc.),
-- `meta` – severity, scope, `boundarySafe` hints.
+This name is good because it implies:
 
-Naming rationale:
+- write work is being prepared within a commit window
+- the surface is not a casual scalar setter
+- arrays are being treated differently on purpose
 
-- Codes are partitioned by **layer**:
+### `hydrate`
 
-  - `spec.*` – DSL issues.
-  - `plan.*` – planning/layout issues.
-  - `backing.*` – `allocateShared` / SAB / planes issues.
-  - `handoff.*` – build/accept/verify issues.
-  - `binding.*` – controller/processor/observer binding issues.
-  - `params.*`, `meters.*` – runtime value issues.
-  - `diagnostics.*` – diagnostics-only failure modes.
+Cold-path bulk application surface.
 
-This keeps telemetry and bug reports searchable by **concern** rather than one big error namespace.
+This is a good name because it sounds like bulk state materialization rather than tiny hot-path mutation.
 
-We're deliberately conservative with granularity:
-
-- `spec.rangeInvalid` is worth distinguishing from `spec.duplicateKey`;
-- `spec.rangeInvalidStepOrigin` vs `spec.rangeInvalid` isn't, because the DSL no longer exposes step/origin.
+That distinction matters a lot.
+The API should not hide bulk work under a name that sounds scalar-cheap.
 
 ---
 
-## 7. Things _not_ in core (and why)
+## 11. Why processor verbs are `within` and `publish`
 
-A lot of older ideas show up in conversations ("do you support transactions?"). The short answers live here, so they
-don't keep re-appearing as accidental API surface.
+These names are among the most semantically successful parts of core.
 
-### 7.1 Old host + thread bindings
+### `within`
 
-The "big host" era had:
+`processor.params.within(...)` says:
 
-```ts
-const host = bindHost(spec, backing);
-const thread = bindThread(spec, backing);
+- there is a bounded coherent read window
+- the callback lives within that window
+- the surface is scoped and runtime-sensitive
 
-host.params.set("gain", 0.5);
-host.params.setMany({ gain: 0.5, cutoff: 2000 });
+That is much better than a generic `read`, `snapshot`, or property-based surface for the hot path.
 
-host.params.transaction((draft) => {
-  draft.gain = 0.5;
-  draft.cutoff = 2000;
-});
+### `publish`
 
-host.params.subscribe("gain", (value) => {
-  // reactive updates
-});
-```
+`processor.meters.publish(...)` says:
 
-Plus helpers like `setSpan` for array slices, plan strategies exposed as configuration, and microtask-batched
-subscriptions.
+- a coherent outward meter commit is being made
+- the processor is the writer
+- the operation is one explicit publish window
 
-This was fun but wrong-layered:
+That is stronger and truer than vague alternatives like `writeMeters` or `commitMeters`.
 
-- It turned Seqlok into a **state management library** instead of a **wire**.
-- It entangled **reactivity semantics** (subscribe/batching) with the ABI.
-- It bloated the surface area with things apps/frameworks already do well.
-
-Modern Seqlok keeps:
-
-- the seqlock-backed memory model,
-- the spec → plan → backing → handoff pipeline,
-- atomic commits and coherent reads,
-
-and leaves:
-
-- transactions,
-- subscriptions,
-- app-level state orchestration,
-
-to higher layers.
-
-### 7.2 Why there is no public `transaction`
-
-The `transaction(fn)` prototype API was intended as:
-
-```ts
-host.params.transaction((draft) => {
-  draft.gain = 0.5;
-  draft.cutoff = 2000;
-});
-```
-
-We dropped it because:
-
-- The atomicity we _do_ need is already provided by:
-
-  - a single `params.update(patch)` call on the controller, and
-  - the seqlock commit around that call.
-
-- Anything richer ("nesting", "rollback", "commit/abort semantics") is **policy**, and looks different between apps.
-
-If you want "transactional" higher-level operations, you write them in app code:
-
-```ts
-function setGainAndCutoff(
-  ctl: ControllerBinding<typeof spec>,
-  gain: number,
-  cutoff: number,
-) {
-  ctl.params.update({ gain, cutoff });
-}
-```
-
-So when someone asks "where is `transaction`?” the answer is:
-
-> The atomic commit lives at `params.set` / `params.update` / `params.stage` / `params.hydrate` and `meters.publish`.
-> Richer transactions live above the wire, not inside it.
-
-### 7.3 Why there is no `subscribe`
-
-Similarly, we removed the earlier:
-
-```ts
-host.params.subscribe("gain", (value) => {
-  // listen to changes
-});
-```
-
-because:
-
-1. **Reactivity is a framework concern.**
-
-   React, Vue, RxJS, Signals, etc. all have their own ideas about:
-
-- scheduling,
-- batching,
-- backpressure,
-- error handling.
-
-Forcing one inside Seqlok would either be too opinionated or too weak.
-
-2. **It complicates the mental model.**
-
-   The controller's job in the wire model is simple:
-
-- write params,
-- occasionally read meters.
-
-`subscribe` encourages people to treat Seqlok as a mini store, which drags in questions like:
-
-- Are callbacks sync or batched?
-- What's the ordering across keys?
-- Which thread are callbacks on?
-- What if a callback throws?
-
-3. **It couples ABI and ergonomics.**
-
-   The ABI is "typed shared memory + seqlocks". How you surface that into your UI or state layer is a separate concern.
-
-If you want reactivity:
-
-- use `params.update`/`params.set` as the commit point, and/or
-- poll `meters.version()` + `snapshot` into whatever reactive system you're already using.
-
-### 7.4 Old vs new concepts (quick map)
-
-| Old prototype idea          | What it did                          | Current equivalent / story                        |
-|-----------------------------|--------------------------------------|---------------------------------------------------|
-| `bindHost`                  | Big main-thread binding with extras  | `bindController` (narrow, params/meters only)     |
-| `bindThread`                | Worker binding                       | `bindProcessor(accepted)`                         |
-| `params.setMany(patch)`     | Batch param write                    | `params.update(patch)`                            |
-| `params.transaction(fn)`    | Multi-param window + batched signals | App-level helper using `update`                   |
-| `params.subscribe(key, cb)` | Reactive watcher API                 | Not in core; userland stores/adapters handle this |
-| Plan strategies in userland | Choose layout manually               | Single canonical planner: `planLayout`            |
-
-Big shift:
-
-> **Old Seqlok:** “small reactive store + memory wire.”
-> **Current Seqlok:** “boring predictable wire” you _plug into_ your store / engine.
-
-### 7.5 Why there is no `controller.params.volume.set(…)` or `.get()`
-
-Seqlok bindings are a **typed shared-memory wire**, not a reactive store with per-field objects.
-
-On the controller side:
-
-- All **writes** go through `params.set`, `params.update`, `params.stage`, or `params.hydrate`, each of which maps
-  directly onto a single seqlock-protected commit.
-- All **reads** go through `params.snapshot(…)`, which gives you a coherent view of one or many params in a single
-  seqlock read.
-
-A property-style API like `controller.params.volume.set(0.8)`:
-
-- would require either allocating per-param objects or using Proxy traps,
-- obscures atomicity (two `.set(…)` calls mean two commits, not one),
-- and hides the fact that reads are seqlock snapshots, not trivial property reads.
-
-If you prefer "handles" like `volume.set(value)` and `volume.get()`, build them in your own control layer on top of the
-controller binding (for example, small helpers that delegate to `params.set` / `params.snapshot`).
-`@seqlok/core` stays the boring, explicit wire.
+The current names communicate scope and ownership well.
+They should be treated as stable unless there is a truly better semantic replacement.
 
 ---
 
-## 8. Frozen vs revisitable decisions (v1)
+## 12. Why `keysOf` exists, and why it is not central doctrine
 
-**Mostly frozen for v1:**
+`keysOf(spec)` exists because Seqlok wants structural ergonomics without inventing a second runtime identity system.
 
-- Pipeline verbs and roles:
+It projects canonical runtime keys back into a structural mirror.
 
-  - `defineSpec` → `planLayout` → `allocateShared` / `allocateSharedPartitioned`
-    → `buildHandoff` → `acceptHandoff` → `bindController` / `bindProcessor` / `bindObserver`.
+Example:
 
-- Controller vs processor vs observer split and their responsibilities.
+```ts
+const keys = keysOf(spec);
 
-- Range-only numeric DSL (`{min,max}`) and the current param/meter kind set:
+keys.params.transport.timeRatio;
+// "transport.timeRatio"
+```
 
-  - params: `f32`, `i32`, `bool`, `enum`, `*.array`, `enum.array`.
-  - meters: `f32`, `f64`, `u32`, `bool`, `*.array`.
+Why this name works:
 
-- “One atomic commit per `params.set` / `params.update` / `params.stage` / `params.hydrate` / `meters.publish`”
-  semantics.
+- it is short and literal
+- it communicates derivation from the spec
+- it does not imply ownership of identity
+- it reads as helper surface, not substrate authority
 
-- Seqlock-based coherence with per-family control planes (`PU`, `MU`).
+The ordering matters here.
 
-- Cooperative same-bundle threat model (no adversarial JS hardening beyond compatibility checks).
+`keysOf(spec)` is:
 
-**Revisitable (with strong justification):**
+- optional
+- ergonomic sugar
+- downstream of the real model
 
-- Exact method names _within_ bindings if a better verb set emerged (`update` / `publish` / `within` is pretty clean,
-  but not sacred).
-- The exposure shape of debug/verification helpers (`verifyHandoff`, dev-only paranoid modes).
-- Soft limits / tuning knobs for `planLayout` (max array length, total bytes).
-- Where exactly advanced sanity checks live (core vs `@seqlok/debug`-style addon).
+It is useful, but it is not one of the primary architectural pillars.
+The primary model is still:
 
-If you change any of the **frozen** names or semantics, this doc should be updated with:
+- authored contract
+- semantic compilation
+- canonical runtime identity
+- planning
+- backing
+- handoff
+- bindings
 
-- the new canonical name,
-- the rationale,
-- and the alternatives that were considered and rejected.
+Only after that does `keysOf(spec)` appear as ergonomic projection.
 
-That's how we keep the API intentional instead of "whatever sounded nice that week".
+The canonical identity model remains the flat dot-path runtime keyspace.
+`keysOf(spec)` is the ergonomic bridge.
 
 ---
 
-## 9. Diagnostics domain (`diagnostics.*`)
+## 13. Why there is no giant do-everything API
 
-Diagnostics in Seqlok is **introspection-only**. It lives entirely off the hot path and is not required for normal use.
+Seqlok deliberately avoids “one big surface” thinking.
 
-There are three layers involved:
+Examples of what it avoids owning in core:
 
-1. **Errors (`diagnostics.*`)**
+- subscriptions
+- reactive callbacks
+- app-level transactions
+- implicit planner/binder magic that hides the boundary steps
+- property-object APIs that disguise commit scope
 
-- `diagnostics.counterInvalid`
-- `diagnostics.featureInvalid`
+This restraint is part of the naming rationale too.
 
-These are raised when the _diagnostics subsystem itself_ is misconfigured or corrupted:
+When a system owns too many layers, its names become mushy:
 
-- invalid counters / budgets / timestamps,
-- unknown diagnostics feature flags.
+- store names leak into wire semantics
+- convenience names start lying about ownership
+- runtime cost disappears behind pretty syntax
 
-They carry `ErrorMeta` with:
+Seqlok avoids that by keeping the names blunt and layer-specific.
 
-- `severity: 'warning'`
-- `recoverable: true`
-- `boundarySafe: false`
+---
 
-2. **Health interpretation**
+## 14. Naming rules that fall out of the doctrine
 
-   The central `interpretHealth(error)` helper treats `diagnostics.*` as:
+A good Seqlok public name should do at least one of these clearly, and preferably more than one:
 
-- `status: 'degraded'`
-- label along the lines of "Diagnostics subsystem issue"
-- hint: "Introspection is misconfigured; core engine remains healthy."
+- reveal the owned layer
+- reveal the role boundary
+- reveal whether this is setup, layout, boundary transfer, or runtime binding work
+- reveal whether the operation is narrow or bulk
+- avoid inventing a second authority model where none exists
 
-This keeps diagnostics failures clearly separate from engine failures.
+A bad public name usually does one of these:
 
-3. **Diagnostics toolkit (internal, non-barrel)**
+- hides the owned layer
+- sounds like generic app-state convenience
+- blurs authored meaning and runtime layout
+- blurs trust-boundary work and role-binding work
+- blurs hot-path and cold-path semantics
 
-   This lives under `src/diagnostics/*` and is currently _not_ part of the public API:
+That is the real naming test.
+Not whether a word sounds modern.
 
-- `counters` – named introspection counters (degraded snapshots, spin budget exhaustions, …)
-- `budgets` – validated limits for diagnostics-only work
-- `features` – typed debug feature flags (e.g. `seqlockTrace`, `swapTimeline`)
-- `session` – start/end diagnostics sessions with timestamp sanity
-- `export` – JSON / Prometheus / CSV export for counters
+---
 
-These modules are intended for:
+## 15. What is stable and what is still just convenience
 
-- CI / stress tests,
-- dev HUDs and profiling tools,
-- Node/Electron CLIs that scrape diagnostics.
+Mostly stable at the doctrinal level:
 
-Core primitives, planning, backing, and bindings **do not depend** on diagnostics. Integration is opt-in and always
-attached at the edges (tests, tools, dev wrappers), never in the real-time hot path.
+- `defineSpec`
+- `planLayout`
+- `allocateShared` / `allocateSharedPartitioned` / `allocateWasmShared`
+- `createSharedContext`
+- `buildHandoff`
+- `acceptHandoff`
+- `bindController`
+- `bindProcessor`
+- `bindObserver`
+- controller / processor / observer role names
+- the split between narrow hot-path verbs and colder bulk/setup verbs
+
+Useful but explicitly secondary convenience surface:
+
+- `keysOf(spec)`
+
+Convenience surfaces should always remain subordinate to the primary model.
+
+If a future convenience helper starts to obscure those boundaries, it should be treated with suspicion.
+
+---
+
+## 16. Short version
+
+The public Seqlok naming system is trying to preserve a few truths:
+
+- authored contract comes first
+- planning is its own owned layer
+- backing realization is explicit
+- handoff is a real boundary event
+- acceptance is a real trust-boundary step
+- roles are semantic, not topological
+- binding attaches a role to a substrate, it does not invent the substrate
+- narrow verbs should stay narrow
+- bulk/setup verbs should admit they are bulk/setup work
+- `keysOf(spec)` is useful but optional ergonomic projection, not a co-equal architectural pillar
+
+That is why the names look the way they do.
+
+They are not arbitrary.
+They are trying to stop the architecture from lying.

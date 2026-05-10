@@ -41,8 +41,14 @@ Public surface (from `@seqlok/primitives`):
 export function allocateSwsrRing(layout: SwsrRingLayout): SwsrRingBacking;
 
 // Binding
-export function bindSwsrRingProducer<T>(backing: SwsrRingBacking, encode: SwsrRingEncode<T>): SwsrRingProducer<T>;
-export function bindSwsrRingConsumer<T>(backing: SwsrRingBacking, decode: SwsrRingDecode<T>): SwsrRingConsumer<T>;
+export function bindSwsrRingProducer<T>(
+  backing: SwsrRingBacking,
+  encode: SwsrRingEncode<T>,
+): SwsrRingProducer<T>;
+export function bindSwsrRingConsumer<T>(
+  backing: SwsrRingBacking,
+  decode: SwsrRingDecode<T>,
+): SwsrRingConsumer<T>;
 
 // Header layout constants
 export const SWSR_HEADER_WORDS: number;
@@ -109,16 +115,24 @@ const backing = allocateSwsrRing({ capacity: 256, wordsPerSlot: 4 });
 
 // 2. Bind producer + consumer (typically on different threads)
 const producer = bindSwsrRingProducer(backing, {
-  encode(command, dst, wordOffset) { /* write 4 words */ }
+  encode(command, dst, wordOffset) {
+    /* write 4 words */
+  },
 });
 
 const consumer = bindSwsrRingConsumer(backing, {
-  decode(src, wordOffset) { /* read 4 words */ }
+  decode(src, wordOffset) {
+    /* read 4 words */
+  },
 });
 
 // 3. Use
-producer.enqueue({ /* ... */ });
-consumer.drain((cmd) => { /* ... */ });
+producer.enqueue({
+  /* ... */
+});
+consumer.drain((cmd) => {
+  /* ... */
+});
 ```
 
 Higher layers (`@seqlok/commands`) wrap this into typed mailboxes and buses.
@@ -127,14 +141,14 @@ Higher layers (`@seqlok/commands`) wrap this into typed mailboxes and buses.
 
 ## 5. What does it explicitly not own?
 
-| Concern | Owner | Not in `@seqlok/primitives` |
-|---------|-------|------------------------------|
-| Param/meter semantics | `@seqlok/core` | No spec, plan, or binding logic |
-| Typed command codecs | `@seqlok/commands` | No `CommandCodec`, mailbox, bus |
-| Stream framing | `@seqlok/streambuf` | No chunking, flow control |
-| Telemetry schemas | `@seqlok/diagnostics` | No snapshot formats |
-| Tooling/analysis | `@seqlok/introspect` | No counters, health checks |
-| Orchestration | Host/product code | No topology, scheduling, drivers |
+| Concern               | Owner                 | Not in `@seqlok/primitives`      |
+| --------------------- | --------------------- | -------------------------------- |
+| Param/meter semantics | `@seqlok/core`        | No spec, plan, or binding logic  |
+| Typed command codecs  | `@seqlok/commands`    | No `CommandCodec`, mailbox, bus  |
+| Stream framing        | `@seqlok/streambuf`   | No chunking, flow control        |
+| Telemetry schemas     | `@seqlok/diagnostics` | No snapshot formats              |
+| Tooling/analysis      | `@seqlok/introspect`  | No counters, health checks       |
+| Orchestration         | Host/product code     | No topology, scheduling, drivers |
 
 Primitives stay at the mechanism level. Meaning arrives in higher packages.
 
@@ -165,14 +179,14 @@ This enables mixed JS/Wasm/C++ systems sharing the same control plane.
 
 ## 7. Summary
 
-| Layer | Package | Role |
-|-------|---------|------|
-| **Primitive** | `@seqlok/primitives` | SWSR ring allocation + bind |
-| **Command semantics** | `@seqlok/commands` | Typed mailboxes, buses |
-| **Stream semantics** | `@seqlok/streambuf` | Bulk transfer |
-| **State engine** | `@seqlok/core` | Spec, plan, backing, handoff, bindings |
-| **Telemetry** | `@seqlok/diagnostics` | RT-safe schemas, SAB rings |
-| **Analysis** | `@seqlok/introspect` | Health, counters, tooling |
+| Layer                 | Package               | Role                                   |
+| --------------------- | --------------------- | -------------------------------------- |
+| **Primitive**         | `@seqlok/primitives`  | SWSR ring allocation + bind            |
+| **Command semantics** | `@seqlok/commands`    | Typed mailboxes, buses                 |
+| **Stream semantics**  | `@seqlok/streambuf`   | Bulk transfer                          |
+| **State engine**      | `@seqlok/core`        | Spec, plan, backing, handoff, bindings |
+| **Telemetry**         | `@seqlok/diagnostics` | RT-safe schemas, SAB rings             |
+| **Analysis**          | `@seqlok/introspect`  | Health, counters, tooling              |
 
 **Key decision:** The ring primitive lives in `@seqlok/primitives`, not `@seqlok/core`. Core focuses on the
 spec-to-binding lifecycle; primitives provides the substrate.

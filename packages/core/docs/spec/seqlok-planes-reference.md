@@ -1,6 +1,6 @@
 # Seqlok Memory Plane Architecture
 
-> **Core invariant:** If data is *allowed to be late*, it belongs as a **meter**. If it must be visible *this block*,
+> **Core invariant:** If data is _allowed to be late_, it belongs as a **meter**. If it must be visible _this block_,
 > it’s a **param**. This prevents param planes from becoming a shadow telemetry system.
 
 ---
@@ -8,20 +8,20 @@
 ## Definitions
 
 | Term                  | Meaning                                                                           |
-|-----------------------|-----------------------------------------------------------------------------------|
+| --------------------- | --------------------------------------------------------------------------------- |
 | **Plane**             | A contiguous backing region + canonical TypedArray view (`PF32`, `PI32`, `PB`, …) |
 | **Kind**              | A DSL-level type string (`u32.array`, `enum`, `f32`, …)                           |
 | **Enabled**           | Present in the **kind catalog** and accepted by planner + bindings end-to-end     |
 | **Spec-defined**      | Allowed by type unions / builders, but rejected by planner if not in catalog      |
 | **Block**             | One render quantum (engine-controlled; typically 128 frames, but not guaranteed)  |
-| **Latency tolerance** | Max delay before behavior/UI becomes *incorrect* (not just annoying)              |
+| **Latency tolerance** | Max delay before behavior/UI becomes _incorrect_ (not just annoying)              |
 
 ---
 
 ## Source of Truth
 
 | Layer              | Location                                   | What it gates                                                                        |
-|--------------------|--------------------------------------------|--------------------------------------------------------------------------------------|
+| ------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------ |
 | Spec-defined kinds | `spec/types`                               | Type unions / builders accept the kind                                               |
 | Enabled kinds      | Kind catalog                               | Planner accepts the kind                                                             |
 | Planner gate       | Catalog hit + plane gate                   | Layout computed + slot kind metadata emitted                                         |
@@ -32,20 +32,20 @@
 
 ## Hard Guarantees
 
-* **Zero-copy is the default** for array kinds (snapshots reuse identity) unless explicitly stated otherwise.
-* **Reinterpret beats conversion** whenever byte-compatible (`u32` over `PI32`, `i32`/`enum` over `MU32`, etc.).
-* **Plans emitted by current versions MUST include `EntrySlot.kind`** for every slot. (The type can remain optional only
+- **Zero-copy is the default** for array kinds (snapshots reuse identity) unless explicitly stated otherwise.
+- **Reinterpret beats conversion** whenever byte-compatible (`u32` over `PI32`, `i32`/`enum` over `MU32`, etc.).
+- **Plans emitted by current versions MUST include `EntrySlot.kind`** for every slot. (The type can remain optional only
   for legacy plan decode.)
-* **Bool canonicalization:** writers MUST write `0`/`1`. Readers MAY treat nonzero as true, but debug builds should flag
+- **Bool canonicalization:** writers MUST write `0`/`1`. Readers MAY treat nonzero as true, but debug builds should flag
   non-canonical values.
-* **Regression tests** must enforce these guarantees (zero-copy identity, reinterpret views, bool canonicalization).
+- **Regression tests** must enforce these guarantees (zero-copy identity, reinterpret views, bool canonicalization).
 
 ---
 
 ## Latency Tolerance Reference
 
 | Visibility Requirement | Tolerance   | Typical Use                                  | Group  |
-|------------------------|-------------|----------------------------------------------|--------|
+| ---------------------- | ----------- | -------------------------------------------- | ------ |
 | **Immediate**          | 0 blocks    | Transport flags, mode switches, input states | Params |
 | **Next block OK**      | 0–1 blocks  | Most params, UI-rate controls                | Params |
 | **UI-acceptable**      | 1–4 blocks  | Fast meters (RMS, peaks, confidence)         | Meters |
@@ -60,10 +60,10 @@
 ## Plane Map
 
 > `PU` and `MU` are **mechanism planes** (seqlock headers + padding). They never appear as user-addressable kinds.
-> **Interpretation is a view:** signedness and enum-ness are *views* over a 32-bit backing.
+> **Interpretation is a view:** signedness and enum-ness are _views_ over a 32-bit backing.
 
 | Group  | Plane  | Backing View   | Writer (typical)  | Reader (typical)       | Purpose                                                                             |
-|--------|--------|----------------|-------------------|------------------------|-------------------------------------------------------------------------------------|
+| ------ | ------ | -------------- | ----------------- | ---------------------- | ----------------------------------------------------------------------------------- |
 | Params | `PU`   | `Uint32Array`  | control thread(s) | audio thread           | Seqlock headers + padding                                                           |
 | Params | `PF32` | `Float32Array` | control thread(s) | audio thread           | Float param storage                                                                 |
 | Params | `PI32` | `Int32Array`   | control thread(s) | audio thread           | 32-bit int storage (incl. `u32`, `enum` via view)                                   |
@@ -82,22 +82,22 @@ Grouped by plane for scanability.
 ### `PF32` kinds
 
 | Kind        | Status | JS View        | Payload     | Cadence             | Latency | Examples                                                              |
-|-------------|--------|----------------|-------------|---------------------|---------|-----------------------------------------------------------------------|
-| `f32`       | ✅      | `Float32Array` | 1 float     | UI-rate / per block | 0–1     | `filterCutoffHz`, `deckGain`, `crossfaderPos`, `stretchRatio`         |
-| `f32.array` | ✅      | `Float32Array` | 2–32 floats | UI-rate / per block | 0–1     | 3-band EQ `[low,mid,high]`, multichannel gains, compressor thresholds |
+| ----------- | ------ | -------------- | ----------- | ------------------- | ------- | --------------------------------------------------------------------- |
+| `f32`       | ✅     | `Float32Array` | 1 float     | UI-rate / per block | 0–1     | `filterCutoffHz`, `deckGain`, `crossfaderPos`, `stretchRatio`         |
+| `f32.array` | ✅     | `Float32Array` | 2–32 floats | UI-rate / per block | 0–1     | 3-band EQ `[low,mid,high]`, multichannel gains, compressor thresholds |
 
 ### `PI32` kinds
 
 > **Reinterpret rule:** `u32` and `u32.array` **must** be exposed as `Uint32Array` views over `PI32` bytes (no copies).
 
 | Kind         | Status | JS View        | Payload      | Cadence      | Latency | Examples                                                          |
-|--------------|--------|----------------|--------------|--------------|---------|-------------------------------------------------------------------|
-| `i32`        | ✅      | `Int32Array`   | 1 int        | on change    | 0       | `selectedEffectSlot`, `activeDeckIndex`, `loopLengthBeatsIndex`   |
-| `u32`        | ✅      | `Uint32Array`¹ | 1 u32        | event-driven | 0–1     | `enabledFeaturesMask`, `midiLearnHash`, stable IDs                |
-| `enum`       | ✅      | `Int32Array`²  | 1 index      | on change    | 0       | `syncMode={off,tempo,phase}`, `stretchQuality={eco,balanced,pro}` |
-| `i32.array`  | ✅      | `Int32Array`   | 8–256 ints   | bursty       | 0–1     | Routing table indices, per-pad mapping                            |
-| `u32.array`  | ✅      | `Uint32Array`¹ | 16–256 u32   | bursty       | 0–1     | 64-step sequencer packed `(noteId\|accent\|gate)`                 |
-| `enum.array` | ✅      | `Int32Array`²  | 2–64 indices | bursty       | 0–1     | Per-band filter type, per-deck modes, per-lane role               |
+| ------------ | ------ | -------------- | ------------ | ------------ | ------- | ----------------------------------------------------------------- |
+| `i32`        | ✅     | `Int32Array`   | 1 int        | on change    | 0       | `selectedEffectSlot`, `activeDeckIndex`, `loopLengthBeatsIndex`   |
+| `u32`        | ✅     | `Uint32Array`¹ | 1 u32        | event-driven | 0–1     | `enabledFeaturesMask`, `midiLearnHash`, stable IDs                |
+| `enum`       | ✅     | `Int32Array`²  | 1 index      | on change    | 0       | `syncMode={off,tempo,phase}`, `stretchQuality={eco,balanced,pro}` |
+| `i32.array`  | ✅     | `Int32Array`   | 8–256 ints   | bursty       | 0–1     | Routing table indices, per-pad mapping                            |
+| `u32.array`  | ✅     | `Uint32Array`¹ | 16–256 u32   | bursty       | 0–1     | 64-step sequencer packed `(noteId\|accent\|gate)`                 |
+| `enum.array` | ✅     | `Int32Array`²  | 2–64 indices | bursty       | 0–1     | Per-band filter type, per-deck modes, per-lane role               |
 
 ¹ Reinterpret view over `PI32` bytes (no copy)
 ² Stored as indices in `Int32Array`; valid domain is `0..N-1`; labels resolved at values-table level
@@ -108,20 +108,20 @@ Grouped by plane for scanability.
 > unsigned interpretation, not bit reinterpretation.
 
 | Kind         | Status | JS View            | Payload      | Cadence               | Latency | Examples                                                   |
-|--------------|--------|--------------------|--------------|-----------------------|---------|------------------------------------------------------------|
-| `bool`       | ✅      | `Uint8Array` (0/1) | 1 flag       | frequent              | 0       | `syncEnabled`, `keyLockEnabled`, `bypassFX`, `recordArmed` |
-| `bool.array` | ✅      | `Uint8Array` (0/1) | 8–256 flags  | frequent              | 0       | 16-pad pressed states, per-lane toggles, per-band bypass   |
-| `u8.array`   | ✅      | `Uint8Array`       | 16–512 bytes | bursty / per UI frame | 0–1     | 128-step velocity, per-LED brightness, per-pad aftertouch  |
-| `i8.array`   | ✅      | `Int8Array`¹       | 16–512 i8    | bursty                | 0–1     | Per-step swing offsets                                     |
+| ------------ | ------ | ------------------ | ------------ | --------------------- | ------- | ---------------------------------------------------------- |
+| `bool`       | ✅     | `Uint8Array` (0/1) | 1 flag       | frequent              | 0       | `syncEnabled`, `keyLockEnabled`, `bypassFX`, `recordArmed` |
+| `bool.array` | ✅     | `Uint8Array` (0/1) | 8–256 flags  | frequent              | 0       | 16-pad pressed states, per-lane toggles, per-band bypass   |
+| `u8.array`   | ✅     | `Uint8Array`       | 16–512 bytes | bursty / per UI frame | 0–1     | 128-step velocity, per-LED brightness, per-pad aftertouch  |
+| `i8.array`   | ✅     | `Int8Array`¹       | 16–512 i8    | bursty                | 0–1     | Per-step swing offsets                                     |
 
 ¹ Signed view over `PB` bytes (no copy)
 
 ### Awaiting plane implementation
 
 | Kind        | Status | JS View       | Payload     | Cadence      | Latency | Notes                                                               |
-|-------------|--------|---------------|-------------|--------------|---------|---------------------------------------------------------------------|
-| `i16.array` | ⏳      | `Int16Array`  | 64–2048 i16 | per N blocks | 1–4     | Awaits `P16` (see [Decided: 16-bit Planes](#decided-16-bit-planes)) |
-| `u16.array` | ⏳      | `Uint16Array` | 64–2048 u16 | per N blocks | 1–4     | Awaits `P16` (see [Decided: 16-bit Planes](#decided-16-bit-planes)) |
+| ----------- | ------ | ------------- | ----------- | ------------ | ------- | ------------------------------------------------------------------- |
+| `i16.array` | ⏳     | `Int16Array`  | 64–2048 i16 | per N blocks | 1–4     | Awaits `P16` (see [Decided: 16-bit Planes](#decided-16-bit-planes)) |
+| `u16.array` | ⏳     | `Uint16Array` | 64–2048 u16 | per N blocks | 1–4     | Awaits `P16` (see [Decided: 16-bit Planes](#decided-16-bit-planes)) |
 
 ---
 
@@ -132,32 +132,32 @@ Grouped by plane for scanability.
 ### `MF32` kinds
 
 | Kind        | Status | JS View        | Payload       | Cadence           | Latency | Examples                                        |
-|-------------|--------|----------------|---------------|-------------------|---------|-------------------------------------------------|
-| `f32`       | ✅      | `Float32Array` | 1 float       | per block         | 1–4     | Current RMS, BPM confidence, phase error        |
-| `f32.array` | ✅      | `Float32Array` | 8–1024 floats | per block / per N | 2–8     | FFT bands, per-channel peaks, per-stem loudness |
+| ----------- | ------ | -------------- | ------------- | ----------------- | ------- | ----------------------------------------------- |
+| `f32`       | ✅     | `Float32Array` | 1 float       | per block         | 1–4     | Current RMS, BPM confidence, phase error        |
+| `f32.array` | ✅     | `Float32Array` | 8–1024 floats | per block / per N | 2–8     | FFT bands, per-channel peaks, per-stem loudness |
 
 ### `MF64` kinds
 
 | Kind        | Status | JS View        | Payload       | Cadence            | Latency | Examples                                        |
-|-------------|--------|----------------|---------------|--------------------|---------|-------------------------------------------------|
-| `f64`       | ✅      | `Float64Array` | 1 double      | per block / slower | 2–8     | Master clock phase accumulator, drift estimator |
-| `f64.array` | ✅      | `Float64Array` | 1–256 doubles | per N blocks       | 4–32    | Offline analysis traces, regression-grade refs  |
+| ----------- | ------ | -------------- | ------------- | ------------------ | ------- | ----------------------------------------------- |
+| `f64`       | ✅     | `Float64Array` | 1 double      | per block / slower | 2–8     | Master clock phase accumulator, drift estimator |
+| `f64.array` | ✅     | `Float64Array` | 1–256 doubles | per N blocks       | 4–32    | Offline analysis traces, regression-grade refs  |
 
 ### `MU32` kinds (32-bit int storage)
 
 > **Rule:** `MU32` storage is 32-bit; expose `u32`/`u32.array`/`bool`/`bool.array` as `Uint32Array` and `i32`/`enum`/
-`i32.array`/`enum.array` as `Int32Array` **views over the same bytes** (no copies).
+> `i32.array`/`enum.array` as `Int32Array` **views over the same bytes** (no copies).
 
 | Kind         | Status | JS View             | Payload        | Cadence           | Latency | Examples                                       |
-|--------------|--------|---------------------|----------------|-------------------|---------|------------------------------------------------|
-| `u32`        | ✅      | `Uint32Array`       | 1 counter      | per block / event | 1–8     | `framesProcessed`, `xruns`, `beatCount`        |
-| `bool`       | ✅      | `Uint32Array` (0/1) | 1 flag         | per block         | 1–4     | `isClipping`, `isOverloaded`, `isBeatDetected` |
-| `i32`        | ✅      | `Int32Array`¹       | 1 signed       | per block         | 1–4     | Phase error ticks, signed deltas               |
-| `enum`       | ✅      | `Int32Array`²       | 1 state        | on change         | 4–64    | Analysis state `{idle,warmup,locked}`          |
-| `u32.array`  | ✅      | `Uint32Array`       | 4–128 counters | per block / event | 4–64    | Per-lane beat hits, histogram buckets          |
-| `bool.array` | ✅      | `Uint32Array` (0/1) | 2–64 flags     | per block         | 1–8     | Per-channel clip flags, per-band gate-open     |
-| `i32.array`  | ✅      | `Int32Array`¹       | 4–256 signed   | per block / per N | 2–8     | Per-band phase errors                          |
-| `enum.array` | ✅      | `Int32Array`²       | 2–64 states    | on change         | 4–64    | Per-lane status states                         |
+| ------------ | ------ | ------------------- | -------------- | ----------------- | ------- | ---------------------------------------------- |
+| `u32`        | ✅     | `Uint32Array`       | 1 counter      | per block / event | 1–8     | `framesProcessed`, `xruns`, `beatCount`        |
+| `bool`       | ✅     | `Uint32Array` (0/1) | 1 flag         | per block         | 1–4     | `isClipping`, `isOverloaded`, `isBeatDetected` |
+| `i32`        | ✅     | `Int32Array`¹       | 1 signed       | per block         | 1–4     | Phase error ticks, signed deltas               |
+| `enum`       | ✅     | `Int32Array`²       | 1 state        | on change         | 4–64    | Analysis state `{idle,warmup,locked}`          |
+| `u32.array`  | ✅     | `Uint32Array`       | 4–128 counters | per block / event | 4–64    | Per-lane beat hits, histogram buckets          |
+| `bool.array` | ✅     | `Uint32Array` (0/1) | 2–64 flags     | per block         | 1–8     | Per-channel clip flags, per-band gate-open     |
+| `i32.array`  | ✅     | `Int32Array`¹       | 4–256 signed   | per block / per N | 2–8     | Per-band phase errors                          |
+| `enum.array` | ✅     | `Int32Array`²       | 2–64 states    | on change         | 4–64    | Per-lane status states                         |
 
 ¹ Signed view over `MU32` bytes (no copy)
 ² Stored as indices in `Int32Array`; valid domain is `0..N-1`; labels resolved at values-table level
@@ -165,11 +165,11 @@ Grouped by plane for scanability.
 ### Awaiting plane implementation
 
 | Kind        | Status | JS View       | Payload       | Cadence      | Latency | Notes                                                                        |
-|-------------|--------|---------------|---------------|--------------|---------|------------------------------------------------------------------------------|
-| `u8.array`  | ⏳      | `Uint8Array`  | 64–2048 bytes | per N blocks | 8–128   | Awaits `M8` (see [Decided: 8-bit Meter Arrays](#decided-8-bit-meter-arrays)) |
-| `i8.array`  | ⏳      | `Int8Array`   | 64–2048 i8    | per N blocks | 8–128   | Awaits `M8` (see [Decided: 8-bit Meter Arrays](#decided-8-bit-meter-arrays)) |
-| `i16.array` | ⏳      | `Int16Array`  | 256–8192 i16  | per N blocks | 16–256  | Awaits `M16` (see [Decided: 16-bit Planes](#decided-16-bit-planes))          |
-| `u16.array` | ⏳      | `Uint16Array` | 256–8192 u16  | per N blocks | 16–256  | Awaits `M16` (see [Decided: 16-bit Planes](#decided-16-bit-planes))          |
+| ----------- | ------ | ------------- | ------------- | ------------ | ------- | ---------------------------------------------------------------------------- |
+| `u8.array`  | ⏳     | `Uint8Array`  | 64–2048 bytes | per N blocks | 8–128   | Awaits `M8` (see [Decided: 8-bit Meter Arrays](#decided-8-bit-meter-arrays)) |
+| `i8.array`  | ⏳     | `Int8Array`   | 64–2048 i8    | per N blocks | 8–128   | Awaits `M8` (see [Decided: 8-bit Meter Arrays](#decided-8-bit-meter-arrays)) |
+| `i16.array` | ⏳     | `Int16Array`  | 256–8192 i16  | per N blocks | 16–256  | Awaits `M16` (see [Decided: 16-bit Planes](#decided-16-bit-planes))          |
+| `u16.array` | ⏳     | `Uint16Array` | 256–8192 u16  | per N blocks | 16–256  | Awaits `M16` (see [Decided: 16-bit Planes](#decided-16-bit-planes))          |
 
 ---
 
@@ -194,12 +194,12 @@ Is it control data or observation data?
 
 ## Common Footguns
 
-* **`enum` stores indices, not labels.** Label resolution happens at the values-table level. Valid domain is `0..N-1`.
-* **`bool` param is `u8`; `bool` meter is `u32`.** Don’t mix views or assume same backing.
-* **Meter driving DSP?** Document allowed delay + stability, or promote to param.
-* **Bool canonicalization:** writers MUST write `0`/`1`; nonzero reads as true but is corruption (debug should
+- **`enum` stores indices, not labels.** Label resolution happens at the values-table level. Valid domain is `0..N-1`.
+- **`bool` param is `u8`; `bool` meter is `u32`.** Don’t mix views or assume same backing.
+- **Meter driving DSP?** Document allowed delay + stability, or promote to param.
+- **Bool canonicalization:** writers MUST write `0`/`1`; nonzero reads as true but is corruption (debug should
   complain).
-* **MU32 is a 32-bit int plane:** `u32` vs `i32` vs `enum` is a *view* choice, not a storage choice.
+- **MU32 is a 32-bit int plane:** `u32` vs `i32` vs `enum` is a _view_ choice, not a storage choice.
 
 ---
 
@@ -210,14 +210,14 @@ Is it control data or observation data?
 Implement **`M16` first** (meters), because large 16-bit buffers are typically analysis/telemetry and can tolerate
 delay.
 
-Add **`P16` later** only if a real latency-sensitive *control* use-case requires it.
+Add **`P16` later** only if a real latency-sensitive _control_ use-case requires it.
 
 Until `M16`/`P16` ship, use `i32.array`/`u32.array` (or `f32.array`) as the fallback.
 
 ### Planned Planes
 
-| Plane | Status     | Purpose                                                  |
-|-------|------------|----------------------------------------------------------|
+| Plane | Status      | Purpose                                                  |
+| ----- | ----------- | -------------------------------------------------------- |
 | `M16` | ⏳ planned  | 16-bit meter arrays (`i16.array`, `u16.array`)           |
 | `P16` | ⏳ deferred | 16-bit param arrays (only if justified by real use-case) |
 
@@ -228,7 +228,7 @@ Until `M16`/`P16` ship, use `i32.array`/`u32.array` (or `f32.array`) as the fall
 **Decision:** TBD (leaning toward `M8` if histograms become common; otherwise pack into `MU32` with bitpacking).
 
 | Option                                  | Pros                                                   | Cons                            |
-|-----------------------------------------|--------------------------------------------------------|---------------------------------|
+| --------------------------------------- | ------------------------------------------------------ | ------------------------------- |
 | **A) New plane** (`M8`)                 | Clean alignment, native `Uint8Array`/`Int8Array` views | Yet another plane               |
 | **B) Pack into `MU32`** with bitpacking | No new planes                                          | Access complexity, slower reads |
 
@@ -245,9 +245,9 @@ When enabling a kind (e.g., `u8.array` meters):
 3. **Tests:** Add/adjust tests for identity/zero-copy behavior where relevant
 4. **Docs:** Update this file:
 
-* Flip status ⏳ → ✅
-* Move row to appropriate plane section
-* Fill in **Plane** and **JS View** columns
+- Flip status ⏳ → ✅
+- Move row to appropriate plane section
+- Fill in **Plane** and **JS View** columns
 
 ---
 

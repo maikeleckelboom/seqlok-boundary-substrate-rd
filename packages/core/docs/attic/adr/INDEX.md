@@ -8,15 +8,15 @@ This folder contains **archived Architecture Decision Records (ADRs)** that are 
 
 ## Archived ADRs
 
-| File | Reason Archived |
-|------|-----------------|
-| `ADR-00D-primitives-internal-and-pruned.md` | Archived because it conflicts with the current separate `@seqlok/primitives` package. |
-| `ADR-00E-electron-multi-process-runtimes.md` | Archived because it is future-oriented and compose-era, not current live package guidance. |
-| `ADR-00X-introduce-seqlok-compose-for-system-level-composition.md` | Archived because `@seqlok/compose` is not part of the current repo. |
-| `ADR-00Y-mwmr-architecture.md` | Archived because it is proposal-grade and compose-era; current guardrails belong in ADR-011. |
-| `ADR-00Z-observer-binding-role.md` | Archived because it is proposal/rationale material, not the current narrow ADR set. |
-| `ADR-012-bind-observer-telemetry-and-multi-reader-rationale.md` | Archived because it is rationale-heavy and not a current accepted decision record. |
-| `ADR-013-clarify-plan-backing-handoff-naming.md` | Archived because it is a proposal, not a current active decision. |
+| File                                                               | Reason Archived                                                                              |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `ADR-00D-primitives-internal-and-pruned.md`                        | Archived because it conflicts with the current separate `@seqlok/primitives` package.        |
+| `ADR-00E-electron-multi-process-runtimes.md`                       | Archived because it is future-oriented and compose-era, not current live package guidance.   |
+| `ADR-00X-introduce-seqlok-compose-for-system-level-composition.md` | Archived because `@seqlok/compose` is not part of the current repo.                          |
+| `ADR-00Y-mwmr-architecture.md`                                     | Archived because it is proposal-grade and compose-era; current guardrails belong in ADR-011. |
+| `ADR-00Z-observer-binding-role.md`                                 | Archived because it is proposal/rationale material, not the current narrow ADR set.          |
+| `ADR-012-bind-observer-telemetry-and-multi-reader-rationale.md`    | Archived because it is rationale-heavy and not a current accepted decision record.           |
+| `ADR-013-clarify-plan-backing-handoff-naming.md`                   | Archived because it is a proposal, not a current active decision.                            |
 
 ---
 

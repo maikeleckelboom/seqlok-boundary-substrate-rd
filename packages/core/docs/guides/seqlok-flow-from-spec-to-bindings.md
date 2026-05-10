@@ -1,6 +1,6 @@
 # Seqlok Canonical Flow: From Spec to Bindings
 
-> *How a param/meter schema becomes shared memory + bindings.*
+> _How a param/meter schema becomes shared memory + bindings._
 
 This guide describes the **end-to-end pipeline** that Seqlok follows for all
 shared-memory bindings:
@@ -9,8 +9,8 @@ shared-memory bindings:
 
 It explains how a param/meter schema becomes:
 
-* a **controller** on the owner side (UI / host), and
-* one or more **consumer bindings** (processor, observers, analyzers) on the other side,
+- a **controller** on the owner side (UI / host), and
+- one or more **consumer bindings** (processor, observers, analyzers) on the other side,
 
 all over a single planned backing.
 
@@ -22,8 +22,8 @@ There are no shortcuts in `@seqlok/core`: every binding follows this flow in ord
 
 At a high level:
 
-1. **Spec** – describe *what exists*: params + meters and their types.
-2. **Plan** – compute *how it is laid out* in memory.
+1. **Spec** – describe _what exists_: params + meters and their types.
+2. **Plan** – compute _how it is laid out_ in memory.
 3. **Allocate** – allocate backing memory that matches the plan.
 4. **Handoff** – wrap backing + layout into an envelope and move it across a trust boundary.
 5. **Bind Controller** – bind owner-side controller: param writers + meter readers.
@@ -50,14 +50,14 @@ import {
   bindController,
   bindProcessor,
   // future: bindObserver, bindTelemetry, ...
-} from '@seqlok/core';
+} from "@seqlok/core";
 
 // ── Spec ───────────────────────────────────────────────────────────────────────
 
-const spec = defineSpec(({param, meter}) => ({
+const spec = defineSpec(({ param, meter }) => ({
   params: {
-    rate: param.f32({min: 0.5, max: 2}),
-    mode: param.enum(['a', 'b']),
+    rate: param.f32({ min: 0.5, max: 2 }),
+    mode: param.enum(["a", "b"]),
   },
   meters: {
     peak: meter.f32(),
@@ -98,10 +98,10 @@ const processor = bindProcessor(received);
 
 Notes:
 
-* The **order** between `bindController` and `buildHandoff` on the host is flexible:
+- The **order** between `bindController` and `buildHandoff` on the host is flexible:
   you can bind the controller before or after `buildHandoff` as long as you stay in
   the **Spec → Plan → Allocate → Handoff → Bind** domain order.
-* On the worker side, `receiveHandoff` is always the entry point before any consumer
+- On the worker side, `receiveHandoff` is always the entry point before any consumer
   bindings.
 
 ---
@@ -116,22 +116,22 @@ Notes:
 
 Responsibilities:
 
-* Define **params** (control inputs) and **meters** (observability outputs).
-* Capture only *types* and *ranges*, not layout or backing.
+- Define **params** (control inputs) and **meters** (observability outputs).
+- Capture only _types_ and _ranges_, not layout or backing.
 
 Constraints:
 
-* Numeric params use the range-only DSL `{ min, max }`.
-* No `default`, `step`, or `origin` at the spec layer.
-* Any defaults, snapping, and UX behavior live in the application / UI.
+- Numeric params use the range-only DSL `{ min, max }`.
+- No `default`, `step`, or `origin` at the spec layer.
+- Any defaults, snapping, and UX behavior live in the application / UI.
 
 Example:
 
 ```ts
-const spec = defineSpec(({param, meter}) => ({
+const spec = defineSpec(({ param, meter }) => ({
   params: {
-    gain: param.f32({min: 0, max: 2}),
-    mode: param.enum(['normal', 'granular']),
+    gain: param.f32({ min: 0, max: 2 }),
+    mode: param.enum(["normal", "granular"]),
   },
   meters: {
     peak: meter.f32(),
@@ -151,14 +151,14 @@ Error namespace: `spec.*`.
 
 Responsibilities:
 
-* Decide **plane structure** (which fields live in which typed arrays).
-* Assign byte offsets and lengths.
-* Compute total memory requirements.
+- Decide **plane structure** (which fields live in which typed arrays).
+- Assign byte offsets and lengths.
+- Compute total memory requirements.
 
 Constraints:
 
-* Pure function: deterministic for a given `spec`.
-* No allocation; only numbers and shapes.
+- Pure function: deterministic for a given `spec`.
+- No allocation; only numbers and shapes.
 
 Example:
 
@@ -183,17 +183,17 @@ Implementation rule:
 
 Responsibilities:
 
-* Allocate buffers that match the plan's plane sizes.
-* Construct typed views (`Float32Array`, `Int32Array`, etc.).
+- Allocate buffers that match the plan's plane sizes.
+- Construct typed views (`Float32Array`, `Int32Array`, etc.).
 
 Allocators:
 
 ```ts
-const contiguous = allocateShared(plan);             // single SAB, contiguous
+const contiguous = allocateShared(plan); // single SAB, contiguous
 // or
 const partitioned = allocateSharedPartitioned(plan); // one SAB per plane
 // or
-const wasmShared = allocateWasmShared(plan);         // backed by WebAssembly.Memory
+const wasmShared = allocateWasmShared(plan); // backed by WebAssembly.Memory
 ```
 
 Error namespace: `backing.*`.
@@ -208,9 +208,9 @@ Error namespace: `backing.*`.
 
 Responsibilities:
 
-* Package the backing + layout into a **serializable envelope**.
-* Validate that what arrives on the other side is coherent with the plan.
-* Own the **envelope protocol**: nothing else reaches across the boundary.
+- Package the backing + layout into a **serializable envelope**.
+- Validate that what arrives on the other side is coherent with the plan.
+- Own the **envelope protocol**: nothing else reaches across the boundary.
 
 Host side:
 
@@ -227,9 +227,9 @@ const received = receiveHandoff(handoff);
 `ReceivedHandoff<S>` is the normalized view of the backing, ready to be used by consumer bindings.
 `Handoff<S>` itself should be treated as an **opaque transport envelope**:
 
-* Application code obtains it from `buildHandoff(plan, backing)`.
-* Application code passes it into `receiveHandoff(handoff)`.
-* All layout metadata is carried via the embedded `Plan<S>`; the envelope does not re-plan.
+- Application code obtains it from `buildHandoff(plan, backing)`.
+- Application code passes it into `receiveHandoff(handoff)`.
+- All layout metadata is carried via the embedded `Plan<S>`; the envelope does not re-plan.
 
 Spec/layout compatibility across processes is enforced via a structural notion of plan equality
 (e.g. a deterministic hash stored alongside the plan).
@@ -238,7 +238,7 @@ Error namespace: `handoff.*`.
 
 Internal rule:
 
-* Helpers that reconstruct typed views stay inside the handoff/backing layers;
+- Helpers that reconstruct typed views stay inside the handoff/backing layers;
   public consumers see only `Handoff` / `ReceivedHandoff`.
 
 ---
@@ -249,20 +249,20 @@ Internal rule:
 
 **Inputs:**
 
-* `spec` — for typed API shape (keys, enums, etc.)
-* `plan` — for introspection/diagnostics and compatibility checks
-* `backing` — the actual memory
+- `spec` — for typed API shape (keys, enums, etc.)
+- `plan` — for introspection/diagnostics and compatibility checks
+- `backing` — the actual memory
 
 **Output:** `ControllerBinding<S>`
 
 Responsibilities:
 
-* Provide **param writers** on the host side:
+- Provide **param writers** on the host side:
 
   ```ts
-  controller.params.set('gain', 0.8);
+  controller.params.set("gain", 0.8);
   controller.params.update({ cutoff: 1200, resonance: 0.7 });
-  controller.params.stage('bands', (view) => {
+  controller.params.stage("bands", (view) => {
     // RAII array write, single LU bump
     for (let i = 0; i < view.length; i++) {
       view[i] = computeBandValue(i);
@@ -270,21 +270,21 @@ Responsibilities:
   });
   ```
 
-  * `params.set(key, value)`
-  * `params.update(patch)` – single LU bump
-  * `params.stage(key, cb(view))` – RAII array writes, single LU bump
+  - `params.set(key, value)`
+  - `params.update(patch)` – single LU bump
+  - `params.stage(key, cb(view))` – RAII array writes, single LU bump
 
-* Provide **meter readers**:
+- Provide **meter readers**:
 
   ```ts
   const meters = controller.meters.snapshot();
-  const { peak, rms } = controller.meters.snapshot(['peak', 'rms']);
-  const { spectrum } = controller.meters.snapshot(['spectrum'], {
+  const { peak, rms } = controller.meters.snapshot(["peak", "rms"]);
+  const { spectrum } = controller.meters.snapshot(["spectrum"], {
     into: { spectrum: preallocatedSpectrum },
   });
   ```
 
-  * `meters.snapshot(...)` is the canonical read API (positional and `{ keys, into }` forms).
+  - `meters.snapshot(...)` is the canonical read API (positional and `{ keys, into }` forms).
 
 The controller does not expose seqlock details directly; versioning and retry semantics are handled internally.
 
@@ -304,11 +304,11 @@ Error namespace: `binding.controller.*`.
 
 **Inputs:**
 
-* `ReceivedHandoff<S>` — validated backing + layout (includes `Plan<S>`)
+- `ReceivedHandoff<S>` — validated backing + layout (includes `Plan<S>`)
 
 **Output:**
 
-* One or more bindings over the same backing, for different roles
+- One or more bindings over the same backing, for different roles
 
 Today's canonical consumer:
 
@@ -318,7 +318,7 @@ const processor = bindProcessor(received);
 
 `ProcessorBinding<S>` is allowed to:
 
-* Read params via **coherent windows**:
+- Read params via **coherent windows**:
 
   ```ts
   processor.params.within((params) => {
@@ -330,15 +330,15 @@ const processor = bindProcessor(received);
   });
   ```
 
-  * Scalars are copied values captured at the version.
-  * Arrays are scratch views valid only inside the callback.
+  - Scalars are copied values captured at the version.
+  - Arrays are scratch views valid only inside the callback.
 
-* Publish meters via a **single MU-scoped callback**:
+- Publish meters via a **single MU-scoped callback**:
 
   ```ts
   processor.meters.publish((meters) => {
     meters.peak(currentPeak);
-    meters.stage('spectrum', (view) => {
+    meters.stage("spectrum", (view) => {
       view.set(currentSpectrum);
     });
   });
@@ -348,15 +348,15 @@ Error namespace: `binding.processor.*`.
 
 The flow intentionally supports **N ≥ 1 consumer bindings** off the same `ReceivedHandoff<S>`:
 
-* `bindProcessor(received)` – primary SWMR writer of meters for that meter domain.
-* `bindObserver(received)` – future read-only binding (params + meters).
-* `bindTelemetry(received)` – future binding that exports state elsewhere.
+- `bindProcessor(received)` – primary SWMR writer of meters for that meter domain.
+- `bindObserver(received)` – future read-only binding (params + meters).
+- `bindTelemetry(received)` – future binding that exports state elsewhere.
 
 Each binding:
 
-* Shares the same underlying planes.
-* Respects the same seqlock / SWMR guarantees.
-* Differs only in *capabilities* (what you can read/write).
+- Shares the same underlying planes.
+- Respects the same seqlock / SWMR guarantees.
+- Differs only in _capabilities_ (what you can read/write).
 
 ---
 
@@ -367,9 +367,9 @@ Pattern with multiple consumer roles on a single handoff:
 ```ts
 // Host ─────────────────────────────────────────────────────────────────────────
 
-const spec = defineSpec(({param, meter}) => ({
+const spec = defineSpec(({ param, meter }) => ({
   params: {
-    rate: param.f32({min: 0.5, max: 2}),
+    rate: param.f32({ min: 0.5, max: 2 }),
   },
   meters: {
     rms: meter.f32(),
@@ -396,9 +396,9 @@ const processor = bindProcessor(received);
 
 Typical uses:
 
-* **Processor** drives audio: reads params, writes meters.
-* **Observer** runs in a visualization worker: reads params/meters to feed WebGPU.
-* **Telemetry** streams snapshots to a remote debugger or log sink.
+- **Processor** drives audio: reads params, writes meters.
+- **Observer** runs in a visualization worker: reads params/meters to feed WebGPU.
+- **Telemetry** streams snapshots to a remote debugger or log sink.
 
 No copies, no extra handoffs: just more bindings over the same seqlock-protected planes.
 
@@ -439,8 +439,8 @@ Processor  bind_processor(const Received&);
 
 Any implementation that:
 
-* follows **Spec → Plan → Allocate → Handoff → Bind Controller → Bind Consumers** in this domain order, and
-* respects the same SWMR / seqlock semantics,
+- follows **Spec → Plan → Allocate → Handoff → Bind Controller → Bind Consumers** in this domain order, and
+- respects the same SWMR / seqlock semantics,
 
 is a valid Seqlok pipeline, even if the exact function names differ.
 
@@ -450,28 +450,28 @@ is a valid Seqlok pipeline, even if the exact function names differ.
 
 1. **Ordering is non-negotiable**
 
-* Spec → Plan → Allocate → Handoff → Bind Controller → Bind Consumers is the
+- Spec → Plan → Allocate → Handoff → Bind Controller → Bind Consumers is the
   only legal dependency chain inside `@seqlok/core`.
-* Higher-level helpers may wrap stages, but they cannot merge or reorder domains.
+- Higher-level helpers may wrap stages, but they cannot merge or reorder domains.
 
 2. **No hidden planning or allocation**
 
-* `bindController`, `bindProcessor`, and future consumer roles must never call
+- `bindController`, `bindProcessor`, and future consumer roles must never call
   `planLayout` or allocate backing.
-* They only bind views onto an existing `Plan` + backing / `ReceivedHandoff`.
+- They only bind views onto an existing `Plan` + backing / `ReceivedHandoff`.
 
 3. **Final naming / semantics**
 
-* `defineSpec`, `planLayout`,
+- `defineSpec`, `planLayout`,
   `allocateShared` / `allocateSharedPartitioned` / `allocateWasmShared`,
   `buildHandoff`, `receiveHandoff`,
   `bindController(spec, plan, backing)`, `bindProcessor(received)`.
-* No `setMany`, no `meters.sample`, no DSL defaults/steps/origins.
+- No `setMany`, no `meters.sample`, no DSL defaults/steps/origins.
 
 4. **Multiple consumer bindings are encouraged but structured**
 
-* The flow explicitly supports multiple consumer bindings over the same handoff.
-* Only one role (the processor) may publish meters for a given meter domain;
+- The flow explicitly supports multiple consumer bindings over the same handoff.
+- Only one role (the processor) may publish meters for a given meter domain;
   other roles are read-only or use dedicated planes planned up front.
 
 As long as every engine, observer, and analyzer stays on this canonical flow, hot-swap

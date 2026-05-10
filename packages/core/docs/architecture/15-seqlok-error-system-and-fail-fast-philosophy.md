@@ -126,11 +126,7 @@ Design constraints:
 Consumers never need to parse error messages. Instead, they use:
 
 ```ts
-import {
-  SeqlokError,
-  isSeqlokError,
-  interpretHealth,
-} from "@seqlok/base";
+import { SeqlokError, isSeqlokError, interpretHealth } from "@seqlok/base";
 import { getErrorMeta } from "@seqlok/introspect";
 
 try {
@@ -442,11 +438,7 @@ import {
   allocateShared,
   bindController,
 } from "@seqlok/core";
-import {
-  SeqlokError,
-  isSeqlokError,
-  interpretHealth,
-} from "@seqlok/base";
+import { SeqlokError, isSeqlokError, interpretHealth } from "@seqlok/base";
 import { getErrorMeta } from "@seqlok/introspect";
 
 function createSeqlokDevice() {

@@ -1,8 +1,7 @@
 # Nested spec DSL and key mirror contract
 
 > **Status:** Active implementation contract
-> **Owner:** `@seqlok/core`
-> **Scope:** authored spec semantic compilation, canonical-key formation, anonymous-id normalization, `keysOf(spec)` output contract
+> **Owner:** `@seqlok/core` > **Scope:** authored spec semantic compilation, canonical-key formation, anonymous-id normalization, `keysOf(spec)` output contract
 
 ---
 
@@ -264,7 +263,7 @@ defineSpec({
     },
     "transport.tempo": { kind: "f32" },
   },
-})
+});
 ```
 
 ### 8.2 Namespace collides with existing leaf
@@ -360,8 +359,8 @@ It always returns:
 
 ```ts
 {
-  params: ..., 
-  meters: ..., 
+  params: ...,
+  meters: ...,
 }
 ```
 
@@ -374,9 +373,9 @@ Every leaf value in the returned mirror is the canonical dot-path runtime key st
 Example:
 
 ```ts
-const keys = keysOf(spec)
+const keys = keysOf(spec);
 
-keys.params.transport.tempo
+keys.params.transport.tempo;
 // "transport.tempo"
 ```
 

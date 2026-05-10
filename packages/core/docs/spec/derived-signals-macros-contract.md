@@ -1,6 +1,6 @@
 # Derived Signals (Macros) DSL — Implementation Contract
 
-**Status:** ✅ *Design locked for future implementation* · 🚫 *Not implemented yet* (core stability first)  
+**Status:** ✅ _Design locked for future implementation_ · 🚫 _Not implemented yet_ (core stability first)  
 **Scope:** Defines how Seqlok/Dekzer will express "one knob → many parameters / routing" mappings (DDJ-style Color FX,
 macro controls, piecewise behavior) in a way that is deterministic, serializable, and audio-thread safe.
 
@@ -10,16 +10,16 @@ macro controls, piecewise behavior) in a way that is deterministic, serializable
 
 Modern DJ controls are often **macros**:
 
-* One knob drives **multiple DSP parameters** (cutoff, resonance, wet, send, feedback, etc.).
-* One knob is **piecewise** (left half does LPF, right half does HPF, neutral center).
-* A mode selector (`enum`) changes the meaning of the same knob (NOISE vs FILTER vs DUB ECHO vs SPACE…).
+- One knob drives **multiple DSP parameters** (cutoff, resonance, wet, send, feedback, etc.).
+- One knob is **piecewise** (left half does LPF, right half does HPF, neutral center).
+- A mode selector (`enum`) changes the meaning of the same knob (NOISE vs FILTER vs DUB ECHO vs SPACE…).
 
 We want to author these behaviors in the Seqlok spec without:
 
-* leaking "wiring logic" into UI code,
-* writing derived values back into param planes,
-* shipping JS closures across host/worklet,
-* or making the audio thread depend on defs that may be absent (handoff scenario).
+- leaking "wiring logic" into UI code,
+- writing derived values back into param planes,
+- shipping JS closures across host/worklet,
+- or making the audio thread depend on defs that may be absent (handoff scenario).
 
 ---
 
@@ -27,10 +27,10 @@ We want to author these behaviors in the Seqlok spec without:
 
 ### 2.1 Plane discipline
 
-* **Params are written by control/UI threads; read by audio thread.**
-* **Audio thread MUST NOT write into param planes** (`PF32`, `PI32`, `PB`, etc.).
-* Derived values are ephemeral signals feeding DSP directly.
-* If derived values must be visible to UI/diagnostics, **publish them as meters**.
+- **Params are written by control/UI threads; read by audio thread.**
+- **Audio thread MUST NOT write into param planes** (`PF32`, `PI32`, `PB`, etc.).
+- Derived values are ephemeral signals feeding DSP directly.
+- If derived values must be visible to UI/diagnostics, **publish them as meters**.
 
 This preserves the "params are not telemetry" invariant from the plane architecture doc.
 
@@ -77,21 +77,21 @@ This preserves the "params are not telemetry" invariant from the plane architect
 
 ### 2.3 Finite output guarantee
 
-* All macro outputs are **guaranteed finite** (no NaN, no ±Inf).
-* Implementation strategy:
+- All macro outputs are **guaranteed finite** (no NaN, no ±Inf).
+- Implementation strategy:
   - Compiler marks ops that can produce non-finite (`div`, `logLerp`, `pow`, `onePoleTauMs`).
   - Insert guards around marked ops + at `store_out`.
   - Dev builds may guard every op for debugging.
-* Non-finite intermediates clamp to `0.0` (with optional dev telemetry counter).
+- Non-finite intermediates clamp to `0.0` (with optional dev telemetry counter).
 
 **Rationale:** One NaN in DSP can poison an entire filter bank. Defense in depth.
 
 ### 2.4 Explicit dependency graph
 
-* Every macro declares `deps`.
-* Cycles are rejected at compile time.
-* Dependency order is stable and validated at plan/build time.
-* Macros may depend on other macros (topological sort required).
+- Every macro declares `deps`.
+- Cycles are rejected at compile time.
+- Dependency order is stable and validated at plan/build time.
+- Macros may depend on other macros (topological sort required).
 
 **Stable evaluation order:**
 
@@ -108,9 +108,9 @@ This preserves the "params are not telemetry" invariant from the plane architect
 
 If a macro reads meters and affects DSP (a control loop):
 
-* it must be explicitly documented,
-* feedback is **always 1-block delayed** (see execution phases),
-* should strongly prefer param inputs unless there's a real reason for meter feedback.
+- it must be explicitly documented,
+- feedback is **always 1-block delayed** (see execution phases),
+- should strongly prefer param inputs unless there's a real reason for meter feedback.
 
 ---
 
@@ -122,35 +122,35 @@ This is the core design lock-in.
 
 Humans author macros using builder helpers:
 
-* `deadzone`, `leftHalf`, `rightHalf`, `triWeight`, `logLerpHz`, `onePoleMs`, etc.
-* This layer prioritizes readability and musical intent.
+- `deadzone`, `leftHalf`, `rightHalf`, `triWeight`, `logLerpHz`, `onePoleMs`, etc.
+- This layer prioritizes readability and musical intent.
 
 ### Layer B — Canonical IR (primitive AST)
 
 Authoring helpers expand into a small set of primitive operations:
 
-* clamp/select/compare
-* mix/lerp/logLerp
-* deadzone magnitude
-* triangle weights
-* smoothing (one-pole)
-* basic arithmetic
+- clamp/select/compare
+- mix/lerp/logLerp
+- deadzone magnitude
+- triangle weights
+- smoothing (one-pole)
+- basic arithmetic
 
 This IR is:
 
-* serializable
-* easy to validate
-* easy to compile
-* the **source of truth** for semantics
+- serializable
+- easy to validate
+- easy to compile
+- the **source of truth** for semantics
 
 ### Layer C — Compiled Program (execution format)
 
 Canonical IR compiles into a compact program evaluated per block in the audio thread:
 
-* Expression tree (v0) or bytecode (future optimization)
-* Zero alloc
-* Bounded state
-* Versioned format for forward compatibility
+- Expression tree (v0) or bytecode (future optimization)
+- Zero alloc
+- Bounded state
+- Versioned format for forward compatibility
 
 **Key rule:** The verbose object-only form may exist for debugging, but should be **generated**, not hand-authored. The
 authoring DSL is what people write.
@@ -198,9 +198,9 @@ type ControllerSpec = {
 
 A macro definition contains:
 
-* `deps`: named inputs mapped to param/meter keys
-* `out`: named derived outputs as expressions
-* optional `publish`: map of outputs → meter keys (telemetry/debug only)
+- `deps`: named inputs mapped to param/meter keys
+- `out`: named derived outputs as expressions
+- optional `publish`: map of outputs → meter keys (telemetry/debug only)
 
 **Authoring form (ergonomic):**
 
@@ -208,8 +208,8 @@ A macro definition contains:
 // Example using future authoring DSL (not yet implemented)
 const macros = {
   colorFilter: macro.outputs({
-    deps: {x: dep.param("fx.color")},
-    out: ({x}: { x: number }) => ({
+    deps: { x: dep.param("fx.color") },
+    out: ({ x }: { x: number }) => ({
       lpfHz: fx.onePoleHz(
         fx.logLerpHz(20_000, 200, fx.leftHalf(fx.deadzone(x - 0.5, 0.03))),
         8,
@@ -237,16 +237,18 @@ const macros = {
 ```typescript
 // Canonical IR representation (generated from authoring DSL)
 const canonicalMacro = {
-  deps: {x: {src: "param" as const, key: "fx.color"}},
+  deps: { x: { src: "param" as const, key: "fx.color" } },
   out: {
     // Primitive AST representation (structure TBD during implementation)
     type: "outputs",
-    outputs: { /* ... */}
+    outputs: {
+      /* ... */
+    },
   },
   publish: {
     // Optional: map outputs to meter keys for telemetry
     // lpfHz: "meter.fx.lpf"
-  }
+  },
 };
 ```
 
@@ -264,25 +266,28 @@ const canonicalMacro = {
 
 ```typescript
 const derivedSignalsMacrosContract = {
-  magic: Uint8Array,          // 4 bytes: ASCII "MACR" [0x4D, 0x41, 0x43, 0x52]
-  version: number,            // u32 little-endian, v0 = 1
-  flags: number,              // u32 little-endian, v0 must be 0, unknown bits ignored
+  magic: Uint8Array, // 4 bytes: ASCII "MACR" [0x4D, 0x41, 0x43, 0x52]
+  version: number, // u32 little-endian, v0 = 1
+  flags: number, // u32 little-endian, v0 must be 0, unknown bits ignored
   program: {
-    kind: "tree-v1",          // or "bytecode-v1" in future
-    bytes: Uint8Array,        // encoded expression tree (v0) or bytecode (future)
+    kind: "tree-v1", // or "bytecode-v1" in future
+    bytes: Uint8Array, // encoded expression tree (v0) or bytecode (future)
   },
-  inputBindings: [                    // deps → plan slots (lexicographic by dep name)
-    {slotIndex: 42, kind: "PF32"},  // param.fx.color
-    {slotIndex: 17, kind: "PB"},    // param.fx.on
+  inputBindings: [
+    // deps → plan slots (lexicographic by dep name)
+    { slotIndex: 42, kind: "PF32" }, // param.fx.color
+    { slotIndex: 17, kind: "PB" }, // param.fx.on
   ],
-  outputBindings: [                   // macro outputs (lexicographic by output name)
-    {name: "lpfHz", dspIndex: 8},   // where DSP expects it
-    {name: "hpfHz", dspIndex: 9, meterSlot: 103 | undefined}, // optional publish
+  outputBindings: [
+    // macro outputs (lexicographic by output name)
+    { name: "lpfHz", dspIndex: 8 }, // where DSP expects it
+    { name: "hpfHz", dspIndex: 9, meterSlot: 103 | undefined }, // optional publish
   ],
-  stateSlots: [                       // smoothing state
-    {id: "lpf", init: "followInput"}, // v0: always init from first input
+  stateSlots: [
+    // smoothing state
+    { id: "lpf", init: "followInput" }, // v0: always init from first input
   ],
-}
+};
 ```
 
 **Serialization details:**
@@ -305,10 +310,10 @@ The planner (or a dedicated macro compiler step) will:
 1. Validate deps exist and have supported kinds (scalar kinds only, initially).
 2. Validate macro AST:
 
-* no cycles (within and across macros),
-* indices/ranges (enum domain, bool canonicalization expectations),
-* `logLerp` endpoints > 0,
-* smoothing state ids unique and bounded.
+- no cycles (within and across macros),
+- indices/ranges (enum domain, bool canonicalization expectations),
+- `logLerp` endpoints > 0,
+- smoothing state ids unique and bounded.
 
 3. Enforce resource caps (see below).
 4. Compile canonical AST → program (expression tree or bytecode) + const pool.
@@ -346,35 +351,35 @@ This is the intentionally small set the canonical IR targets:
 
 ### Loads / outputs
 
-* `load_in(index)`, `load_const(value)`, `store_out(index, value)`
+- `load_in(index)`, `load_const(value)`, `store_out(index, value)`
 
 ### Arithmetic / shaping
 
-* `add`, `sub`, `mul`, `div`
-* `abs`, `min`, `max`
-* `clamp01`, `clamp(x, lo, hi)`
+- `add`, `sub`, `mul`, `div`
+- `abs`, `min`, `max`
+- `clamp01`, `clamp(x, lo, hi)`
 
 ### Comparisons + branching (branchless)
 
-* `cmpLt(a, b)`, `cmpGt(a, b)`, `cmpEq(a, b)` (int-like only for `cmpEq`)
+- `cmpLt(a, b)`, `cmpGt(a, b)`, `cmpEq(a, b)` (int-like only for `cmpEq`)
   - All comparison ops output **exactly** `0.0` or `1.0` (canonical boolean values)
-* `select(cond, t, f)` (cond must be 0.0 or 1.0)
+- `select(cond, t, f)` (cond must be 0.0 or 1.0)
 
 ### Curves / mixing
 
-* `lerp(a, b, t)`
-* `logLerp(a, b, t)` (requires a>0, b>0)
+- `lerp(a, b, t)`
+- `logLerp(a, b, t)` (requires a>0, b>0)
   - Centralizes domain validation, ensures consistent mapping semantics, gives compiler hook for future approximations
-* `pow(x, exp)`
+- `pow(x, exp)`
   - Uses IEEE semantics; if result is non-finite (including NaN from negative base + fractional exponent), it is clamped
     per the finite-output policy
 
 ### DJ-specific helpers
 
-* `deadzoneMag(x, dz, halfRange)`
-* `triCw(x, center, halfWidth)` (conditional: keep only if profiling shows hot path; otherwise expressible as
+- `deadzoneMag(x, dz, halfRange)`
+- `triCw(x, center, halfWidth)` (conditional: keep only if profiling shows hot path; otherwise expressible as
   `max(0, 1 - abs((x - center) / halfWidth))`)
-* `onePoleTauMs(x, tauMs, stateId)` (bounded state, see semantics below)
+- `onePoleTauMs(x, tauMs, stateId)` (bounded state, see semantics below)
 
 **Op admission policy:**
 
@@ -443,18 +448,18 @@ output = state[stateId]
 
 ### 9.1 v0 constraints
 
-* Macro deps: **scalar** params/meters only (initially):
-  * `f32`, `bool`, `enum` (no `i32`/`u32` until demonstrated need)
-* No loops, no user-defined functions, no allocations.
-* No arbitrary external calls (pure evaluation only, except stateful smoothing).
-* Resource caps enforced at compile time (see section 6.1).
+- Macro deps: **scalar** params/meters only (initially):
+  - `f32`, `bool`, `enum` (no `i32`/`u32` until demonstrated need)
+- No loops, no user-defined functions, no allocations.
+- No arbitrary external calls (pure evaluation only, except stateful smoothing).
+- Resource caps enforced at compile time (see section 6.1).
 
 ### 9.2 Non-goals
 
-* This is **not** a scripting language.
-* This does **not** replace the DSP graph.
-* This does **not** create new planes or new storage formats.
-* This does **not** allow audio thread to write params.
+- This is **not** a scripting language.
+- This does **not** replace the DSP graph.
+- This does **not** create new planes or new storage formats.
+- This does **not** allow audio thread to write params.
 
 ---
 
@@ -462,12 +467,12 @@ output = state[stateId]
 
 Macro programs must be part of the emitted plan so the worklet can evaluate them even when defs/spec aren't present.
 
-* Plans must remain self-sufficient:
-  * include slot `kind` metadata (already locked in)
-  * include compiled macro programs (this feature)
-  * string keys compiled to slot indices
-* Version macro program format (`magic`, `version`, `flags`) for forwards compatibility.
-* Lexicographic ordering ensures deterministic builds across machines.
+- Plans must remain self-sufficient:
+  - include slot `kind` metadata (already locked in)
+  - include compiled macro programs (this feature)
+  - string keys compiled to slot indices
+- Version macro program format (`magic`, `version`, `flags`) for forwards compatibility.
+- Lexicographic ordering ensures deterministic builds across machines.
 
 ---
 
@@ -475,23 +480,23 @@ Macro programs must be part of the emitted plan so the worklet can evaluate them
 
 ### 11.1 Golden tests (numerical)
 
-* Given fixed inputs over multiple blocks:
-  * outputs match expected values (with appropriate tolerances)
-  * smoothing behaves predictably
-* Use `absTol` and `relTol` for floating ops; exact for int-like paths.
+- Given fixed inputs over multiple blocks:
+  - outputs match expected values (with appropriate tolerances)
+  - smoothing behaves predictably
+- Use `absTol` and `relTol` for floating ops; exact for int-like paths.
 
 ### 11.2 Continuity tests ("feel tests")
 
-* No discontinuity at neutral center beyond deadzone.
-* No discontinuity when switching modes (weights ramp smoothly).
-* Monotonicity where intended (e.g., cutoff moves one direction).
+- No discontinuity at neutral center beyond deadzone.
+- No discontinuity when switching modes (weights ramp smoothly).
+- Monotonicity where intended (e.g., cutoff moves one direction).
 
 ### 11.3 Runtime constraints
 
-* Zero alloc checks (where possible)
-* Bounded state
-* Deterministic ordering (stable input vector, stable deps resolution)
-* Finite output validation (no NaN/Inf escapes)
+- Zero alloc checks (where possible)
+- Bounded state
+- Deterministic ordering (stable input vector, stable deps resolution)
+- Finite output validation (no NaN/Inf escapes)
 
 ---
 
@@ -501,15 +506,15 @@ Macro programs must be part of the emitted plan so the worklet can evaluate them
 
 Inputs:
 
-* `colorFx.mode : enum` (mode buttons: FILTER, NOISE, DUB ECHO, SPACE, CRUSH, etc.)
-* `colorFx.knob : f32` (0..1 or bipolar)
-* optional `colorFx.on : bool`
+- `colorFx.mode : enum` (mode buttons: FILTER, NOISE, DUB ECHO, SPACE, CRUSH, etc.)
+- `colorFx.knob : f32` (0..1 or bipolar)
+- optional `colorFx.on : bool`
 
 Derived:
 
-* routing weights: `wetFilter`, `wetNoise`, `wetEcho`, `wetSpace`, `wetCrush`
-* shaped params per mode (cutoffs, sends, feedback, etc.)
-* anti-click behavior via smoothing on weights and/or key params
+- routing weights: `wetFilter`, `wetNoise`, `wetEcho`, `wetSpace`, `wetCrush`
+- shaped params per mode (cutoffs, sends, feedback, etc.)
+- anti-click behavior via smoothing on weights and/or key params
 
 ### 12.2 Piecewise bipolar mapping
 
@@ -517,18 +522,18 @@ Derived:
 
 Must support:
 
-* deadzone around center
-* sign split (`leftHalf`, `rightHalf`)
-* independent shaping for left vs right
-* log-frequency mapping + smoothing
+- deadzone around center
+- sign split (`leftHalf`, `rightHalf`)
+- independent shaping for left vs right
+- log-frequency mapping + smoothing
 
 ### 12.3 Mode gating without clicks
 
 Switching mode should not click:
 
-* smooth routing weights with one-pole (5–20ms typical)
-* optionally smooth sensitive parameters
-* weights ramp from previous state, not from zero
+- smooth routing weights with one-pole (5–20ms typical)
+- optionally smooth sensitive parameters
+- weights ramp from previous state, not from zero
 
 ---
 
@@ -555,10 +560,10 @@ Start with the simplest possible macro:
 // Simple bipolar filter (no mode switching, no piecewise complexity, no smoothing)
 const macros = {
   simpleFilter: macro.outputs({
-    deps: {x: dep.param("filter.knob")},  // -1..1
-    out: ({x}: { x: number }) => ({
-      lpfGain: fx.lerp(0, 1, fx.max(0, -x)),  // left half
-      hpfGain: fx.lerp(0, 1, fx.max(0, x)),   // right half
+    deps: { x: dep.param("filter.knob") }, // -1..1
+    out: ({ x }: { x: number }) => ({
+      lpfGain: fx.lerp(0, 1, fx.max(0, -x)), // left half
+      hpfGain: fx.lerp(0, 1, fx.max(0, x)), // right half
     }),
   }),
 };
@@ -568,9 +573,9 @@ Implement just enough compiler/interpreter to make this work. No smoothing, no e
 
 ### Criteria to proceed
 
-* Core plane + kinds + plan contracts stable
-* No ongoing refactors that would churn plan format
-* Clear first consumer (Sound Color FX / macro controls) with golden tests
+- Core plane + kinds + plan contracts stable
+- No ongoing refactors that would churn plan format
+- Clear first consumer (Sound Color FX / macro controls) with golden tests
 
 ---
 
@@ -597,25 +602,25 @@ When a macro misbehaves (wrong output, clicks, NaNs):
 
 ## 15. Summary (what we locked)
 
-* ✅ Macros/Derived Signals will exist in spec as serializable, deterministic derived graphs.
-* ✅ No param-plane writes from audio thread; derived values feed DSP directly; publish to meters if needed.
-* ✅ Three layers: ergonomic authoring → primitive IR → compiled program.
-* ✅ Minimal op set, grows only by demonstrated need with strict admission criteria.
-* ✅ Plan/handoff will carry compiled macro programs to keep worklet self-sufficient.
-* ✅ Strong testing strategy to preserve "feel" (continuity, no clicks, determinism).
-* ✅ **4-phase execution model** with explicit 1-block-delayed feedback semantics.
-* ✅ **Latch rule:** Params/meters latched at phase 1, constant for entire block.
-* ✅ **Finite output guarantee** to prevent NaN poisoning DSP.
-* ✅ **Precise `onePoleTauMs` physics** with init-from-input and per-block alpha.
-* ✅ **Input normalization contract** independent of defs at runtime.
-* ✅ **Value model** as f32 semantic type with explicit rounding points.
-* ✅ **Bool/enum canonicalization** rules for cross-platform consistency.
-* ✅ **Comparison ops output canonical 0.0/1.0** for boolean consistency.
-* ✅ **Stable lexicographic ordering** for deterministic builds across machines.
-* ✅ **Serialization format** (little-endian, IEEE-754 binary32, magic as raw ASCII bytes, flags field) for
+- ✅ Macros/Derived Signals will exist in spec as serializable, deterministic derived graphs.
+- ✅ No param-plane writes from audio thread; derived values feed DSP directly; publish to meters if needed.
+- ✅ Three layers: ergonomic authoring → primitive IR → compiled program.
+- ✅ Minimal op set, grows only by demonstrated need with strict admission criteria.
+- ✅ Plan/handoff will carry compiled macro programs to keep worklet self-sufficient.
+- ✅ Strong testing strategy to preserve "feel" (continuity, no clicks, determinism).
+- ✅ **4-phase execution model** with explicit 1-block-delayed feedback semantics.
+- ✅ **Latch rule:** Params/meters latched at phase 1, constant for entire block.
+- ✅ **Finite output guarantee** to prevent NaN poisoning DSP.
+- ✅ **Precise `onePoleTauMs` physics** with init-from-input and per-block alpha.
+- ✅ **Input normalization contract** independent of defs at runtime.
+- ✅ **Value model** as f32 semantic type with explicit rounding points.
+- ✅ **Bool/enum canonicalization** rules for cross-platform consistency.
+- ✅ **Comparison ops output canonical 0.0/1.0** for boolean consistency.
+- ✅ **Stable lexicographic ordering** for deterministic builds across machines.
+- ✅ **Serialization format** (little-endian, IEEE-754 binary32, magic as raw ASCII bytes, flags field) for
   cross-platform safety.
-* ✅ **Resource caps** make "bounded" enforceable at compile time.
-* ✅ **Domain semantics for `pow`** documented with finite-output policy.
+- ✅ **Resource caps** make "bounded" enforceable at compile time.
+- ✅ **Domain semantics for `pow`** documented with finite-output policy.
 
 ---
 

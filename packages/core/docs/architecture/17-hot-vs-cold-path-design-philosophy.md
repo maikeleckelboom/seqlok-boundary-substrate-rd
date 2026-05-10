@@ -1,448 +1,384 @@
 # Hot Path vs Cold Path: Temperature-Based Design Philosophy
 
-**Type**: Design Principle
-**Date**: 2025-11-19`
-**Related**:
+**Type:** Design principle
 
-- ADR-00C — Meter Writes & Snapshot `into` (Controller side)
-- ADR-00F — ControllerParams.hydrate() for Cold-Path Bulk Updates
-- ADR-00Z — Observer Binding Role in `@seqlok/core`
-- 07 — Seqlok API Shape Rationale
-- 09 — Seqlok API Reference
+Seqlok does not treat all runtime calls as morally equivalent.
+Some calls belong in bounded loops.
+Some calls belong in setup and orchestration.
+The API should not lie about that.
 
----
+This is not a side note about performance.
+It is part of how the public surface stays honest.
 
-## Overview
+Related docs:
 
-Seqlok's API surface is shaped by an implicit **temperature-based design philosophy**: operations are designed for either **hot paths** (real-time, performance-critical) or **cold paths** (human-time, ergonomics-centric), never both.
-
-This document formalizes that philosophy and provides guidance for evaluating existing APIs and designing new features.
+- `03-seqlok-concurrency-model-and-roles.md`
+- `08-seqlok-api-and-naming-rationale.md`
+- `09-seqlok-api-reference.md`
 
 ---
 
-## The Two Temperature Bands
+## 1. The principle
 
-### Hot Path (Performance-Critical)
+The temperature rule is simple:
 
-**Definition:** Operations that execute at **real-time frequencies** with **strict latency requirements**.
+- hot-path work should stay narrow, bounded, and explicit
+- cold-path work should stay setup-oriented, ergonomic, and explicit
+- one verb should not pretend to serve both worlds
 
-**Characteristics:**
+A runtime surface becomes dishonest when it hides large differences in cost or semantic expectations behind one generic entrypoint.
 
-- Called at audio rate (48+ kHz), frame rate (60–240 Hz), or particle update rate (1000+ Hz)
-- Must complete within microsecond or sub-millisecond budgets
-- Subject to underrun/dropout/glitch consequences if delayed
-- **Allocation-free** (no GC pressure)
-- **Bounded worst-case latency** (predictable, no unbounded loops)
-- **Lock-free** (no blocking waits)
+Typical failure modes:
 
-**Performance Contracts:**
+- a seemingly cheap call performs large copies
+- a convenience API sneaks into a frame loop
+- a setup API is treated like a DSP primitive
+- a hot-path operation accumulates cold-path validation baggage
 
-- Zero allocations per call
-- Bounded retry/spin budgets (e.g., seqlock: 3–5 attempts)
-- Inline-friendly (small, predictable code paths)
-- Cache-conscious (minimize SAB thrashing)
+Seqlok tries to prevent that by naming the temperatures instead of hiding them.
 
-**Examples in Seqlok:**
+---
+
+## 2. Hot path
+
+Hot-path operations may run at frame-rate, block-rate, or other tight-loop cadence.
+
+Hot-path properties:
+
+- bounded work matters
+- hidden allocation is dangerous
+- hidden copying is dangerous
+- blocking is unacceptable
+- semantic ambiguity becomes a runtime bug fast
+
+Examples in Seqlok:
+
+- `processor.params.within(...)`
+- `processor.meters.publish(...)`
+- `controller.params.set(...)`
+- `controller.params.update(...)`
+- `controller.params.stage(...)`
+- observer high-frequency read loops
+
+Hot-path APIs should look narrow because they are narrow.
+
+---
+
+## 3. Cold path
+
+Cold-path operations happen during setup, restore, orchestration, inspection, or other human-time workflows.
+
+Cold-path properties:
+
+- ergonomics matter more
+- allocation is acceptable
+- copying is acceptable when explicit and useful
+- richer validation is acceptable
+- trust-boundary clarity matters more than shaving tiny overheads
+
+Examples in Seqlok:
+
+- `defineSpec(...)`
+- `keysOf(spec)`
+- `planLayout(...)`
+- `buildHandoff(...)`
+- `acceptHandoff(...)`
+- `verifyHandoff(...)`
+- `controller.params.hydrate(...)`
+- full snapshot and restore workflows
+
+Cold-path work is still real work.
+It is just not the work you should be smuggling into a tight loop.
+
+---
+
+## 4. Temperature follows role
+
+Seqlok's temperature doctrine is not floating free from its role doctrine.
+
+### Processor
+
+Processor is the hot-path coherent read role for params and the hot-path write role for meters.
+
+- `params.within(...)` is hot-path
+- `meters.publish(...)` is hot-path
+
+### Observer
+
+Observer is the dedicated high-frequency read-only role.
+
+That is where Seqlok should center patterns such as:
+
+- HUD loops
+- visualization
+- telemetry sampling
+- dedicated inspection surfaces
+
+Observer exists so the architecture does not have to lie and pretend every high-frequency read belongs on controller.
+
+### Controller
+
+Controller reads are valid and important, but they are the colder-path convenience surface.
+
+That makes controller appropriate for:
+
+- UI refresh
+- orchestration
+- debugging
+- ordinary inspection
+
+When docs lose that role distinction, they usually lose the temperature distinction too.
+
+---
+
+## 5. Hot-path surfaces in core
+
+### `processor.params.within(...)`
+
+This is a hot-path coherent param read window.
+
+What it means:
+
+- read params coherently now
+- keep the read window scoped
+- do not treat the callback view as ordinary long-lived state
+
+Example:
 
 ```ts
-// Hot: Audio quantum processing
 processor.params.within((params) => {
-  const { gain, frequency } = params;
-  // DSP loop
-  processor.meters.publish((meters) => {
-    meters.rms = computeRMS();
+  const timeRatio = params["transport.timeRatio"];
+  const mode = params["transport.mode"];
+
+  processor.meters.publish((writer) => {
+    writer.set("output.rms", 0.42 * timeRatio);
+    writer.set("output.peak", mode === 0 ? 0.8 : 0.9);
   });
 });
-
-// Hot: Per-frame meter reads
-const seq = observer.meters.version();
-if (seq !== lastSeq) {
-  const { rms, peak } = observer.meters.snapshot(["rms", "peak"]);
-  updateVU(rms, peak);
-  lastSeq = seq;
-}
-
-// Hot: Scalar param updates
-controller.params.set("gain", slider.value);
-controller.params.update({ gain, pitch, rate });
-
-// Hot: Array mutations via explicit views
-controller.params.stage("eqBands", (dst) => {
-  computeEQCurve(dst.view);
-});
 ```
 
+### `processor.meters.publish(...)`
+
+This is a hot-path coherent meter commit window.
+
+What it means:
+
+- commit one coherent meter frame now
+- keep the write window explicit
+- do not blur meter publication with broader orchestration logic
+
+### `controller.params.set(...)` and `update(...)`
+
+These are narrow controller write surfaces that remain acceptable in hot or near-hot controller flows.
+
+That narrowness is the point.
+Scalar writes should not look like bulk restore.
+
+### `controller.params.stage(...)`
+
+This is the explicit array-mutation surface.
+
+Array work has different cost and shape from scalar writes.
+Seqlok keeps that visible instead of pretending one write verb covers both cleanly.
+
 ---
 
-### Cold Path (Ergonomics-Centric)
+## 6. Cold-path surfaces in core
 
-**Definition:** Operations that execute at **human-time frequencies** with **relaxed latency tolerance**.
+### `defineSpec(...)`
 
-**Characteristics:**
+This is authored-contract work.
+It belongs to authorship and setup, not runtime loops.
 
-- Called on user actions (clicks, preset loads, project opens) or periodic tasks (save, telemetry flush)
-- Typically <1 Hz to ~10 Hz call rates
-- Latency budgets in milliseconds to seconds
-- Can allocate, copy, serialize, or perform I/O
-- Ergonomics and developer experience prioritized over raw speed
+### `keysOf(spec)`
 
-**Performance Allowances:**
+This is ergonomic projection work.
+It is useful, but it is not runtime-temperature doctrine.
 
-- Allocations permitted (one-time costs are acceptable)
-- Unbounded operations allowed (e.g., iteration over all keys)
-- Type conversions, validation, and defensive checks
-- Can touch multiple planes or domains in one call
+Its job is to make canonical keys pleasant to consume.
+It does not own identity.
+It does not belong in hot-path reasoning.
 
-**Examples in Seqlok:**
+### `planLayout(...)`
+
+Planning is cold-path work.
+
+It runs after authored meaning has already been normalized and produces a deterministic layout contract.
+No one should think of planning as something to redo in ordinary runtime loops.
+
+### `buildHandoff(...)` and `acceptHandoff(...)`
+
+These are setup-path boundary operations.
+
+- `buildHandoff(...)` is owner-side setup work
+- `acceptHandoff(...)` is consumer-side trust-boundary work
+
+That boundary matters architecturally.
+It is still not hot-path work.
+
+### `controller.params.hydrate(...)`
+
+This is a cold-path bulk state surface.
+
+Good uses:
+
+- preset recall
+- restore
+- setup
+- bulk patch application
+
+Bad use:
+
+- stuffing it into high-frequency loops and pretending it is equivalent to `set(...)`
+
+---
+
+## 7. A simple temperature test for API design
+
+When evaluating or adding an API, ask four questions.
+
+### 1. How often is it expected to run?
+
+- rare or one-time setup → cold
+- frame/block/update-loop usage → hot
+
+### 2. What is the latency expectation?
+
+- bounded and tight → hot
+- human-time acceptable → cold
+
+### 3. Is copying or allocation acceptable?
+
+- no → hot
+- yes, as part of setup or convenience → cold
+
+### 4. Does the name tell the truth?
+
+A good Seqlok verb should help the caller infer the expected temperature.
+
+That is why surfaces like:
+
+- `set`
+- `update`
+- `stage`
+- `within`
+- `publish`
+- `hydrate`
+- `acceptHandoff`
+
+are better than one giant "do everything" abstraction.
+
+---
+
+## 8. Good temperature separation
 
 ```ts
-// Cold: Preset loading (scalars + arrays in one call)
-const preset = await loadPreset("my-track.json");
-controller.params.hydrate(preset);
+import {
+  defineSpec,
+  keysOf,
+  planLayout,
+  allocateShared,
+  buildHandoff,
+  acceptHandoff,
+  bindController,
+  bindObserver,
+} from "@seqlok/core";
 
-// Cold: Snapshot round-trip
-const snapshot = controller.params.snapshot(); // Full state
-await saveProject(snapshot);
-// ... later
-const loaded = await loadProject();
-controller.params.hydrate(loaded);
+const spec = defineSpec(({ param, meter }) => ({
+  id: "lane",
+  params: {
+    transport: {
+      timeRatio: param.f32({ min: 0.25, max: 4 }),
+      mode: param.enum(["normal", "granular"]),
+    },
+  },
+  meters: {
+    output: {
+      rms: meter.f32(),
+      peak: meter.f32(),
+    },
+  },
+}));
 
-// Cold: Controller-side meter snapshots for persistence
-const meterState = controller.meters.snapshot(["spectrum", "history"], {
-  into: { spectrum: scratchBuffer }, // Optional optimization
-});
-await logTelemetry(meterState);
+const keys = keysOf(spec);
+const plan = planLayout(spec);
+const backing = allocateShared(plan);
+const handoff = buildHandoff(plan, backing);
 
-// Cold: Observer binding lifecycle
-const vizObserver = bindObserver(spec, handoff);
-// ... when done
-vizObserver.dispose();
+const controller = bindController(spec, plan, backing);
+const observer = bindObserver(acceptHandoff(handoff));
 
-// Cold: Domain growth/swap
-const newHandoff = await growDomain(currentHandoff, newCapacity);
-controller.swap(newHandoff);
-```
+// narrow write
+controller.params.set(keys.params.transport.timeRatio, 1.25);
 
----
-
-## How Temperature Shapes API Design
-
-### Separate Verbs by Temperature
-
-Hot and cold paths use **different verbs** to signal their temperature:
-
-| Operation              | Hot Path Verb | Cold Path Verb | Why Separate                                         |
-| ---------------------- | ------------- | -------------- | ---------------------------------------------------- |
-| Scalar param writes    | `set/update`  | `hydrate`      | Hot stays lightweight; cold accepts arrays too       |
-| Array param writes     | `stage`       | `hydrate`      | Hot uses explicit views; cold accepts typed arrays   |
-| Param reads            | —             | `snapshot`     | Controller snapshots are always cold (for save/load) |
-| Meter reads (observer) | `snapshot`    | —              | Observer snapshots are always hot (SAB views)        |
-| Meter reads (ctrl)     | —             | `snapshot`     | Controller snapshots are cold (logical copies)       |
-
-**Guideline:** If a verb is called at >10 Hz, it should be hot-path. If <1 Hz, it should be cold-path.
-
----
-
-### Type-Level Hints
-
-Where possible, TypeScript types hint at temperature:
-
-```ts
-// Hot: Generic, works with any subset of keys
-processor.params.within(params => {
-  const { gain } = params; // Inline access
-});
-
-// Cold: Accepts full param shape (scalars + arrays)
-type HydratePatch<S> = {
-  [K in ParamKeys<S>]?: ParamValueFor<S, K>;
-};
-controller.params.hydrate(patch: HydratePatch<S>);
-
-// Hot: Returns ephemeral SAB-backed views
-observer.meters.snapshot(): MetersSnapshot<S>; // TypedArrays are views
-
-// Cold: Returns logical copies (safe to persist)
-controller.meters.snapshot(): MetersSnapshot<S>; // Detachable buffers
-```
-
----
-
-### Error Handling Temperature
-
-Error handling respects temperature semantics (see ADR-015):
-
-**Hot path:**
-
-- **Fail-fast**: Throw immediately on contract violations
-- **No recovery attempts**: Assume caller is wrong, not the system
-- **Minimal diagnostics**: Error code + key, no stack traces or object inspection
-- Examples: `binding.unknownKey`, `binding.typeMismatch`
-
-**Cold path:**
-
-- **Defensive validation**: Check inputs before touching state
-- **Rich diagnostics**: Include context, suggestions, related keys
-- **Batch validation**: Collect multiple errors before throwing
-- Examples: `hydrate` validates all keys before any writes
-
----
-
-## Case Study: Why `update` Stays Scalar-Only (ADR-00F)
-
-**Scenario:** User wants to update params with both scalars and arrays.
-
-**Wrong approach:** Relax `update` to accept arrays.
-
-```ts
-// ❌ If we allowed this:
-controller.params.update({
-  gain: 0.8, // 4 bytes
-  eqBands: curve, // 4 KB array
-});
-```
-
-**Problems with mixing temperatures:**
-
-1. **Temperature confusion**: `update` is documented as hot-path, but now hides expensive operations
-2. **Performance surprise**: Caller can't tell if this is "cheap" or "expensive" without inspecting the patch
-3. **Footgun potential**: Easy to accidentally put array updates in 60 Hz loops
-4. **Mental model breaks**: "update is fast" no longer holds
-
-**Correct approach:** Separate verbs by temperature.
-
-```ts
-// ✅ Hot: Scalar-only, obviously cheap
-controller.params.update({ gain: 0.8, pitch: 1.05 });
-
-// ✅ Hot: Array-only, explicit view semantics
-controller.params.stage("eqBands", (dst) => {
-  dst.view.set(curve);
-});
-
-// ✅ Cold: Bulk state, accepts everything
+// bulk restore
 controller.params.hydrate({
-  gain: 0.8,
-  pitch: 1.05,
-  eqBands: curve,
+  [keys.params.transport.timeRatio]: 1.0,
+  [keys.params.transport.mode]: "granular",
 });
+
+// dedicated read-side loop
+function sampleHud() {
+  const meters = observer.meters.snapshot([
+    keys.meters.output.rms,
+    keys.meters.output.peak,
+  ]);
+  drawMeters(meters);
+}
 ```
 
-Each verb's name and signature **signals its temperature**, preventing misuse.
+What this gets right:
+
+- authorship and planning stay cold-path
+- trust-boundary acceptance stays setup-path
+- controller scalar write stays narrow
+- controller bulk hydration stays explicit
+- observer carries the dedicated high-frequency read role
 
 ---
 
-## Case Study: Controller vs Observer Snapshots (ADR-00Z)
-
-ADR-00Z distinguishes controller and observer snapshots based on temperature:
-
-**Controller snapshots (cold):**
+## 9. Bad temperature collapse
 
 ```ts
-const snapshot = controller.meters.snapshot(["spectrum"]);
-await persistToDatabase(snapshot); // Safe: logical copy
-```
-
-- **Use case**: Save/restore, presets, off-line analysis
-- **Semantic**: Logical copy, safe to persist or send over IPC
-- **Performance**: Can allocate, copy into caller buffers via `into`
-
-**Observer snapshots (hot):**
-
-```ts
-const { spectrum } = observer.meters.snapshot(["spectrum"]);
-device.queue.writeBuffer(gpuBuffer, 0, spectrum); // Ephemeral SAB view
-```
-
-- **Use case**: GPU uploads, UDP streaming, real-time visualization
-- **Semantic**: Ephemeral SAB-backed view, valid this tick only
-- **Performance**: Zero-copy, direct view into shared memory
-
-**Why different?**
-
-- Controller needs **persistence semantics** (cold path: project save, telemetry logging)
-- Observer needs **streaming semantics** (hot path: frame-rate GPU uploads, network packets)
-
-Temperature determines which trade-off to make.
-
----
-
-## Decision Framework for New Features
-
-When designing a new operation, follow this process:
-
-### Step 1: Determine Expected Call Frequency
-
-- **>10 Hz**: Hot path
-- **1–10 Hz**: Probably hot, consider cold if operation is large/complex
-- **<1 Hz**: Cold path
-
-### Step 2: Identify Latency Budget
-
-- **Sub-millisecond**: Must be hot
-- **1–10 ms**: Probably hot
-- **>10 ms**: Can be cold
-
-### Step 3: Check Allocation Requirements
-
-- **Must be zero-allocation**: Must be hot
-- **Can allocate occasionally**: Can be cold
-
-### Step 4: Choose API Style
-
-**If hot:**
-
-- Use specialized verbs (`set`, `stage`, `within`, `publish`)
-- Require typed views or fixed-size operations
-- Document performance contracts explicitly
-- Throw immediately on errors (fail-fast)
-
-**If cold:**
-
-- Use ergonomic verbs (`hydrate`, `snapshot`, `bindObserver`)
-- Accept flexible shapes (partial patches, full state)
-- Allow allocations and conversions
-- Provide rich error diagnostics
-
-### Step 5: Validate Against Existing Patterns
-
-- Does this follow the temperature split in related APIs?
-- Does the verb name signal its temperature clearly?
-- Can users tell from the signature whether it's hot or cold?
-
----
-
-## Examples Throughout Seqlok
-
-### Controller Binding
-
-```ts
-interface ControllerParams<S> {
-  // Hot path
-  set<K extends ScalarParamKeys<S>>(key: K, value: ParamValueFor<S, K>): void;
-  update(patch: ScalarParamPatch<S>): void;
-  stage<K extends ArrayParamKeys<S>>(
-    key: K,
-    cb: (view: ArrayParamView<S, K>) => void,
-  ): void;
-
-  // Cold path
-  hydrate(patch: HydratePatch<S>): void;
-  snapshot(): ParamsSnapshot<S>; // Controller snapshots are cold
-
-  // Meta
-  version(): PUSeq;
-}
-```
-
-### Processor Binding
-
-```ts
-interface ProcessorParams<S> {
-  // Hot path only
-  within<R>(cb: (params: ParamShape<S>) => R): R;
-}
-
-interface ProcessorMeters<S> {
-  // Hot path only
-  publish(cb: (writer: MeterWriter<S>) => void): void;
-}
-```
-
-### Observer Binding
-
-```ts
-interface ObserverParams<S> {
-  // Hot path only (ephemeral SAB views)
-  snapshot(): ParamsSnapshot<S>;
-  snapshot<K extends readonly ParamKeys<S>[]>(
-    keys: K,
-  ): SnapshotParamsObject<S, K>;
-  version(): PUSeq;
-}
-
-interface ObserverMeters<S> {
-  // Hot path only (ephemeral SAB views)
-  snapshot(): MetersSnapshot<S>;
-  snapshot<K extends readonly MeterKeys<S>[]>(
-    keys: K,
-  ): SnapshotMetersObject<S, K>;
-  version(): MUSeq;
-}
-```
-
----
-
-## Common Patterns and Anti-Patterns
-
-### ✅ Good: Temperature-Aware Code
-
-```ts
-// Hot path: version check + selective read
-let lastSeq: MUSeq = 0;
-
-function onFrame() {
-  const seq = observer.meters.version();
-  if (seq !== lastSeq) {
-    const { rms, peak } = observer.meters.snapshot(["rms", "peak"]);
-    updateVU(rms, peak);
-    lastSeq = seq;
-  }
-  requestAnimationFrame(onFrame);
-}
-
-// Cold path: bulk preset load
-async function loadPreset(name: string) {
-  const preset = await fetch(`/presets/${name}.json`).then((r) => r.json());
-  controller.params.hydrate(preset); // One call, all data
-}
-```
-
-### ❌ Bad: Temperature Confusion
-
-```ts
-// ❌ WRONG: Using cold-path verb at hot frequency
-function onFrame() {
-  const preset = getCurrentPresetState(); // Full state extraction
-  controller.params.hydrate(preset); // Bulk write at 60 Hz
-  requestAnimationFrame(onFrame);
-}
-
-// ❌ WRONG: Using hot-path verb for large bulk updates
-async function loadPreset(name: string) {
-  const preset = await fetch(`/presets/${name}.json`).then((r) => r.json());
-
-  // Manually splitting scalars and arrays
-  controller.params.update({
-    gain: preset.gain,
-    pitch: preset.pitch,
-    // ... 50 more scalars
+function everyFrame() {
+  const freshSpec = defineSpec({
+    params: {
+      gain: { kind: "f32", min: 0, max: 1 },
+    },
+    meters: {},
   });
 
-  controller.params.stage("eqBands", (dst) => dst.view.set(preset.eqBands));
-  controller.params.stage("envelope", (dst) => dst.view.set(preset.envelope));
-  // ... 10 more arrays
+  const keys = keysOf(freshSpec);
+  const plan = planLayout(freshSpec);
 
-  // Should have just used hydrate()
+  controller.params.hydrate({
+    [keys.params.gain]: Math.random(),
+  });
 }
 ```
 
+What is wrong here:
+
+- authorship is being recreated in a runtime loop
+- planning is being treated like ordinary runtime work
+- bulk hydration is being used where a narrow write should exist
+- setup-path and hot-path concerns are being collapsed into one blob
+
+This is exactly the kind of confusion the temperature doctrine exists to prevent.
+
 ---
 
-## Summary
+## 10. What this doctrine is not saying
 
-Temperature-based design is a **first-class principle** in Seqlok:
+This document is not claiming:
 
-- **Hot path**: Real-time frequencies, allocation-free, bounded latency, specialized verbs
-- **Cold path**: Human-time frequencies, ergonomic, flexible types, bulk operations
+- that controller reads are invalid
+- that all observer work is magically free
+- that all setup work is cheap just because it is cold
+- that API design can ignore semantics and only think about speed
 
-Every Seqlok operation has a temperature. Every new API must declare its temperature and honor the corresponding performance contracts.
+The point is simpler:
 
-This philosophy is reflected in:
-
-- ADR-00F's decision to separate `update` (hot) and `hydrate` (cold)
-- ADR-00Z's distinction between controller (cold) and observer (hot) snapshots
-- ADR-00C's `into` optimization for hot polling loops
-- The entire binding API surface (see 09-seqlok-api-reference.md)
-
-When in doubt, ask: **"Is this hot or cold?"** The answer determines everything else.
+- tell the truth about intended runtime temperature
+- keep hot-path and cold-path semantics explicit
+- do not let authorship, setup, and runtime loops bleed into one another

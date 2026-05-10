@@ -1,593 +1,543 @@
 # Seqlok: Goals and Non-Goals
 
-**Purpose:** Define what Seqlok _is for_ and what it explicitly refuses to do.
+**Purpose:** Define what Seqlok is for, what it owns, and what it explicitly refuses to become.
 
 ---
 
-## Problem Statement
+## Problem statement
 
-Modern web and runtime applications increasingly need to share state between fundamentally different execution contexts:
+Seqlok exists for systems that need to coordinate state across an execution boundary where the two sides do not live under the same runtime conditions.
 
-- **UI thread** ↔ **Real-time audio processing** (AudioWorklet)
-- **Main thread** ↔ **Compute workers** (Web Workers)
-- **JavaScript** ↔ **WebAssembly modules**
-- **Simulation engines** ↔ **Rendering/UI**
+Examples:
 
-These contexts have very different constraints:
+- **UI / host thread** ↔ **real-time audio processing**
+- **main thread** ↔ **compute worker**
+- **JavaScript** ↔ **shared WebAssembly memory**
+- **engine loop** ↔ **visualization / telemetry surface**
 
-| UI / Main Thread              | Real-Time / Worker Context          |
-| :---------------------------- | :---------------------------------- |
-| GC pauses acceptable          | **No GC on the hot path**           |
-| `async/await` natural         | **Synchronous reads only**          |
-| Convenience over raw speed    | **Strict microsecond budgets**      |
-| `postMessage` cost acceptable | **No large copies per quantum**     |
-| Can use promises & closures   | **Must avoid allocations in loops** |
+Those boundaries are hard for the same recurring reasons:
 
-**The gap Seqlok fills:**
+- one side wants ergonomics
+- the other side wants bounded latency
+- the shared state still has to remain coherent enough to reason about
 
-> A coherent, atomic, type-safe way to share state between these worlds
-> **without** sacrificing real-time behavior on the processor side.
+Naive approaches fail in predictable ways:
 
-Seqlok sits **below** app logic and **above** raw `SharedArrayBuffer + Atomics`. It focuses on one thing: **fast,
-predictable, shared memory coordination** between a "Controller" and a "Processor".
+- `postMessage` copies too much and schedules too loosely
+- raw `SharedArrayBuffer + Atomics` is too easy to wire incorrectly
+- ad hoc offsets turn into folklore, coupling, and silent drift
 
----
+Seqlok fills a narrower gap than generic state management:
 
-## Core Goals
+> an authored contract that becomes a deterministic shared-memory runtime contract, with explicit role bindings across a boundary
 
-### 1. Real-Time Friendly Communication
-
-Seqlok is designed so the **Processor side** (AudioWorklet, RT worker, tight simulation loop) can:
-
-- Read params without taking OS locks
-- Avoid object allocations on the hot path (Seqlok itself doesn't allocate in `within`/`publish`)
-- Use operations that are **bounded and predictable** (small retry loops, no syscalls)
-- Work against **cache-friendly, tightly packed** memory layouts
-
-It uses a **seqlock-based protocol** under the hood:
-
-- Reads are **lock-free and retry-based**:
-
-  - They may spin briefly if a write is in progress, but they don't block on a mutex.
-
-- Writes are short, bounded critical sections (update a few scalars/arrays, bump counters).
-
-**Why this matters:** An AudioWorklet callback typically has ~3ms per quantum at 44.1kHz. A single GC pause or blocking
-lock is enough to glitch audio. Seqlok's read path is designed to be predictable and free from JS-level allocations.
+Seqlok sits below app semantics and above raw shared-memory primitives.
+It is not your domain model.
+It is the coordination kernel your domain model can rely on.
 
 ---
 
-### 2. Coherent Snapshots
+## Core model
 
-When the Processor reads state, it gets a **coherent snapshot**: all values reflect a single logical moment, not a mix
-of old and new.
+Seqlok begins with an authored contract.
 
-```ts
-// ✅ GOOD: coherent read
-processor.params.within((p) => {
-  const ratio = p.timeRatio; // 1.5
-  const coeffs = p.coeffs; // coeffs correspond to ratio = 1.5
-});
+That contract is normalized into a validated runtime contract.
+From there, Seqlok derives:
 
-// ❌ TORN READ (what Seqlok prevents):
-// ratio might be 1.5 while coeffs are still from ratio = 1.0
+- a deterministic plan
+- a backing realization
+- an explicit handoff across the boundary
+- role-specific bindings
+
+The mental model is:
+
+```text
+authored contract
+  → defineSpec(...)
+    → validated runtime contract
+      → planLayout(...)
+        → backing
+          → handoff
+            → accepted handoff
+              → role bindings
 ```
 
-The seqlock logic ensures that if a write lands while the Processor is reading:
+Those role bindings are not only controller and processor.
+Seqlok has three first-class roles:
 
-- The read is retried until it sees a self-consistent state.
-- The Processor never sees "partially updated" params.
+- **Controller** writes params and reads meters
+- **Processor** reads params and writes meters
+- **Observer** reads params and meters
 
-This is crucial for:
-
-- Audio DSP (filters, time-stretchers, dynamics)
-- Physics and game simulations
-- Any domain where internal consistency across multiple fields matters more than "eventual" accuracy.
+That is the runtime ownership model the library is shaped around.
 
 ---
 
-### 3. SWMR Only: Single-Writer Multiple-Reader
+## Core goals
 
-Seqlok enforces **strict ownership** per data domain:
+### 1. Bounded, real-time-friendly coordination
 
-- **Params domain:**
+Seqlok is designed so the time-sensitive side of a system can operate against shared state without inheriting general-purpose application-state costs.
 
-  - **Writer:** Controller
-  - **Readers:** Processor + diagnostics
+That means:
 
-- **Meters domain:**
+- no lock-based coordination in the hot path
+- no hidden kernel allocations inside hot-path primitives
+- bounded retry and spin behavior
+- deterministic memory layout
+- coherent snapshots instead of torn multi-field reads
 
-  - **Writer:** Processor
-  - **Readers:** Controller + tools
-
-There is **never more than one writer** for a given domain.
-
-This design:
-
-- Makes the seqlock protocol tractable and performant
-- Eliminates an entire class of conflicts ("two writers racing to update the same field")
-- Keeps the mental model clear:
-  **Controller owns inputs; Processor owns outputs.**
-
-If your system needs true multi-writer concurrency on the _same_ fields, Seqlok is not the right primitive.
+This is why Seqlok uses per-domain seqlock discipline and explicit role ownership instead of queues pretending to be state.
 
 ---
 
-### 4. Schema-First, Deterministic Layout
+### 2. Coherent shared-state exchange
 
-All shared state is defined **up front** via a typed DSL. For example:
+When a role reads a Seqlok domain coherently, it should see one stable domain view rather than an accidental mixture of old and new bytes.
+
+That matters whenever multiple values only make sense together.
+
+Examples:
+
+- a time ratio and the coefficients derived from it
+- a mode enum and the array data interpreted under that mode
+- a meter frame that belongs to one processor commit
+
+The goal is not "latest at all costs."
+The goal is coherent enough to reason about.
+
+---
+
+### 3. One explicit writer per domain
+
+Seqlok is built on strict per-domain SWMR ownership.
+
+- **Param domain**
+
+  - writer: controller
+  - readers: processor, observer
+
+- **Meter domain**
+  - writer: processor
+  - readers: controller, observer
+
+This is not a usage hint.
+It is the law that keeps the concurrency model tractable.
+
+If a use case needs multiple writers to the same domain, that is outside Seqlok's intended shape.
+
+---
+
+### 4. Authored contract first
+
+Seqlok is not "a typed callback DSL."
+It begins with an authored contract.
+
+That contract may be authored through:
+
+- a plain object / AST-style shape
+- a builder callback for premium TypeScript ergonomics
+
+Those are authoring surfaces, not competing contract systems.
+
+The important boundary is that authored meaning becomes explicit and normalized before planning begins.
+That gives Seqlok:
+
+- cleaner ownership
+- better tooling possibilities
+- a portable contract shape
+- one semantic boundary instead of several half-boundaries
+
+---
+
+### 5. Deterministic runtime contract and plan
+
+Given the same authored meaning, Seqlok should produce the same validated runtime contract and the same plan.
+
+That means:
+
+- the same canonical field identity
+- the same normalized ranges and shapes
+- the same layout plan
+- the same compatibility metadata
+
+This is why the contract stays narrow:
+
+- fixed-length arrays
+- closed enum vocabularies
+- scalar numeric ranges
+- no runtime field growth
+
+Determinism here is not aesthetic.
+It is what makes handoff, compatibility checks, diagnostics, and multi-agent reasoning possible.
+
+---
+
+### 6. Human-facing authored structure, singular runtime identity
+
+Seqlok accepts nested authored structure because humans need structure.
+
+Example:
 
 ```ts
 const spec = defineSpec(({ param, meter }) => ({
+  id: "lane",
   params: {
-    frequency: param.f32({ min: 20, max: 20_000 }),
-    waveform: param.enum(["sine", "square", "saw"]),
-    harmonics: param.f32.array({ length: 16 }),
+    transport: {
+      timeRatio: param.f32({ min: 0.25, max: 4 }),
+      mode: param.enum(["normal", "granular"]),
+    },
+    mixer: {
+      eqBands: param.f32.array({ length: 8 }),
+    },
   },
   meters: {
-    rms: meter.f32(),
-    spectrum: meter.f32.array({ length: 512 }),
+    output: {
+      rms: meter.f32(),
+      peak: meter.f32(),
+    },
   },
 }));
 ```
 
-From this spec, Seqlok derives:
+But nested authored structure is not the ABI identity model.
 
-- A **deterministic memory plan** (planes, offsets, element counts)
-- Clear TS types for controller and processor bindings
-- Slots for seqlock counters in control planes
-- A plan that can be reproduced identically in another agent from a compact handoff
-
-There is:
-
-- No runtime schema negotiation
-- No reflection-based plan building
-- No dynamic "oh, this field just appeared" behavior
-
-Specs are **structural and stable**: once planned, both sides know exactly what’s in memory.
-
----
-
-### 5. Type Safety Throughout
-
-Seqlok leans heavily on TypeScript so that many illegal states are just **unrepresentable**:
+Canonical runtime keys are:
 
 ```ts
-// ✅ Type-safe: TS knows 'waveform' is 'sine' | 'square' | 'saw'
-controller.params.set("waveform", "sine");
-
-// ❌ Compile-time error
-controller.params.set("waveform", "triangle");
-//            ~~~~ Type '"triangle"' is not assignable to type '"sine" | "square" | "saw"'.
-
-// ✅ Array access: TS knows harmonics is a read-only Float32Array-like view
-processor.params.within((p) => {
-  const first = p.harmonics[0]; // number
-});
+spec.params["transport.timeRatio"];
+spec.params["transport.mode"];
+spec.params["mixer.eqBands"];
+spec.meters["output.rms"];
+spec.meters["output.peak"];
 ```
 
-Design locks:
+That split is intentional:
 
-- **Zero `any`** in the public API.
-- Strongly typed builders (`param.f32`, `param.enum`, `meter.f32.array`, …).
-- Controller/Processor bindings preserve the spec's semantics at the type level.
-- `@ts-expect-error` only in tests that deliberately probe invalid usage.
+- structural authorship for humans
+- one canonical flat identity model for runtime
 
-The result: many misuses (wrong key, wrong type, invalid enum literal) fail fast at compile time instead of becoming
-rare runtime bugs.
+Seqlok does not tolerate two competing runtime identity systems.
 
 ---
 
-### 6. Explicit Fail-Fast Philosophy
+### 7. Explicit role bindings across the boundary
 
-Seqlok operates at a **primitive level**: memory plan, shared buffers, concurrency. At this level, many errors are
-fundamentally **unrecoverable** without risking corruption.
+Seqlok does not stop at planning memory.
+It exposes explicit role bindings that encode the runtime ownership model.
 
-If you:
+Canonical flow:
 
-- Provide invalid or mismatched backing memory
-- Violate allocation contracts
-- Pass malformed or incompatible handoffs
-- Attempt to bind with a mismatched spec/plan
+```ts
+import {
+  defineSpec,
+  planLayout,
+  allocateShared,
+  buildHandoff,
+  acceptHandoff,
+  bindController,
+  bindProcessor,
+  bindObserver,
+} from "@seqlok/core";
 
-Seqlok will throw a typed `SeqlokError` _immediately_.
+const spec = defineSpec(({ param, meter }) => ({
+  id: "lane",
+  params: {
+    transport: {
+      timeRatio: param.f32({ min: 0.25, max: 4 }),
+    },
+  },
+  meters: {
+    output: {
+      rms: meter.f32(),
+    },
+  },
+}));
 
-It will **not**:
+const plan = planLayout(spec);
+const backing = allocateShared(plan);
+const handoff = buildHandoff(plan, backing);
 
-- Attempt silent recovery
-- Try to "patch up" mismatched layouts
-- Fall back to lossy behavior
+const controller = bindController(spec, plan, backing);
 
-The philosophy is simple:
-
-> Fail fast, with a clear error,
-> and let higher-level code decide how to recover.
-
----
-
-## Hard Constraints
-
-### Shared Memory Model: SharedArrayBuffer + Atomics
-
-Seqlok assumes:
-
-- `SharedArrayBuffer` is available and enabled
-
-  - Browsers: COOP/COEP headers and cross-origin isolation
-  - Runtimes: SAB support and proper flags
-
-- `Atomics` API is available
-- A worker model (Web Workers, AudioWorklets, Node worker_threads, etc.)
-
-There is **no fallback** mode without SAB:
-
-1. The coherence guarantees depend directly on true shared memory.
-2. Polyfills using `postMessage` would break real-time assumptions.
-3. “Degraded modes” are more dangerous than explicit failure here.
-
-If SAB is not available, Seqlok should not be used.
-
----
-
-### Concurrency Model: SWMR Only
-
-Seqlok's roles are fixed:
-
-```text
-Controller:
-  - Writes params
-  - Reads meters
-
-Processor:
-  - Reads params
-  - Writes meters
-
-Consumers (optional):
-  - Read meters only (via controller or aggregated views)
+const accepted = acceptHandoff(handoff);
+const processor = bindProcessor(accepted);
+const observer = bindObserver(accepted);
 ```
 
-It will **never** grow support for:
-
-- Multiple controllers writing the same params plane
-- Multiple processors writing to the same meters plane
-- Bidirectional writes to the same domain
-
-If you need multi-writer semantics, use a different concurrency primitive and accept the extra complexity/overhead.
-Seqlok optimizes for the **single-writer case** and will not compromise that.
+This explicitness is a feature.
+The library should not blur away where the trust boundary or the role boundary lives.
 
 ---
 
-### Schema Commitment
+### 8. Strong TypeScript guidance without pretending TypeScript is the authority
 
-Once you:
+Seqlok uses TypeScript heavily so illegal usage is harder to express.
 
-1. Define a spec
-2. Plan it
-3. Allocate backing memory
+That includes:
 
-the structure is treated as **frozen**:
+- typed authoring surfaces
+- typed normalized specs
+- typed keys and snapshots
+- typed bindings per role
 
-- No adding/removing params/meters in-place
-- No changing a param from `f32` to `i32`
-- No resizing arrays
-
-If your schema needs to change:
-
-- Define a new spec
-- Plan + allocate a new backing
-- Migrate state and swap (e.g., with a higher-level "swap at frame" mechanism)
-
-This immutability is what enables:
-
-- Deterministic plan
-- Stable hashes for compatibility checks
-- Predictable performance characteristics
+But TypeScript is not the contract authority.
+The contract authority is the authored meaning normalized by the semantic boundary.
+TypeScript is a guide layer over that, not a substitute for it.
 
 ---
 
-## Non-Goals
+### 9. Fail fast at the coordination boundary
 
-### Not a Generic State Library
+Seqlok sits at a dangerous layer:
 
-Seqlok is **not** Redux, Zustand, Jotai, Valtio, or any other general-purpose state management solution.
+- shared memory
+- explicit layout
+- concurrency primitives
+- cross-agent compatibility
 
-It does **not** provide:
+When invariants break here, quiet recovery is often worse than immediate refusal.
 
-- Middleware or plugin systems
-- Time-travel debugging
-- Undo/redo
-- Derivations / computed selectors
-- React/Vue bindings out of the box
+So Seqlok prefers:
 
-If your state:
+- explicit failure
+- structured errors
+- no silent fallback to fake-safe behavior
 
-- Lives entirely on the main thread, and
-- Does not have hard real-time constraints
+That matters especially for:
 
-then you should probably use a standard UI state library instead.
-
----
-
-### Not a Networking Protocol
-
-Seqlok operates within **one process**, via shared memory.
-
-It does **not** provide:
-
-- Network serialization
-- WebSocket/WebRTC transport
-- Conflict resolution
-- Eventually-consistent replication
-
-For multi-node / over-the-network sync, look at CRDT-based systems (Yjs, Automerge, etc.) or tailored protocols. Seqlok
-simply gives you a very fast, very structured **in-process shared state**.
+- incompatible handoffs
+- invalid backing realization
+- malformed authored input
+- illegal role or binding usage
 
 ---
 
-### Not a Serialization Format
+## Hard constraints
 
-Seqlok's in-memory plan is:
+### Shared memory is not optional
 
-- **Not human-readable**
-- **Not stable** across major versions by design
-- **Not intended** for persistence or disk storage
+Seqlok assumes actual shared memory support.
 
-It is an implementation detail optimized for:
+That means:
 
-- Cache behavior
-- Typed array mapping
-- Concurrency semantics
+- `SharedArrayBuffer` support when using shared SAB-backed flows
+- `Atomics` support
+- worker, worklet, or equivalent multi-agent runtime support where applicable
 
-To store or send data:
-
-- **Read** values out of Seqlok
-- Serialize them via JSON, MessagePack, Protobuf, etc.
-
-Do not treat Seqlok's backing buffer as a long-term storage format.
+There is no doctrine here for "fake shared mode" via message passing.
+That would teach the wrong lessons and dilute the model.
 
 ---
 
-### Not an Actor System or Task Scheduler
+### The authored contract is canonical
 
-Seqlok is about **data**, not about **control flow**.
+The authored contract is the canonical specification boundary.
 
-It does **not** provide:
+Richer authoring surfaces may exist, but they are convenience layers over that contract.
 
-- Message queues
-- Supervision trees
-- Remote procedure calls
-- Task scheduling/APIs
+That means:
 
-It's closer to:
+- the builder callback is not a second contract system
+- the builder callback is not the runtime identity model
+- the plain authored object remains conceptually primary even when the builder is more ergonomic in TypeScript
 
-> “A shared, concurrently safe struct with strong rules”
-
-than to Akka/Erlang actors or a job system. You can certainly build such systems _on top of_ Seqlok, but Seqlok itself
-stays focused on the shared state problem.
+This keeps Seqlok from drifting into builder-only theology.
 
 ---
 
-### Not a Full AudioParam Replacement
+### Schema commitment is real
 
-Seqlok works very well with Web Audio, but it is **not** a drop-in replacement for `AudioParam`.
+Once a spec has been normalized, planned, and backed, its contract shape is fixed for that substrate instance.
 
-**Seqlok params:**
+That means:
 
-- Written from the Controller, read by the Processor
-- Typically updated once per audio quantum (e.g., every 128 frames)
-- Can represent scalars, enums, booleans, and arrays
+- no in-place field addition
+- no field-kind mutation
+- no array resizing
+- no hidden dynamic schema growth
 
-**AudioParam:**
+If the contract needs to change, a new contract realization is required.
 
-- Integrated into the Web Audio graph
-- Supports **sample-accurate** scheduling
-- Has built-in ramping functions (linear, exponential, etc.)
-
-The intended pattern:
-
-- Use Seqlok for **device state**:
-
-  - modes, enumerations, multi-dimensional arrays, configuration blobs
-
-- Use AudioParam for **sample-accurate control signals**:
-
-  - gain envelopes, filter cutoff modulation, etc.
-
-They complement each other; neither fully replaces the other.
+That constraint is what keeps the plan honest.
 
 ---
 
-## Comparison to Alternatives
+### Role ownership is fixed
+
+Seqlok's roles are not negotiable per deployment.
+
+- controller writes params
+- processor writes meters
+- observer is read-only
+
+Different runtimes may host those roles in different places, but the ownership model itself does not drift.
+
+---
+
+## Non-goals
+
+### Not a general-purpose state library
+
+Seqlok is not Redux, Zustand, Jotai, Valtio, Vuex, or a similar app-state system.
+
+It does not aim to own:
+
+- subscriptions
+- computed state graphs
+- reactivity semantics
+- undo/redo
+- store middleware
+- app-level transactions
+
+Those live above the coordination kernel.
+
+---
+
+### Not a networking protocol
+
+Seqlok is about in-process or shared-memory boundary coordination.
+
+It does not aim to own:
+
+- network transport
+- distributed reconciliation
+- multi-node replication
+- eventually consistent sync
+
+If you need distributed state, use a distributed tool.
+
+---
+
+### Not a persistence format
+
+Seqlok backing memory is not a human-readable or long-term persistence format.
+
+It is a runtime realization optimized for:
+
+- layout determinism
+- typed access
+- bounded coordination
+
+Persist logical values, not raw backing bytes, unless you are doing something extremely deliberate above the core contract.
+
+---
+
+### Not an actor system or scheduler
+
+Seqlok owns shared-state coordination, not control-flow orchestration.
+
+It does not aim to provide:
+
+- actor semantics
+- supervision trees
+- task scheduling
+- RPC frameworks
+
+You can build those layers on top, but core should not pretend to be them.
+
+---
+
+### Not a replacement for sample-accurate audio scheduling
+
+Seqlok is a strong fit for audio-adjacent coordination, but it does not replace timing models like `AudioParam` where sample-accurate scheduling is the real requirement.
+
+Use Seqlok for:
+
+- device state
+- engine configuration
+- coherent telemetry
+- multi-field boundary state
+
+Use a sample-clock-native tool when you truly need sample-accurate automation.
+
+---
+
+## Comparisons to alternatives
 
 ### vs `postMessage`
 
-| Feature               | `postMessage`                | Seqlok                                    |
-| :-------------------- | :--------------------------- | :---------------------------------------- |
-| Data movement         | Structured clone (copies)    | Zero-copy shared memory                   |
-| Latency               | Message-queue dependent (ms) | Immediate load/store (plus Atomics)       |
-| Real-time suitability | ❌ GC & queuing can glitch   | ✅ No allocations on hot path (in Seqlok) |
-| Coherence             | Per-message, not cross-field | ✅ Coherent snapshots via seqlock         |
+`postMessage` is good when:
 
-**Use `postMessage` when:**
+- copies are acceptable
+- latency budgets are loose
+- coherence across multi-field shared state is not critical
 
-- You don't have real-time constraints
-- Occasional copies and GC are fine
-- You don't want shared memory complexity
+Seqlok is for the narrower case where:
+
+- copies are too expensive or too vague
+- shared-memory coordination is warranted
+- state needs role ownership and coherent reads
 
 ---
 
-### vs Raw SharedArrayBuffer + Atomics
+### vs raw `SharedArrayBuffer + Atomics`
 
-| Feature        | Raw SAB + Atomics                    | Seqlok                            |
-| :------------- | :----------------------------------- | :-------------------------------- |
-| Type safety    | Manual casting / indexing            | Rich TS types, no `any`           |
-| Layout         | Hand-written offsets & magic numbers | Automatic, deterministic planning |
-| Concurrency    | DIY protocol                         | Built-in SWMR seqlock             |
-| Error handling | Easy silent corruption               | Typed `SeqlokError` on violation  |
-| Dev ergonomics | Low-level, error-prone               | High-level, role-based bindings   |
+Raw SAB plus Atomics gives you primitive power with almost no guardrails.
 
-**Use raw SAB + Atomics when:**
+Seqlok adds:
 
-- You have a very specialized data plan
-- You want to squeeze out every last cycle yourself
-- You're willing to own all concurrency invariants manually
+- authored contract
+- canonical field identity
+- deterministic planning
+- explicit role bindings
+- structured errors
+- coherent domain-level reads and commits
+
+If you want to hand-roll everything, raw primitives remain available.
+Then you own every invariant yourself.
 
 ---
 
 ### vs Web Audio `AudioParam`
 
-| Feature         | `AudioParam`                | Seqlok                                    |
-| :-------------- | :-------------------------- | :---------------------------------------- |
-| Time resolution | Sample-accurate             | Per-quantum (per `process` call)          |
-| Automation      | Built-in scheduling & ramps | Manual (or via AudioParam)                |
-| Value types     | Single scalar               | Scalars, arrays, enums, booleans          |
-| Integration     | Deep Web Audio integration  | Generic shared memory, works beyond audio |
+`AudioParam` is deeply integrated into the Web Audio graph and designed for sample-accurate automation.
 
-The sweet spot:
+Seqlok is broader and different.
+It is better suited for:
 
-- Use Seqlok for _configuration/state_ and metering (e.g. mode, buffers, analysis).
-- Use AudioParam for _control signals_ that must match the sample clock exactly.
+- multi-field state
+- enums and arrays
+- explicit telemetry return paths
+- coherent shared-memory coordination beyond one scalar signal
 
----
-
-## Target Use Cases
-
-Seqlok is designed for scenarios with:
-
-- A **Controller** (UI/main/host)
-- A **Processor** (AudioWorklet/worker/simulation loop)
-- **Shared state** that must be fast, coherent, and type-safe
-
-Examples:
-
-### Audio DSP
-
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    frequency: param.f32({ min: 20, max: 20_000 }),
-    filterType: param.enum(["lowpass", "highpass", "bandpass"]),
-    drive: param.f32({ min: 0, max: 10 }),
-  },
-  meters: {
-    rms: meter.f32(),
-    spectrum: meter.f32.array({ length: 2048 }),
-  },
-}));
-```
-
-- Controller: writes `frequency`, `filterType`, `drive`
-- Processor: reads params; publishes `rms` and `spectrum`
+The comparison is useful, but it should not collapse the library back down to "controller ↔ processor only."
+Seqlok is a boundary kernel with explicit roles.
 
 ---
 
-### Physics / Game Simulation
+## Target use cases
 
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    gravity: param.f32({ min: -20, max: 20 }),
-    timestep: param.f32({ min: 0.001, max: 0.1 }),
-  },
-  meters: {
-    fps: meter.f32(),
-    positions: meter.f32.array({ length: 3 * 10_000 }), // x,y,z triples
-  },
-}));
-```
+Seqlok is a good fit when most of the following are true:
 
-- Controller: adjusts `gravity`, `timestep`
-- Worker: reads params; writes `fps` and positions array
+- there is a real execution boundary
+- one side has tighter timing or predictability requirements than the other
+- a coherent shared-state contract matters
+- explicit role ownership matters
+- a read-only observer role is useful for telemetry or visualization
+- raw shared-memory wiring would be too brittle to own by hand
 
----
+Good examples include:
 
-### WebAssembly Modules
-
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    gain: param.f32({ min: 0, max: 2 }),
-  },
-  meters: {
-    peak: meter.f32(),
-  },
-}));
-
-// owner / JS side
-const plan = planLayout(spec);
-const backing = allocateWasmShared(plan, { initialPages: 4 });
-
-const controller = bindController(spec, backing);
-const handoff = buildHandoff(plan, backing);
-
-// pass `handoff` (or a serialized form) into your Wasm-using agent.
-// processor side (JS worker, engine wrapper, or native code) reconstructs:
-const accepted = acceptHandoff(handoffFromMain);
-const processor = bindProcessor(accepted);
-// or an equivalent binding in the target language using the same plan layout.
-```
-
-- JS and Wasm share the same memory & plan, described by the handoff.
-- The Controller binds via `bindController(spec, backing)`.
-- The Processor (JS worker around Wasm, or native side) binds via `acceptHandoff` → `bindProcessor(accepted)` or an equivalent mapping that respects the same layout.
+- audio engines
+- simulation workers
+- media pipelines
+- engine telemetry surfaces
+- visualization workers riding the same substrate
 
 ---
 
-### Video / Encoding Workers
+## What success looks like
 
-```ts
-const spec = defineSpec(({ param, meter }) => ({
-  params: {
-    bitrateKbps: param.i32({ min: 128, max: 50_000 }),
-    codec: param.enum(["h264", "h265", "vp9", "av1"]),
-  },
-  meters: {
-    framesProcessed: meter.f32(),
-    compressionRatio: meter.f32(),
-  },
-}));
-```
+Seqlok is the right tool when you want:
 
-- Controller: sets `bitrateKbps`, `codec`
-- Worker: reads params; publishes progress + stats
+- an authored contract that stays semantically honest
+- a deterministic runtime contract and plan
+- explicit role bindings instead of implicit ownership folklore
+- coherent shared-state exchange across a hard boundary
+- one canonical runtime identity model
 
----
+If you mostly want app-store ergonomics, subscriptions, or generic business-state tools, Seqlok is probably the wrong layer.
 
-## What Success Looks Like
-
-You should reach for Seqlok when:
-
-1. You have a **real-time or latency-sensitive loop** in another agent.
-2. State must flow **both directions** (params → Processor, meters → Controller).
-3. **Coherence matters** — inconsistent reads would be meaningful bugs.
-4. **Type safety is non-negotiable** — you want the compiler to catch misuse.
-
-If all four are true, Seqlok is likely the right tool.
-
-If only one or two are true, you might be better served by:
-
-- `postMessage` + structured data
-- A UI state library
-- A simpler custom protocol on top of SAB
-
----
-
-## Summary
-
-**Seqlok is:**
-
-- A **shared-memory synchronization primitive** for JS/Wasm
-- Designed for **real-time SWMR communication** between Controller and Processor
-- **Schema-first**, with deterministic plan from a typed DSL
-- **Type-safe**, with zero `any` and strong TS integration
-- **Fail-fast**, with structured `SeqlokError` instead of silent corruption
-
-**Seqlok is not:**
-
-- A full state management library
-- A networking or persistence layer
-- An actor system or RPC framework
-- A drop-in replacement for all of Web Audio's scheduling mechanisms
-
-Use Seqlok when you need **coherent, type-safe, real-time state sync across agents**. For everything else, simpler tools
-are often better.
+That is a good thing.
+A coordination kernel should know its boundaries.

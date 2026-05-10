@@ -33,7 +33,7 @@ Think of ADRs as "git commits for architecture": short, focused, and historical.
 ## Live ADRs
 
 | ADR                                                         | Title                          | Scope                                                                     |
-|-------------------------------------------------------------|--------------------------------|---------------------------------------------------------------------------|
+| ----------------------------------------------------------- | ------------------------------ | ------------------------------------------------------------------------- |
 | [ADR-00C](./ADR-00C-meter-writes-and-snapshot-into.md)      | Meter Writes & Snapshot `into` | Processor meter API, controller snapshot options                          |
 | [ADR-00F](./ADR-00F-controller-params-hydrate.md)           | Controller Params Hydrate      | Cold-path bulk param updates                                              |
 | [ADR-010](./ADR-010-ring-primitive-in-seqlok-core.md)       | Ring Primitive Ownership       | Package ownership: primitives → commands/streambuf → core                 |
@@ -58,7 +58,7 @@ Rough rule of thumb:
 
 ## Suggested ADR structure
 
-```md
+````md
 # Title in Sentence Case
 
 **Status:** Accepted (live ADRs are always Accepted)
@@ -118,6 +118,7 @@ In code and docs:
 ```ts
 // See ADR-00C for meter write hot-path contract.
 ```
+````
 
 > Coherent meter reads use `snapshot(..., { into })` per ADR-00C.
 
@@ -128,7 +129,7 @@ Live ADRs are the source of truth for current behavior.
 ## Live ADRs
 
 | ADR                                                    | Title                          | Scope                                                     |
-|--------------------------------------------------------|--------------------------------|-----------------------------------------------------------|
+| ------------------------------------------------------ | ------------------------------ | --------------------------------------------------------- |
 | [ADR-00C](./ADR-00C-meter-writes-and-snapshot-into.md) | Meter Writes & Snapshot `into` | Processor meter API, controller snapshot options          |
 | [ADR-00F](./ADR-00F-controller-params-hydrate.md)      | Controller Params Hydrate      | Cold-path bulk param updates                              |
 | [ADR-010](./ADR-010-ring-primitive-in-seqlok-core.md)  | Ring Primitive Ownership       | Package ownership: primitives → commands/streambuf → core |

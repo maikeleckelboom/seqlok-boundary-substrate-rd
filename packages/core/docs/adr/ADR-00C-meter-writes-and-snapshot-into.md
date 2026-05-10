@@ -66,7 +66,7 @@ We codify this distinction:
   - For dynamic key selection, `writer.set(key, value)` exists as convenience sugar:
 
     ```ts
-    const key: 'rms' | 'peak' = decideKey();
+    const key: "rms" | "peak" = decideKey();
     writer.set(key, 0.5); // convenience for dynamic dispatch
     ```
 
@@ -368,10 +368,12 @@ Notes:
 - Scalar `writer.set(key, value)` exists as convenience sugar:
 
   - Pros:
+
     - Useful for dynamic key selection (loops, tables, generic instrumentation).
     - Simplifies code that receives a key name at runtime.
 
   - Cons:
+
     - Slightly more overhead than per-key methods (benchmarked).
     - Requires runtime key dispatch.
 
