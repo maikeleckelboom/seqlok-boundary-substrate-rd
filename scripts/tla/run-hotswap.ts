@@ -1,5 +1,5 @@
-import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, mkdirSync } from "node:fs";
+import { resolve, join } from "node:path";
 import { spawn } from "node:child_process";
 
 type HotswapMode = "invonly" | "full";
@@ -216,11 +216,19 @@ function runTlc(
   ensureFileExists("TLA spec", specPath);
   ensureFileExists("TLA config", configPath);
 
+  // TLC metadata belongs to the hotswap formal area, not repo root.
+  const formalStatesRoot = resolve(HOTSWAP_FORMAL_DIR, "states");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const runStateDir = join(formalStatesRoot, policy, mode, timestamp);
+  mkdirSync(runStateDir, { recursive: true });
+
   const javaArgs: string[] = [
     "-XX:+UseParallelGC",
     "-cp",
     TOOLS_JAR,
     "tlc2.TLC",
+    "-metadir",
+    runStateDir,
     ...extraTlcArgs,
     "-workers",
     "4",

@@ -2,11 +2,13 @@
 
 This folder documents the Seqlok hotswap substrate.
 
-The docs are split by ownership:
+The docs are split by ownership and artifact type:
 
-- **Contract**: shipped protocol law
+- **Contract**: shipped protocol law (normative, present tense)
 - **Implementation**: host/runtime wiring and operational integration
 - **Engine**: lifecycle semantics and engine-author ABI
+- **Architecture**: canonical architecture specs and boundary/categorization models
+- **Migration**: historical redesign guidance (non-canon, discusses old vs new)
 - **Formal**: TLA+ models, English formal specs, and reference artefacts
 - **ADR**: accepted or proposed design decisions
 - **Exploratory**: future-facing, non-binding design parking lot
@@ -107,6 +109,19 @@ Do not treat continuity class as another policy level.
 - [adr/hotswap-continuity-classes-and-persistent-handoff.md](./adr/hotswap-continuity-classes-and-persistent-handoff.md)  
   Orthogonal continuity-class decision for `aligned` and `persistent`.
 
+### Architecture docs
+
+- [architecture/projection-spine-canonical-architecture.md](./architecture/projection-spine-canonical-architecture.md)  
+  Canonical architecture for the projection spine. Present-tense, normative.
+
+- [architecture/boundary-model.md](./architecture/boundary-model.md)  
+  Boundary/categorization model: control plane, publication plane, resource plane.
+
+### Migration docs
+
+- [architecture/migration/redesign-migration-note.md](./architecture/migration/redesign-migration-note.md)  
+  Historical redesign guidance. Non-canon. Discusses what the old design got wrong and what to preserve.
+
 ### Formal bundle
 
 - [formal/README.md](./formal/README.md)  
@@ -128,7 +143,10 @@ Use these rules when editing the docs:
 - `IMPLEMENTATION_GUIDE.md` owns host/runtime integration.
 - `engine-lifecycle-spec.md` owns lifecycle semantics.
 - `engine-sdk-guide.md` owns engine ABI and engine-author contract.
+- `architecture/` is for canonical architecture and boundary models (present tense, normative).
+- `architecture/migration/` is for historical redesign guidance (non-canon, may discuss old vs new).
 - `formal/README.md` owns formal execution guidance and model map.
+- `formal/primitives/` is zoned by artifact type: `specs/` (ratified), `architecture/` (design rationale), `planned/` (aspirational stubs), `tla/` (model files).
 - `adr/` is for actual decisions.
 - `exploratory/` is for non-binding future material.
 
@@ -141,7 +159,8 @@ If a concept is defined in two places, the docs are wrong.
 Before adding a new doc, ask:
 
 1. Does an existing file already own this concept?
-2. Is this shipped law, implementation guidance, formal material, or exploratory thinking?
-3. Will this new file reduce ambiguity, or just duplicate doctrine under a new name?
+2. Is this shipped law, implementation guidance, formal material, architecture, migration, or exploratory thinking?
+3. What artifact type is this? (ratified spec, architecture note, planned stub, ADR, migration note, guide, exploratory)
+4. Will this new file reduce ambiguity, or just duplicate doctrine under a new name?
 
 Prefer fewer docs with sharper ownership.

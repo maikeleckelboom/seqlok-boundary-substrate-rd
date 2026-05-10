@@ -1,24 +1,24 @@
 # Hot-Swap Protocol: Persistent Handoff
 
-**Status:** Proposed — TLA⁺ spec scaffold present  
+**Status:** Implemented  
 **Scope:** Continuity-class persistent handoff for `@seqlok/hotswap`  
-**Audience:** Seqlok contributors, hotswap implementers, and TLA⁺ authors
+**Audience:** Seqlok contributors, hotswap implementers, and TLA+ authors
 
-This document describes the formal specification for **persistent continuity**
+This document describes the current formal specification for **persistent continuity**
 during a structural engine swap.
 
 Persistent continuity means:
 
 - The outgoing engine exports a handoff snapshot.
 - The incoming engine installs that snapshot.
-- The runtime advances the incoming engine through deterministic replay (catchup) from the capture frame to the crossfade start.
-- The swap does not silently degrade when persistent continuity was required.
+- The runtime advances the incoming engine through deterministic replay from the
+  capture frame to the crossfade start.
+- The swap reaches crossfade only after replay obligations are satisfied.
+- The protocol does not silently degrade when persistent continuity is required.
 
-This is **not** an overlap policy.
+This is **not** an overlap-policy model.
 Overlap policy (`single`, `reject-busy`) is a separate axis.
-This model can be composed with any overlap policy.
-
----
+This model is the continuity-class surface for the **successful persistent-handoff path**.
 
 ## Files
 
@@ -28,38 +28,51 @@ packages/hotswap/docs/formal/policies/persistent-handoff/tla/HotSwapPersistentHa
 packages/hotswap/docs/formal/policies/persistent-handoff/tla/HotSwapPersistentHandoff.invonly.cfg
 ```
 
-- `.tla` – TLA⁺ specification of the persistent-handoff protocol.
-- `.cfg` – full model-checking configuration (safety + liveness).
-- `.invonly.cfg` – invariants-only configuration for faster safety checks.
+- `.tla` contains the TLA+ protocol model.
+- `.cfg` runs safety plus liveness.
+- `.invonly.cfg` runs safety only.
 
----
+## Exact scope of the current model
 
-## Scope
+The current model is intentionally narrow.
 
-This spec covers:
+It models:
 
-- **Capture** — export running state from the outgoing engine at a known frame.
-- **Install** — load the snapshot into the incoming engine, with explicit accept/reject.
-- **Catchup** — replay input from capture frame to crossfade start.
-- **Downgrade rules** — explicit behavior when persistent continuity cannot be satisfied.
-- **Lineage invariants** — snapshot must belong to the correct engine and ticket.
-- **Retire gating** — old engine cannot retire until install and catchup succeed.
+- persistent continuity only
+- one admitted handoff per behavior
+- the successful path:
 
-It does **not** cover:
+  - `spawn`
+  - `capture`
+  - `install`
+  - `catchup`
+  - optional `prewarm`
+  - `crossfade`
+  - `retire`
 
-- Overlap handling (see `../single/` and `../reject-busy/`).
-- Waveform similarity or psychoacoustic proof.
-- Engine-internal snapshot format.
+It does not model:
 
----
+- aligned continuity admission
+- explicit downgrade branches
+- explicit abort branches
+- overlap handling or host-side queueing policy
+- waveform similarity or psychoacoustic correctness
+- engine-internal snapshot format
+
+That narrower scope is intentional. The model exists to prove the lifecycle legality
+and gating rules of the successful persistent-handoff path, not the full future
+continuity surface.
 
 ## Lifecycle
 
-The persistent lifecycle extends the aligned lifecycle:
+The current persistent lifecycle is:
 
 ```text
-spawn → capture → install → catchup → prewarm → crossfade → retire
+spawn -> capture -> install -> catchup -> prewarm -> crossfade -> retire -> idle
 ```
+
+`prewarm` is optional. If no prewarm blocks are required, the model transitions
+from `catchup` directly to `crossfade`.
 
 ### Phase semantics
 
@@ -73,33 +86,29 @@ Export a handoff snapshot from the outgoing engine at a known frame boundary.
 
 Requirements:
 
-- RT-safe, no allocation, no blocking
-- Bounded execution time
-- Tied to a specific capture frame and engine lineage
+- RT-safe
+- bounded
+- tied to the outgoing engine lineage and admitted handoff
 
 #### `install`
 
 Install the captured snapshot into the candidate engine.
 
-Requirements:
-
-- Explicit success or failure
-- Incompatible payloads rejected
-- Config/ABI lineage checked
+In the current model, `install` represents the **successful** install path only.
 
 #### `catchup`
 
-Advance the candidate engine from capture frame to crossfade start by replaying input.
+Advance the candidate engine from the capture frame to the crossfade start by replaying input.
 
 Requirements:
 
-- Deterministic replay input window
-- Correct frame lineage
-- Output discarded during catchup
+- deterministic replay window
+- correct lineage
+- output discarded during replay
 
 #### `prewarm`
 
-Run the candidate engine on real input, discarding output, until stable.
+Run the candidate engine on real input while discarding output until stable.
 
 #### `crossfade`
 
@@ -107,59 +116,50 @@ Run both engines in parallel on the same input and blend.
 
 #### `retire`
 
-Retire the outgoing engine only after persistent continuity obligations are satisfied.
+Retire the outgoing engine only after install and replay obligations are satisfied.
 
-Requirements:
+## Safety invariants
 
-- No retire before successful install
-- No retire before required catchup is complete
-- No silent downgrade if persistent continuity was required and disallowed
+The current model checks these invariants:
 
----
+| Property                       | Description                                                  |
+| ------------------------------ | ------------------------------------------------------------ |
+| `TypeOK`                       | All state variables remain in valid domains                  |
+| `AtMostTwoEngines`             | No more than two engines are active at any time              |
+| `NoGapDuringCrossfade`         | Both engines are active during crossfade                     |
+| `CrossfadeEnginesDistinct`     | Crossfade never uses the same engine in both roles           |
+| `NoSilentDowngrade`            | Persistent-required swaps do not degrade silently            |
+| `SnapshotLineageConsistency`   | Snapshot state is only present in legal persistent phases    |
+| `RetireAfterPersistentInstall` | Retire implies install and replay obligations were satisfied |
+| `NoCrossfadeBeforeReplay`      | Crossfade implies replay has completed                       |
 
-## Key invariants
+## Liveness properties
 
-### Safety
+The full configuration additionally checks:
 
-| Property                       | Description                                                    |
-| ------------------------------ | -------------------------------------------------------------- |
-| `TypeOK`                       | All variables remain in their declared domains                 |
-| `AtMostTwoEngines`             | No more than two engines active (current + next) at any time   |
-| `NoGapDuringCrossfade`         | Both engines active during crossfade                           |
-| `NoSilentDowngrade`            | Persistent-required swaps do not degrade silently              |
-| `SnapshotLineageConsistency`   | Consumed snapshot belongs to correct engine lineage and ticket |
-| `RetireAfterPersistentInstall` | Retire implies successful install and catchup                  |
-| `NoCrossfadeBeforeReplay`      | Crossfade implies snapshot has reached replayed state          |
+| Property                           | Description                                                                                 |
+| ---------------------------------- | ------------------------------------------------------------------------------------------- |
+| `EventuallyIdle`                   | Every admitted swap eventually returns to idle                                              |
+| `PersistentSwapEventuallyResolves` | Every admitted persistent swap eventually returns to idle on the successful persistent path |
+| `NoCaptureLivelock`                | The protocol does not remain in `capture` forever                                           |
+| `NoInstallLivelock`                | The protocol does not remain in `install` forever                                           |
+| `NoCatchupLivelock`                | The protocol does not remain in `catchup` forever                                           |
+| `NoLivelockPrewarm`                | The protocol does not remain in `prewarm` forever                                           |
+| `NoLivelockCrossfade`              | The protocol does not remain in `crossfade` forever                                         |
 
-### Liveness
+`PersistentSwapEventuallyResolves` in the current model means successful completion of the admitted persistent handoff.
+It does **not** prove abort or downgrade behavior, because those branches are not yet modeled.
 
-| Property                           | Description                                          |
-| ---------------------------------- | ---------------------------------------------------- |
-| `EventuallyIdle`                   | Every accepted swap eventually returns the lane idle |
-| `PersistentSwapEventuallyResolves` | Every persistent swap completes or aborts explicitly |
-| `NoCaptureLivelock`                | The protocol does not remain in `capture` forever    |
-| `NoInstallLivelock`                | The protocol does not remain in `install` forever    |
-| `NoCatchupLivelock`                | The protocol does not remain in `catchup` forever    |
-
----
-
-## Running the Model
-
-### Workspace Scripts
+## Running the model
 
 From the repository root:
 
 ```bash
-# Fast invariants-only check (safety only)
 pnpm tla:hotswap -- --policy persistent-handoff
-
-# Full check (safety + liveness)
 pnpm tla:hotswap:full -- --policy persistent-handoff
 ```
 
-### Direct TLC Invocation
-
-Assuming `tla2tools.jar` is available and the workspace layout is intact:
+Direct TLC invocation:
 
 ```bash
 java -jar tla2tools.jar \
@@ -169,31 +169,46 @@ java -jar tla2tools.jar \
 
 Use the `.invonly.cfg` file for a faster invariants-only run.
 
----
+## Relationship to overlap policy
 
-## Relationship to Requirements and Implementation
+This model is orthogonal to overlap policy.
+
+- `single` proves the base aligned swap lifecycle.
+- `reject-busy` proves a host-side overlap policy.
+- `persistent-handoff` proves the continuity-class lifecycle inside an admitted persistent swap.
+
+This model is not the owner of scheduling, overlap rejection, mailboxing, or request admission policy.
+
+## Relationship to implementation
 
 The persistent-handoff protocol corresponds to the continuity-class decision in
-[`../../adr/hotswap-continuity-classes-and-persistent-handoff.md`](../../adr/hotswap-continuity-classes-and-persistent-handoff.md).
-
-The formal model covers:
-
-- Lifecycle legality for capture, install, catchup, and retire gating.
-- Downgrade rules and explicit abort behavior.
-- Snapshot lineage and ownership.
+`../../adr/hotswap-continuity-classes-and-persistent-handoff.md`.
 
 Implementation mapping:
 
-- `capture` corresponds to `exportHandoffRT` in the engine ABI.
-- `install` corresponds to `importHandoff` in the engine ABI.
-- `catchup` corresponds to runtime replay buffer advancement.
-- `NoSilentDowngrade` corresponds to runtime enforcement of `allowContinuityDowngrade`.
+- `capture` corresponds to engine-side handoff export
+- `install` corresponds to engine-side handoff import
+- `catchup` corresponds to replay advancement
+- `NoSilentDowngrade` corresponds to runtime enforcement of continuity requirements
 
----
+The current runtime does not yet expose the full persistent-handoff lifecycle as a landed runtime surface.
+This formal model should therefore be read as the checked protocol contract for the successful persistent path, ahead of full runtime implementation.
+
+## Future work
+
+Future model work may add:
+
+- explicit install failure branches
+- explicit catchup failure branches
+- explicit downgrade rules
+- explicit abort rules
+- composition with overlap-policy models
+
+Those are separate extensions, not part of the currently checked surface.
 
 ## References
 
-- `../single/HotSwapSingle.md` – base single-swap protocol specification.
-- `../reject-busy/HotSwapRejectBusy.md` – multi-swap protocol with reject-while-busy policy.
-- `../../adr/hotswap-continuity-classes-and-persistent-handoff.md` – continuity-class ADR.
-- Lamport, _Specifying Systems_ – TLA⁺ reference text.
+- `../single/HotSwapSingle.md`
+- `../reject-busy/HotSwapRejectBusy.md`
+- `../../adr/hotswap-continuity-classes-and-persistent-handoff.md`
+- Lamport, _Specifying Systems_

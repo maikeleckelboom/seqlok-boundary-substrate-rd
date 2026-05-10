@@ -1,5 +1,11 @@
 # Transport Architecture: Mailbox vs Ring
 
+> **Artifact type:** Architecture note
+> **Authority:** Design rationale, not ratified spec
+> **Layer:** Formal primitives, transport decision
+> **Use for:** Understanding why the hotswap transport surface chose mailbox vs ring
+> **Must not be mistaken for:** A ratified codec/layout spec; see [specs/hot-lane-codec-and-layout-spec.md](../specs/hot-lane-codec-and-layout-spec.md) for that
+
 This document records the architectural decision for how the host communicates
 swap intent to the RT lane when requests may overlap.
 
@@ -52,8 +58,7 @@ This is a **command transport**.
 
 **Used by:**
 
-- Current and planned command delivery (tickets, engine lifecycle commands), see
-  `CommandRingProtocol.md` (planned formalization).
+- Current and planned command delivery (tickets, engine lifecycle commands), see [planned/command-ring-protocol.md](../planned/command-ring-protocol.md) (planned formalization).
 
 ---
 

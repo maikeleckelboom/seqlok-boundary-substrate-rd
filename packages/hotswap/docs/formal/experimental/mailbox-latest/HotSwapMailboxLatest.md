@@ -106,4 +106,4 @@ The property the policy is designed to guarantee is:
 
 For the shared transport decision (mailbox vs ring), see:
 
-- `../../primitives/TransportArchitecture.md`
+- [Transport architecture: Mailbox vs Ring](../../primitives/architecture/transport-architecture.md)

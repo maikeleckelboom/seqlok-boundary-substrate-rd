@@ -54,3 +54,5 @@ packages/**/charts/
 # temporary
 seqlok-*.md
 !docs/seqlok-*.md
+states
+packages/hotswap/docs/formal/states/

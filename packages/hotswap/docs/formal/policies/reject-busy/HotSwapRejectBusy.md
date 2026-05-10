@@ -18,7 +18,7 @@ the TLC model checker.
 For the base single-swap protocol, see `../single/HotSwapSingle.md`.
 
 For the orthogonal continuity-class model, see [`../persistent-handoff/HotSwapPersistentHandoff.md`](../persistent-handoff/HotSwapPersistentHandoff.md)
-and [`../../adr/hotswap-continuity-classes-and-persistent-handoff.md`](../../adr/hotswap-continuity-classes-and-persistent-handoff.md).
+and [`../../../adr/hotswap-continuity-classes-and-persistent-handoff.md`](../../../adr/hotswap-continuity-classes-and-persistent-handoff.md).
 
 This spec covers **overlap policy only**; it does not prove persistent handoff semantics.
 
