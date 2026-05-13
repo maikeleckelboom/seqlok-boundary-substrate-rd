@@ -1,5 +1,5 @@
 import type { SharedContext } from "./types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 type ObjectRecord = Record<string, unknown>;
 

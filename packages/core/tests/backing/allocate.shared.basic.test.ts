@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { allocateShared, planLayout } from "../../src";
 
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 /**
  * Helper to construct a specification with explicit byte-size targets for

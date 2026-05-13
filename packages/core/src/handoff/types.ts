@@ -24,7 +24,7 @@
  */
 
 import type { Plan } from "../plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 /**
  * Unique symbol used to brand Handoff types.

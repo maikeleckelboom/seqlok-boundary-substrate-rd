@@ -17,7 +17,7 @@ import { createEnvError } from "../errors/env";
 
 import type { SharedPartitionedBacking } from "./types";
 import type { Plan } from "../plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 /**
  * Allocates separate SharedArrayBuffers for each plane in the layout.

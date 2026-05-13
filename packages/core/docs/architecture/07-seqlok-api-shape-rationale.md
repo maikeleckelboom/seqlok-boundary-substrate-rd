@@ -49,7 +49,8 @@ self.onmessage = (
 
 The pipeline looks long because it names real stages:
 
-- authored contract
+- authored contract, structurally described by `@seqlok/schema`
+- semantic compilation in `@seqlok/core` via `defineSpec(...)`
 - byte plan
 - backing realization
 - boundary handoff
@@ -63,7 +64,7 @@ If the kernel collapsed those into one magical call, it would hide the places wh
 
 | Value     | Role                                     | Domain owner   |
 | --------- | ---------------------------------------- | -------------- |
-| `spec`    | semantic contract                        | spec domain    |
+| `spec`    | compiled runtime contract                | core spec domain |
 | `plan`    | deterministic byte plan                  | plan domain    |
 | `backing` | concrete memory implementing a plan      | backing domain |
 | `handoff` | serializable description of plan+memory  | handoff domain |
@@ -71,15 +72,18 @@ If the kernel collapsed those into one magical call, it would hide the places wh
 
 ### `spec`
 
-`spec` owns semantic meaning:
+`spec` is the value returned by `defineSpec(...)`. Core has already compiled the authored AST into runtime meaning:
 
 - parameter and meter names
 - kinds such as `f32`, `i32`, `bool`, `enum`, arrays
 - ranges, lengths, enum vocabularies
 - TypeScript-level contract shape
+- canonical runtime identity
 
 It says **what** exists.
 It does not say how bytes are laid out.
+
+The pre-`defineSpec(...)` authored AST belongs to `@seqlok/schema`; schema does not own this compiled runtime value.
 
 ### `plan`
 

@@ -1,4 +1,5 @@
-import type { CanonicalSpec, MeterDef, ParamDef } from "@seqlok/schema";
+import type { CanonicalSpec } from "./types";
+import type { MeterDef, ParamDef } from "@seqlok/schema";
 
 type UnionToIntersection<U> = (
   U extends unknown ? (value: U) => void : never

@@ -35,7 +35,7 @@ import type {
   PUSeq,
 } from "../common/types";
 import type { MeterPlane, ParamPlane } from "../common/validate";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../spec/types";
 
 type WithinCallback<S extends CanonicalSpec> = Parameters<
   ProcessorParams<S>["within"]

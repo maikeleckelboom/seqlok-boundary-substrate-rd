@@ -10,7 +10,7 @@
 
 import type { Backing } from "../../backing/types";
 import type { Handoff, AcceptedHandoff } from "../../handoff/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../spec/types";
 
 type ObjectRecord = Record<string, unknown>;
 

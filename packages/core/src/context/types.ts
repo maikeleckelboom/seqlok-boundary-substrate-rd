@@ -1,6 +1,6 @@
 import type { Backing } from "../backing/types";
 import type { Plan } from "../plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 /**
  * The authoritative bundle of resources required to bind a Controller or Host-side Observer.

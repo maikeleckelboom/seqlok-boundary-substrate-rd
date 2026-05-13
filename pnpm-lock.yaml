@@ -559,10 +559,6 @@ importers:
         version: 4.0.13(@types/debug@4.1.12)(@types/node@24.10.1)(happy-dom@20.0.11)(jiti@2.6.1)(lightningcss@1.30.2)(tsx@4.20.6)
 
   packages/schema:
-    dependencies:
-      '@seqlok/base':
-        specifier: workspace:*
-        version: link:../base
     devDependencies:
       '@types/node':
         specifier: 'catalog:'

@@ -2,24 +2,19 @@
  * @fileoverview
  * Spec definition entrypoint.
  *
- * Provides builder DSL sugar over @seqlok/schema canonicalization.
- * All contract collapse, default filling, and validation is delegated to
- * canonicalizeSpecAst from @seqlok/schema.
+ * Provides builder DSL sugar over the authored AST contract from
+ * @seqlok/schema. Core owns the semantic compilation boundary.
  *
  * Two things are intentionally “touchy” here:
  * 1) Enum builders must preserve literal tuples (do not refactor overloads into unions).
  * 2) With `exactOptionalPropertyTypes`, optional fields must be omitted (not set to `undefined`).
  */
 
-import { canonicalizeSpecAst } from "@seqlok/schema";
-
 import { parseArrayLen, asNonEmpty } from "./builder-support";
+import { canonicalizeSpecAst } from "./canonicalize";
 
-import type {
-  CanonicalSpecFromAst,
-  ScalarRange,
-  SpecAstInput,
-} from "@seqlok/schema";
+import type { CanonicalSpecFromAst } from "./types";
+import type { ScalarRange, SpecAstInput } from "@seqlok/schema";
 
 /*
  * Constants and Helpers

@@ -18,7 +18,7 @@ import type {
   ParamValueFor,
   ProcessorParams,
 } from "../../src/binding/common/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 describe("Backing Union Type Guards (Signatures)", () => {
   it("isSharedBacking(b: Backing): b is SharedBacking", () => {

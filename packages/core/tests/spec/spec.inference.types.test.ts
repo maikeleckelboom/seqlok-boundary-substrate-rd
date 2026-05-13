@@ -2,7 +2,7 @@ import { describe, it, expectTypeOf } from "vitest";
 
 import { defineSpec } from "../../src/spec/define";
 
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 describe("DefineSpec: Strengthened Inference Contracts", () => {
   it("preserves literals for scalar ranges, enum values, and array lengths", () => {

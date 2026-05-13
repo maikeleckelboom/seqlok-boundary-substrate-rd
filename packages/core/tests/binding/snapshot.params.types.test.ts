@@ -5,7 +5,7 @@ import type {
   ParamsSnapshot,
   SnapshotParamsObject,
 } from "../../src/binding/common/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 interface S extends CanonicalSpec {
   readonly id: "snap-params";

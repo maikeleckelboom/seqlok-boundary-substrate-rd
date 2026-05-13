@@ -12,7 +12,7 @@ import type {
   ScalarMeterKeys,
   ScalarParamKeys,
 } from "../../src/spec/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 describe("Spec Keys Splitting (Compile-Time Contracts)", () => {
   it("Param/Meter keys", () => {

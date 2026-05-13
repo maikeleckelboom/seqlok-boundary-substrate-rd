@@ -23,7 +23,7 @@ import { createBackingError } from "../errors/backing";
 
 import type { Backing, SharedBacking, WasmSharedBacking } from "./types";
 import type { Plan, PlaneByteLengths } from "../plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 /** Maps each plane to its byte offset in a packed backing. */
 export type PlaneBases = Readonly<Record<PlaneKey, number>>;

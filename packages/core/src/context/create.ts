@@ -13,7 +13,7 @@ import { planLayout } from "../plan/layout";
 import type { SharedContext } from "./types";
 import type { Backing } from "../backing/types";
 import type { Plan } from "../plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 /**
  * Helper to create a context from a spec (allocates immediately).

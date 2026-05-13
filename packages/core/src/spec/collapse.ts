@@ -1,13 +1,11 @@
 /**
  * @fileoverview
- * Internal namespace collapse logic for canonicalization.
- *
- * Exported only for consumption by canonicalize.ts.
+ * Internal namespace collapse logic for core semantic compilation.
  */
 
-import { createSchemaError } from "./errors/schema";
+import { createSpecError } from "../errors/spec";
 
-import type { SpecNamespace } from "./ast";
+import type { SpecNamespace } from "@seqlok/schema";
 
 type SpecPlane = "params" | "meters";
 type AuthoredPath = readonly string[];
@@ -27,7 +25,7 @@ function canonicalKeyFromPath(path: AuthoredPath): string {
   return path.join(".");
 }
 
-export function toSortedRecord<T>(input: Map<string, T>): Record<string, T> {
+function toSortedRecord<T>(input: Map<string, T>): Record<string, T> {
   const out: Record<string, T> = {};
   for (const key of [...input.keys()].sort()) {
     const value = input.get(key);
@@ -48,7 +46,7 @@ function validateAuthoredSegment(
   segment: string,
 ): void {
   if (segment.length === 0) {
-    throw createSchemaError("invalidSegment", {
+    throw createSpecError("invalidSegment", {
       plane,
       parentPath: clonePath(parentPath),
       offendingSegment: segment,
@@ -56,7 +54,7 @@ function validateAuthoredSegment(
     });
   }
   if (segment.includes(".")) {
-    throw createSchemaError("invalidSegment", {
+    throw createSpecError("invalidSegment", {
       plane,
       parentPath: clonePath(parentPath),
       offendingSegment: segment,
@@ -76,7 +74,7 @@ function registerNamespaceNode<TLeaf>(
   const existingLeafPath =
     state.leafSourcePathsByCanonicalKey.get(canonicalPath);
   if (existingLeafPath !== undefined) {
-    throw createSchemaError("leafNamespaceConflict", {
+    throw createSpecError("leafNamespaceConflict", {
       plane: state.plane,
       canonicalPath,
       leafPath: clonePath(existingLeafPath),
@@ -103,7 +101,7 @@ function assertNoLeafAncestorConflict<TLeaf>(
     const existingLeafPath =
       state.leafSourcePathsByCanonicalKey.get(ancestorKey);
     if (existingLeafPath !== undefined) {
-      throw createSchemaError("leafNamespaceConflict", {
+      throw createSpecError("leafNamespaceConflict", {
         plane: state.plane,
         canonicalPath: ancestorKey,
         leafPath: clonePath(existingLeafPath),
@@ -123,7 +121,7 @@ function registerLeafNode<TLeaf>(
   const existingLeafPath =
     state.leafSourcePathsByCanonicalKey.get(canonicalKey);
   if (existingLeafPath !== undefined) {
-    throw createSchemaError("duplicateCanonicalKey", {
+    throw createSpecError("duplicateCanonicalKey", {
       plane: state.plane,
       canonicalKey,
       firstPath: clonePath(existingLeafPath),
@@ -133,7 +131,7 @@ function registerLeafNode<TLeaf>(
   const existingNamespacePath =
     state.namespaceSourcePathsByCanonicalKey.get(canonicalKey);
   if (existingNamespacePath !== undefined) {
-    throw createSchemaError("leafNamespaceConflict", {
+    throw createSpecError("leafNamespaceConflict", {
       plane: state.plane,
       canonicalPath: canonicalKey,
       leafPath: clonePath(sourcePath),
@@ -168,7 +166,7 @@ function visitNamespaceNode<TLeaf>(
     const childPath = [...path, segment];
     const canonicalPath = canonicalKeyFromPath(childPath);
     if (!isNamespaceObject(child)) {
-      throw createSchemaError("invalidDefinition", {
+      throw createSpecError("builderInvalid", {
         key: `${state.plane}.${canonicalPath}`,
         reason: "invalidKind",
       });

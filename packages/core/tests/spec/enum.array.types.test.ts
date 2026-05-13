@@ -1,7 +1,7 @@
 import { describe, it, expectTypeOf } from "vitest";
 
 import type { ParamShape, ParamValueFor } from "../../src/binding/common/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 type I32RO = Readonly<Int32Array>;
 

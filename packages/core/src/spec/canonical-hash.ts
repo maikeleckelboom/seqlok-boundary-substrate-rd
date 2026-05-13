@@ -1,11 +1,9 @@
 /**
  * @fileoverview
- * Deterministic canonical identity materialization.
- *
- * Internal helper for schema canonicalization.
+ * Deterministic runtime identity materialization for semantically compiled specs.
  */
 
-import type { ParamDef, MeterDef } from "./ast";
+import type { MeterDef, ParamDef } from "@seqlok/schema";
 
 function mix64(
   seedHi: number,
@@ -32,15 +30,6 @@ function hashCanonicalPayload(content: unknown): string {
   const hi = mixed.hi.toString(16).padStart(8, "0");
   const lo = mixed.lo.toString(16).padStart(8, "0");
   return `${hi}${lo}`;
-}
-
-export function hashCanonicalSpecContent(
-  content: Readonly<{
-    params?: Readonly<Record<string, ParamDef>>;
-    meters?: Readonly<Record<string, MeterDef>>;
-  }>,
-): string {
-  return hashCanonicalPayload(content);
 }
 
 export function generateAnonymousSpecId(

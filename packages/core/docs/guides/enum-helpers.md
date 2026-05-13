@@ -277,9 +277,7 @@ import {
   enumPaletteFor,
   type ControllerBinding,
   type CanonicalSpec,
-} from "@seqlok/schema";
-
-import { enumPaletteFor, type ControllerBinding } from "@seqlok/core";
+} from "@seqlok/core";
 
 export type EnumParamKey<S extends CanonicalSpec> = Extract<
   keyof S["params"],

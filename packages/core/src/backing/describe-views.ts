@@ -11,7 +11,7 @@
 import { PLANE_PACK_ORDER, type PlaneKey } from "@seqlok/primitives";
 
 import type { Plan } from "../plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 function label(key: PlaneKey): string {
   switch (key) {

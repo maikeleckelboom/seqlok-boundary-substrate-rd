@@ -4,9 +4,8 @@
  * Planning output types live here; DSL-facing spec types remain under `spec/`.
  */
 
-import type { SpecHash } from "../spec/types";
+import type { CanonicalSpec, SpecHash } from "../spec/types";
 import type { PlaneKey } from "@seqlok/primitives";
-import type { CanonicalSpec } from "@seqlok/schema";
 
 /**
  * Logical stride (in bytes) reserved around seqlock planes (PU/MU).

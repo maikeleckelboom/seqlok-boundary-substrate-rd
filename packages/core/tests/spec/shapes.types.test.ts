@@ -2,7 +2,7 @@ import { describe, it, expectTypeOf } from "vitest";
 
 import { type MeterValueFor, type ParamValueFor } from "../../src";
 
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 type F32RO = Readonly<Float32Array>;
 type I32RO = Readonly<Int32Array>;

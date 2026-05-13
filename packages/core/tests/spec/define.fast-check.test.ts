@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { defineSpec } from "../../src/spec/define";
 
 import type { MeterBuilders, ParamBuilders } from "../../src/spec/define";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 /**
  * Helper type representing the callback structure passed to defineSpec.

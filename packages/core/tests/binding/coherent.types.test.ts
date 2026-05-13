@@ -1,7 +1,7 @@
 import { describe, it, expectTypeOf } from "vitest";
 
 import type { CoherentParamShape } from "../../src/binding/common/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 describe("Coherent Param Shape", () => {
   interface S extends CanonicalSpec {

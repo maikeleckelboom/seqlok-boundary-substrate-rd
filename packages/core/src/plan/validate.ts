@@ -15,7 +15,8 @@ import { createSpecError } from "../errors/spec";
 import { getMeterKindEntry, getParamKindEntry } from "../spec/kinds";
 
 import type { EntrySlot, LockStrideBytes, PlaneByteLengths } from "./types";
-import type { CanonicalSpec ,
+import type { CanonicalSpec } from "../spec/types";
+import type {
   MeterDef,
   ParamDef,
   ScalarMeterDef,

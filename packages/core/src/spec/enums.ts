@@ -10,7 +10,7 @@
 import { createSpecError, type SpecEnumDetails } from "../errors/spec";
 
 import type { MetersOf, ParamsOf } from "./types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "./types";
 
 export type EnumKeyOf<S extends CanonicalSpec> = {
   [K in Extract<keyof ParamsOf<S>, string>]: ParamsOf<S>[K] extends {

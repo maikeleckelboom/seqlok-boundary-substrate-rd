@@ -18,6 +18,10 @@ If you are defining a Seqlok contract, this is the doc that should leave your me
 
 In Seqlok, a spec is an **authored contract** describing shared state across an execution boundary.
 
+`@seqlok/schema` publishes the canonical authored AST for that contract. It owns structural validation and
+authored-layer normalization only. `@seqlok/core` owns `defineSpec(...)`, semantic compilation, and all
+runtime-facing behavior beyond that boundary.
+
 It defines:
 
 - which **params** exist
@@ -96,6 +100,7 @@ const spec = defineSpec({
 
 This is the canonical authored-contract shape.
 It is serializable, toolable, and structurally honest.
+Its versioned JSON Schema artifact lives in `@seqlok/schema`.
 
 ### 3.2 Builder callback authored input
 
@@ -155,7 +160,7 @@ It performs real normalization work before planning begins.
 
 That includes:
 
-- validating authored structure
+- validating authored structure through `@seqlok/schema`
 - validating and defaulting numeric scalar ranges
 - compiling nested authored namespaces into canonical flat runtime keys
 - rejecting duplicate or conflicting canonical outcomes
@@ -353,6 +358,8 @@ When authored `id` is omitted, Seqlok still normalizes the contract to a determi
 
 That identity derives from canonical compiled meaning, not from placeholders, randomness, timestamps, or authoring
 noise.
+
+This identity is owned by `@seqlok/core`, not `@seqlok/schema`.
 
 So the rule is:
 

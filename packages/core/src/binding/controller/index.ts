@@ -20,7 +20,7 @@ import type { SharedContext } from "../../context/types";
 import type { Plan } from "../../plan/types";
 import type { ParamDefs } from "../common/param-defs";
 import type { ControllerBinding, ControllerOptions } from "../common/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../spec/types";
 
 interface NormalizedControllerSource<S extends CanonicalSpec> {
   readonly plan: Plan<S>;

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://seqlok.dev/schema/spec-ast/v1.json",
   "title": "SeqlokSpecAst",
-  "description": "Canonical authored spec AST for Seqlok shared-memory bridges. This schema validates authored structure, not meaning. Semantic compilation owns rules such as numeric range validity, runtime-contract formation, namespace flattening, planner invariants, and compatibility/hash policy.",
+  "description": "Canonical authored spec AST for Seqlok shared-memory bridges. This schema validates authored structure, not meaning. @seqlok/core semantic compilation owns rules such as numeric range validity, runtime-contract formation, namespace flattening, planner invariants, and compatibility/hash policy.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -14,15 +14,15 @@
     "id": {
       "type": "string",
       "minLength": 1,
-      "description": "Optional authored identifier. Current core accepts omitted id and defaults it during semantic compilation."
+      "description": "Optional authored identifier. @seqlok/core accepts omitted id and defaults runtime identity during semantic compilation."
     },
     "params": {
       "$ref": "#/$defs/ParamNamespace",
-      "description": "Controller-owned authored namespace tree. Nested namespaces are allowed at the authored layer and are flattened later."
+      "description": "Controller-owned authored namespace tree. Nested namespaces are allowed at the authored layer and are flattened later by @seqlok/core."
     },
     "meters": {
       "$ref": "#/$defs/MeterNamespace",
-      "description": "Processor-owned authored namespace tree. Nested namespaces are allowed at the authored layer and are flattened later."
+      "description": "Processor-owned authored namespace tree. Nested namespaces are allowed at the authored layer and are flattened later by @seqlok/core."
     }
   },
   "$defs": {

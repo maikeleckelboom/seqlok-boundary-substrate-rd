@@ -9,7 +9,7 @@ import type {
   WasmSharedBacking,
 } from "../../src/backing/types";
 import type { Plan } from "../../src/plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 describe("Handoff v1: Type Barrier Contracts", () => {
   it("buildHandoff second parameter is the Backing union (shared | partitioned | wasm)", () => {

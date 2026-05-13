@@ -14,8 +14,7 @@ export {
   type ParamBuilders,
   type MeterBuilders,
 } from "./spec/define";
-// CanonicalSpec and CanonicalSpecFromAst are owned by @seqlok/schema.
-// Import them directly from @seqlok/schema; core does not re-export them.
+export type { CanonicalSpec, CanonicalSpecFromAst } from "./spec/types";
 export { keysOf } from "./spec/keys";
 export type { ParamKeyMirror, MeterKeyMirror } from "./spec/keys";
 

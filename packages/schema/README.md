@@ -1,65 +1,90 @@
 # @seqlok/schema
 
-Canonical authored spec contract for Seqlok.
+`@seqlok/schema` publishes the canonical authored spec AST for Seqlok, with structural validation, deterministic authored normalization, and a versioned JSON Schema artifact. `@seqlok/core` owns semantic compilation and all runtime-facing contract behavior beyond that boundary.
 
-This package owns the **authored AST** and the **canonical collapsed spec** —
-the JSON-serializable contract that all other Seqlok layers build from. It does
-**not** own the builder DSL, runtime planning, or binding.
+This package is deliberately narrow. It describes authored structure. It does not compile that structure into runtime meaning.
 
-## Purpose
+## What This Package Owns
 
-- Publish the canonical authored spec model as plain-data types.
-- Provide structural validation of authored spec objects.
-- Provide the only public AST-to-canonical collapse (`canonicalizeSpecAst`).
-- Publish the official JSON Schema artifact (`spec-ast/v1.json`).
+- Authored AST TypeScript types: `SpecAstInput`, `SpecNamespace`, `ParamDef`, `MeterDef`, and their leaf definition types.
+- `validateSpecAst(...)` for structural validation of authored AST objects.
+- `SchemaValidationError` for structural validation failures.
+- `normalizeSpecAst(...)` for deterministic authored-layer normalization.
+- `SPEC_AST_V1_ID`, the `$id` of the published AST artifact.
+- `spec-ast/v1.json`, the versioned JSON Schema artifact for the authored AST.
 
-## What lives here
+## What This Package Does Not Own
 
-- `SpecAstInput` and leaf definition unions (`ParamDef`, `MeterDef`).
-- `CanonicalSpec` and `CanonicalSpecFromAst` — the flat, validated runtime contract.
-- `canonicalizeSpecAst(...)` — the only public AST-to-canonical collapse function.
-- `validateSpecAst(...)` — structural validation only.
-- `SPEC_AST_V1_ID` — the stable `$id` URI of the published JSON Schema.
-- `spec-ast/v1.json` — the published JSON Schema file, available via
-  `@seqlok/schema/spec-ast/v1.json`.
+- Builder DSL sugar.
+- `defineSpec(...)`.
+- Semantic compilation.
+- Runtime namespace flattening.
+- Canonical runtime key generation.
+- `keysOf(...)`.
+- Runtime defaults.
+- Anonymous runtime id generation.
+- Spec hashing or compatibility policy.
+- Planning, backing, handoff, or bindings.
+- Product semantics or convenience helpers over runtime behavior.
 
-## What does NOT live here
+Those responsibilities belong to `@seqlok/core`.
 
-- Builder DSL sugar (owned by `@seqlok/core`).
-- Runtime planning, backing, handoff, bindings (owned by `@seqlok/core`).
-- Spec hashing and identity (owned by `@seqlok/core`).
-- `keysOf(...)` projection (owned by `@seqlok/core`).
+## Structural Validation Only
 
-## Why canonicalizeSpecAst
+`validateSpecAst(...)` checks authored structure:
 
-`canonicalizeSpecAst` is the single owner of the AST-to-canonical collapse:
+- legal top-level keys
+- legal param and meter leaf kinds
+- required fields for enum and array leaves
+- enum vocabulary shape
+- positive integer array lengths
+- recursive namespace shape
+- unknown property rejection
 
-- Validates authored structure via `validateSpecAst`
-- Flattens nested namespaces into flat dot-path canonical planes
-- Fills default scalar ranges (f32, i32, u32)
-- Generates a deterministic anonymous id when `id` is omitted
-- Omits empty planes
-- Rejects empty segments, dotted segments, duplicate canonical keys,
-  and leaf/namespace collisions
+It does not check semantic meaning. In particular, schema does not decide whether `min < max`, whether namespaces collide after flattening, how runtime defaults are filled, whether a plan is legal, or whether two runtime contracts are compatible.
 
-This is distinct from `@seqlok/core`'s DSL sugar, which sits on top of
-schema-owned contract types without re-owning canonical meaning.
+## Authored Normalization Only
 
-## Schema version
+`normalizeSpecAst(...)` first runs structural validation, then returns a deterministic authored AST copy.
 
-Current published schema: **v1** (`spec-ast/v1.json`).
+It may:
 
-The `$id` is `https://seqlok.dev/schema/spec-ast/v1.json`.
+- sort authored object keys deterministically
+- preserve enum order
+- preserve namespace nesting
+- omit empty `params` and `meters` planes
+
+It must not:
+
+- flatten namespaces
+- fill runtime defaults
+- generate runtime identities
+- compute canonical runtime keys
+- hash specs
+- interpret authored meaning beyond structural legality
+
+## Versioned Artifact
+
+Current artifact: `spec-ast/v1.json`
+
+Current `$id`: `https://seqlok.dev/schema/spec-ast/v1.json`
+
+`v1` is the authored AST artifact version. It is not a runtime contract version, planner version, handoff version, or compatibility policy.
+
+```ts
+import schema from "@seqlok/schema/spec-ast/v1.json";
+import { SPEC_AST_V1_ID } from "@seqlok/schema";
+
+console.assert(schema.$id === SPEC_AST_V1_ID);
+```
 
 ## Usage
 
 ```ts
 import {
+  normalizeSpecAst,
   validateSpecAst,
-  canonicalizeSpecAst,
-  SPEC_AST_V1_ID,
   type SpecAstInput,
-  type CanonicalSpec,
 } from "@seqlok/schema";
 
 const ast: SpecAstInput = {
@@ -70,31 +95,8 @@ const ast: SpecAstInput = {
   },
 };
 
-validateSpecAst(ast); // throws SchemaValidationError if structurally invalid
-const spec: CanonicalSpec = canonicalizeSpecAst(ast); // canonical flat contract
+validateSpecAst(ast);
+const normalizedAst = normalizeSpecAst(ast);
 ```
 
-### Importing the JSON Schema file
-
-```ts
-import schema from "@seqlok/schema/spec-ast/v1.json";
-```
-
-## Structural vs semantic
-
-`@seqlok/schema` validates **structure**:
-
-- correct object shapes
-- legal `kind` values
-- required fields present
-- enum vocabularies are non-empty arrays of unique non-empty strings
-- array lengths are positive integers
-
-`canonicalizeSpecAst` adds **semantic** validation over the authenticated contract:
-
-- numeric range validity (`min < max`)
-- namespace flattening and collision rules
-- deterministic default range filling
-- deterministic missing-id materialization
-
-That boundary is intentional and should remain stable.
+Pass authored ASTs to `defineSpec(...)` in `@seqlok/core` when you want semantic compilation into the runtime contract consumed by planning.

@@ -26,7 +26,7 @@ import type { SharedContext } from "../../context/types";
 import type { Handoff, AcceptedHandoff } from "../../handoff/types";
 import type { Plan } from "../../plan/types";
 import type { ProcessorBinding, ProcessorOptions } from "../common/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../spec/types";
 
 interface NormalizedProcessorSource<S extends CanonicalSpec> {
   readonly plan: Plan<S>;

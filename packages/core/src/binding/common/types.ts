@@ -19,8 +19,8 @@ import type {
   ParamsOf,
   ScalarMeterKeys,
   ScalarParamKeys,
+  CanonicalSpec,
 } from "../../spec/types";
-import type { CanonicalSpec } from "@seqlok/schema";
 
 /**
  * Monotonic sequence number for param updates (PU domains).

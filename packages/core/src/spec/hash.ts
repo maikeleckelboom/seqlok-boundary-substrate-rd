@@ -1,5 +1,5 @@
 import type { SpecHash } from "./types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "./types";
 
 /**
  * Small deterministic 64-bit mix without a BigInt dependency.

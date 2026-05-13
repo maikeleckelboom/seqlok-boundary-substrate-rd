@@ -29,7 +29,7 @@ import type { Handoff, AcceptedHandoff } from "./types";
 import type { Backing } from "../backing/types";
 import type { SharedContext } from "../context/types";
 import type { Plan, PlaneByteLengths } from "../plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 /**
  * Protocol version supported by this module.

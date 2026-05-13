@@ -4,8 +4,7 @@ import type {
   ParamShape,
   ParamValueFor,
 } from "./binding/common/types";
-import type { MeterKeys, ParamKeys } from "./spec/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec, MeterKeys, ParamKeys } from "./spec/types";
 
 /**
  * All controller-visible param values for a spec.

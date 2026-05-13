@@ -27,14 +27,14 @@ import {
 } from "../common/validate";
 
 import type { MeterPlaneViews, ParamPlaneViews } from "../../backing/map-views";
-import type { MeterKeys, ParamKeys } from "../../spec/types";
+import type { CanonicalSpec, MeterKeys, ParamKeys } from "../../spec/types";
 import type {
   MetersSnapshot,
   ParamsSnapshot,
   SnapshotMetersObject,
   SnapshotParamsObject,
 } from "../common/types";
-import type { CanonicalSpec , ParamDef } from "@seqlok/schema";
+import type { ParamDef } from "@seqlok/schema";
 
 type SnapshotParamSlot = Readonly<{
   /**

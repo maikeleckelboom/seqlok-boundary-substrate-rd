@@ -26,7 +26,8 @@ import {
 
 import type { MeterPlaneViews, ParamPlaneViews } from "../../backing/map-views";
 import type { ControllerMeters, ControllerParams } from "../common/types";
-import type { CanonicalSpec , ParamDef } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../spec/types";
+import type { ParamDef } from "@seqlok/schema";
 
 type SnapshotParamSlot = Readonly<{
   /**

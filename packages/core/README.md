@@ -36,8 +36,9 @@ Audio is the clearest example, but the model is broader than audio.
 
 Seqlok begins with an authored contract.
 
-That contract has a canonical form: a serializable authored spec AST.
-The TypeScript builder DSL is an authoring surface over that AST, not the canonical format itself.
+That contract has an authoritative authored form: the serializable spec AST published by `@seqlok/schema`.
+The TypeScript builder DSL is an authoring surface over that AST, not a second contract model.
+`@seqlok/schema` validates authored structure only; `@seqlok/core` owns the semantic-compilation boundary.
 
 `defineSpec(...)` accepts either:
 
@@ -63,9 +64,10 @@ Authored AST
 
 Important points:
 
-- the builder is not the canonical contract
-- the authored AST is the canonical contract
-- flat dot-path keys remain the runtime identity
+- the builder is authoring sugar, not the contract owner
+- the authored AST is the canonical authored contract
+- `defineSpec(...)` compiles authored structure into the runtime contract
+- flat dot-path keys remain the runtime identity in core
 - `keysOf(spec)` is optional ergonomic sugar, not a second identity model
 
 ---

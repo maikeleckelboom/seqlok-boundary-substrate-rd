@@ -20,7 +20,7 @@ import { createEnvError } from "../errors/env";
 
 import type { WasmSharedBacking } from "./types";
 import type { Plan } from "../plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../spec/types";
 
 /** WebAssembly page size in bytes (64 KiB). */
 const WASM_PAGE_SIZE = 64 * 1024;

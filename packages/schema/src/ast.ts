@@ -169,7 +169,7 @@ export type ScalarMeterDef = Exclude<MeterDef, { kind: `${string}.array` }>;
 /**
  * Author-time spec (AST form).
  * - $schema is OPTIONAL for editor/tooling self-reference
- * - id is OPTIONAL for authoring (will be auto-generated during semantic compilation)
+ * - id is OPTIONAL for authoring (@seqlok/core resolves runtime identity)
  * - Nested namespaces allowed
  */
 export type SpecAstInput = Readonly<{

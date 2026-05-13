@@ -16,7 +16,7 @@ import type {
 } from "../../src/binding/common/types";
 import type { Handoff, AcceptedHandoff } from "../../src/handoff/types";
 import type { Plan } from "../../src/plan/types";
-import type { CanonicalSpec } from "@seqlok/schema";
+import type { CanonicalSpec } from "../../src/spec/types";
 
 export interface BoundPair<S extends CanonicalSpec> {
   readonly spec: S;

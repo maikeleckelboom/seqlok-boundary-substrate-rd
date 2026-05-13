@@ -2,8 +2,9 @@
  * @fileoverview
  * Structural validation for authored spec AST objects.
  *
- * Validates structure only. Semantic meaning (e.g. min < max) is owned by
- * @seqlok/schema canonicalization via canonicalizeSpecAst.
+ * Validates structure only. Semantic meaning (e.g. min < max), runtime
+ * namespace flattening, runtime defaults, and runtime identity are owned by
+ * @seqlok/core semantic compilation.
  */
 
 import type { SpecAstInput } from "./ast";
@@ -339,7 +340,7 @@ function validateNamespace(
 /**
  * Validate an authored spec AST object structurally.
  *
- * @returns `true` if valid, `false` if invalid (collects all issues).
+ * @returns `true` if valid.
  * @throws SchemaValidationError if the spec is structurally invalid.
  */
 export function validateSpecAst(spec: unknown): spec is SpecAstInput {

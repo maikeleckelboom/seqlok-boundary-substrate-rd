@@ -1,15 +1,16 @@
 /**
  * @fileoverview
- * Public owner of AST-to-canonical spec canonicalization.
+ * Core semantic compilation from authored AST to runtime contract.
  */
 
+import { normalizeSpecAst } from "@seqlok/schema";
+
+import { createSpecError } from "../errors/spec";
 import { generateAnonymousSpecId } from "./canonical-hash";
 import { compilePlane, isLeafDef } from "./collapse";
-import { createSchemaError } from "./errors/schema";
-import { validateSpecAst } from "./validate";
 
-import type { ParamDef, MeterDef, SpecAstInput } from "./ast";
-import type { CanonicalSpec } from "./canonical";
+import type { CanonicalSpec } from "./types";
+import type { MeterDef, ParamDef, SpecAstInput } from "@seqlok/schema";
 
 const F32_MAX = 3.4028234663852886e38;
 const DEFAULT_F32_RANGE: Readonly<{ min: number; max: number }> = {
@@ -31,7 +32,7 @@ function asFiniteNumber(key: string, value: unknown): number {
     !Number.isFinite(value) ||
     Number.isNaN(value)
   ) {
-    throw createSchemaError("invalidDefinition", {
+    throw createSpecError("builderInvalid", {
       key,
       reason: value === undefined ? "missingMinMax" : "invalidKind",
     });
@@ -51,19 +52,19 @@ function validateScalarRange(
     Number.isNaN(min) ||
     Number.isNaN(max)
   ) {
-    throw createSchemaError("rangeInvalid", { key, min, max });
+    throw createSpecError("rangeInvalid", { key, min, max });
   }
   if (!(min < max)) {
-    throw createSchemaError("rangeInvalid", { key, min, max });
+    throw createSpecError("rangeInvalid", { key, min, max });
   }
   if (opts.integer) {
     if (!Number.isInteger(min) || !Number.isInteger(max)) {
-      throw createSchemaError("rangeInvalid", { key, min, max });
+      throw createSpecError("rangeInvalid", { key, min, max });
     }
   }
   if (opts.unsigned) {
     if (min < 0 || max < 0) {
-      throw createSchemaError("rangeInvalid", { key, min, max });
+      throw createSpecError("rangeInvalid", { key, min, max });
     }
   }
 }
@@ -158,26 +159,21 @@ function normalizeMeterDef(_key: string, def: MeterDef): MeterDef {
 }
 
 /**
- * Canonicalize an authored spec AST into the canonical flat spec.
- *
- * - Validates structure
- * - Flattens namespaces
- * - Fills default scalar ranges
- * - Generates deterministic anonymous id when omitted
- * - Omits empty planes
+ * Compile an authored spec AST into the flat runtime contract consumed by
+ * planning and bindings.
  */
 export function canonicalizeSpecAst(ast: SpecAstInput): CanonicalSpec {
-  validateSpecAst(ast);
+  const normalizedAst = normalizeSpecAst(ast);
 
   const compiledParams = compilePlane(
     "params",
-    ast.params,
+    normalizedAst.params,
     isLeafDef as (value: unknown) => value is ParamDef,
     normalizeParamDef,
   );
   const compiledMeters = compilePlane(
     "meters",
-    ast.meters,
+    normalizedAst.meters,
     isLeafDef as (value: unknown) => value is MeterDef,
     normalizeMeterDef,
   );
@@ -190,7 +186,7 @@ export function canonicalizeSpecAst(ast: SpecAstInput): CanonicalSpec {
     params?: Record<string, ParamDef>;
     meters?: Record<string, MeterDef>;
   } = {
-    id: ast.id ?? generateAnonymousSpecId(paramsOut, metersOut),
+    id: normalizedAst.id ?? generateAnonymousSpecId(paramsOut, metersOut),
   };
 
   if (Object.keys(paramsOut).length > 0) {
