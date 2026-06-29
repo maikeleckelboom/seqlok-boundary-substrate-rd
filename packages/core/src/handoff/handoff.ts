@@ -97,7 +97,7 @@ function isPlanLike<S extends SpecInput>(plan: unknown): plan is Plan<S> {
  *
  * @typeParam S - Spec type (inferred from `plan` or `context.plan`).
  *
- * @throws {@link import('../errors').SeqlokError}
+ * @throws {@link import('../errors').BoundaryError}
  * - `handoff.invalidArtifact` if the backing is incompatible with the plan,
  *   or an unsupported backing kind is provided.
  *
@@ -413,7 +413,7 @@ export function acceptHandoff<S extends SpecInput>( // eslint-disable-next-line 
 /**
  * Compare two plans for compatibility.
  *
- * @throws {@link import('../errors').SeqlokError}
+ * @throws {@link import('../errors').BoundaryError}
  * - `handoff.specHashMismatch` if `hash` values differ.
  * - `handoff.backingMismatch` if `bytesTotal` differ.
  */

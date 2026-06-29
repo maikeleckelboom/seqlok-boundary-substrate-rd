@@ -1,9 +1,9 @@
 /**
  * @fileoverview
- * Core module for Seqlok - Shared memory synchronization for real-time applications.
+ * Core module for Exclave Boundary.
  *
  * @remarks
- * - Re-exports all public APIs for the @seqlok/core package.
+ * - Re-exports all public APIs for the @exclave/boundary package.
  * - Organized into logical sections: SPEC, PLAN, BACKING, BINDING, HANDOFF, and ERRORS.
  * - This is the main entry point for consumers of the library.
  */
@@ -72,7 +72,7 @@ export { buildHandoff, acceptHandoff, verifyHandoff } from "./handoff/handoff";
 export type { Handoff, HandoffPacking, AcceptedHandoff } from "./handoff/types";
 
 // ERRORS
-export { SeqlokError, isSeqlokError } from "./errors/error";
+export { BoundaryError, isBoundaryError } from "./errors/error";
 export { getErrorMeta, getErrorMessage, isErrorCode } from "./errors/registry";
 export { interpretHealth } from "./errors/health";
 

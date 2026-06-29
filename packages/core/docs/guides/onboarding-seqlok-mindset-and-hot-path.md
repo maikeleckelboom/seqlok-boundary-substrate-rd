@@ -42,7 +42,7 @@ We do not create "view classes" or wrapper objects. Instead, you define the memo
 Instead of writing a class with getters and setters, you describe the layout data types:
 
 ```ts
-import { defineSpec } from "@seqlok-internal/prototype-core";
+import { defineSpec } from "@exclave/boundary";
 
 // 1. Define the structure (the "schema")
 export const boidSpec = defineSpec(({ param, meter }) => ({
@@ -173,7 +173,7 @@ Seqlok provides built-in utilities to verify the environment before you even att
 Don't wait for a crash. Fail fast during initialization using `assertSabSupport`.
 
 ```ts
-import { assertSabSupport } from "@seqlok-internal/prototype-core";
+import { assertSabSupport } from "@exclave/boundary";
 
 function initDevice() {
   try {
@@ -194,7 +194,7 @@ function initDevice() {
 If you want to feature-detect without crashing, use `probeEnv`.
 
 ```ts
-import { probeEnv } from "@seqlok-internal/prototype-core";
+import { probeEnv } from "@exclave/boundary";
 
 const env = probeEnv();
 
@@ -215,12 +215,12 @@ Seqlok errors are structured. Instead of parsing error strings, use the `interpr
 This is particularly useful for UI feedback ("Do I tell the user to reload, or just retry?").
 
 ```ts
-import { isSeqlokError, getErrorMeta, interpretHealth } from "@seqlok-internal/prototype-core";
+import { isBoundaryError, getErrorMeta, interpretHealth } from "@exclave/boundary";
 
 try {
   // ... seqlok operations ...
 } catch (err) {
-  if (isSeqlokError(err)) {
+  if (isBoundaryError(err)) {
     // 1. Get metadata about this specific error code
     const meta = getErrorMeta(err.code);
 
@@ -252,5 +252,5 @@ try {
 ## Further Reading
 
 - **Architecture – Concurrency Model and Roles** – deeper dive into Controller vs Processor vs Observer domains.
-- **Architecture – Error System and Fail-Fast Philosophy** – details on `isSeqlokError`, `interpretHealth`, and recovery strategies.
+- **Architecture – Error System and Fail-Fast Philosophy** – details on `isBoundaryError`, `interpretHealth`, and recovery strategies.
 - **From Pipe to Hub: Understanding Seqlok's Architecture** – how Seqlok composes SWSR domains, rings, hubs, and observers into system-level MWMR.

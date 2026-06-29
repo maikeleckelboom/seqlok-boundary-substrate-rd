@@ -38,7 +38,7 @@ const FUTURE_TOLERANCE_MS = 1_000;
 /**
  * Validate a timestamp for diagnostics purposes.
  *
- * @throws SeqlokError<'diagnostics.counterInvalid'>
+ * @throws BoundaryError<'diagnostics.counterInvalid'>
  */
 function assertValidTimestamp(field: string, timestamp: number): void {
   const now = Date.now();
@@ -69,7 +69,7 @@ function assertValidTimestamp(field: string, timestamp: number): void {
  * - Fails if a session is already active.
  * - Validates the supplied startTime.
  *
- * @throws SeqlokError<'diagnostics.counterInvalid'> on invalid startTime.
+ * @throws BoundaryError<'diagnostics.counterInvalid'> on invalid startTime.
  * @throws Error if a session is already active.
  */
 export function startDiagnosticsSession(
@@ -103,7 +103,7 @@ export function startDiagnosticsSession(
  * - Validates the supplied endTime.
  * - Ensures endTime >= startTime.
  *
- * @throws SeqlokError<'diagnostics.counterInvalid'> on invalid endTime.
+ * @throws BoundaryError<'diagnostics.counterInvalid'> on invalid endTime.
  */
 export function endDiagnosticsSession(
   endTime: number = Date.now(),

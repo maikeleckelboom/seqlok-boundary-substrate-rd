@@ -6,13 +6,13 @@ Accepted
 
 ## Context
 
-`@seqlok-internal/prototype-core` historically had a `src/primitives` layer (planes, atomics, seqlock) with a larger export surface than the runtime actually needed:
+`@exclave/boundary` historically had a `src/primitives` layer (planes, atomics, seqlock) with a larger export surface than the runtime actually needed:
 
 - Some helpers were unused (`isPow2`, `isAligned`, `getSeq`, `isWriterActive`).
 - Some were design stubs for future features (`acquire`, `AcquireOptions`).
 - A couple of functions (`createSeqPair`, `tryRead`) existed primarily to support primitives tests.
 
-At the same time, the public value proposition of `@seqlok-internal/prototype-core` is the **high-level binding pipeline**:
+At the same time, the public value proposition of `@exclave/boundary` is the **high-level binding pipeline**:
 
 - `defineSpec` → `planLayout` → `allocateShared` / `allocateWasmShared`
 - `buildHandoff` / `acceptHandoff`
@@ -54,4 +54,4 @@ Exposing low-level primitives as "public API" would increase maintenance cost an
 
 - A code reference for removed helpers, including exact TypeScript implementations, is kept in:
   `docs/appendix/primitives-shelf-removed-helpers-v1.md`.
-- If there is real demand for low-level primitives, that extraction needs a fresh design under the current boundary-substrate direction. This ADR does not reserve or promise a package name.
+- If there is real demand for low-level primitives, that extraction needs a fresh design under the current typed shared-memory boundary substrate direction. This ADR does not reserve or promise a package name.

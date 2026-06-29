@@ -1,19 +1,13 @@
-# Migration Notes From Prototype
+# Migration Notes
 
-The prototype package name was `@seqlok-internal/prototype-core`. This pass extracts the public package as `@seqlok/core`.
+Exclave Boundary was formerly developed under the Seqlok prototype name. Current integrations should use `@exclave/boundary`.
 
 ## Import Path
 
-Replace prototype imports:
+Use the current package import:
 
 ```ts
-import { defineSpec } from "@seqlok-internal/prototype-core";
-```
-
-with:
-
-```ts
-import { defineSpec } from "@seqlok/core";
+import { defineSpec } from "@exclave/boundary";
 ```
 
 ## Spec Shape
@@ -30,4 +24,4 @@ Specs without an explicit `id` receive a deterministic anonymous id derived from
 
 ## Boundary Semantics
 
-The public package is still a boundary substrate, not a full application runtime. Orchestration, transport protocols, worker lifecycle management, and domain-specific command semantics stay outside `@seqlok/core`.
+The public package is a typed shared-memory boundary substrate, not a full application runtime. Orchestration, transport protocols, worker lifecycle management, and domain-specific command semantics stay outside `@exclave/boundary`.

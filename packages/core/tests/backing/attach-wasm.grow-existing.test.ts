@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 
 import { allocateWasmShared } from "../../src/backing/allocate-wasm-shared";
-import { isSeqlokError } from "../../src/errors/error";
+import { isBoundaryError } from "../../src/errors/error";
 import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
 
@@ -114,7 +114,7 @@ describe("Allocate Wasm Shared: existing memory growth", () => {
       throw new Error("Expected allocateWasmShared to throw for grow failure");
     }
 
-    if (!isSeqlokError(thrown)) {
+    if (!isBoundaryError(thrown)) {
       throw thrown as Error;
     }
 

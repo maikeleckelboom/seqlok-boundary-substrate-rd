@@ -2,7 +2,7 @@
 
 **Status:** Draft / Implementation Guidance
 
-**Scope:** `@seqlok-internal/prototype-core` – bindings + diagnostics, _not_ primitives
+**Scope:** `@exclave/boundary` – bindings + diagnostics, _not_ primitives
 
 This doc freezes the mental model for how diagnostics counters and thresholds relate to seqlock usage, **without**
 wiring anything into primitives. It exists so we can implement the hooks later without re-arguing the design.
@@ -273,7 +273,7 @@ export interface RunWithDiagnosticsResult<T> {
   readonly metadata: Readonly<Record<string, unknown>>;
 
   readonly value: T | undefined;
-  readonly error: SeqlokError<ErrorCode> | undefined;
+  readonly error: BoundaryError<ErrorCode> | undefined;
   readonly health: HealthInterpretation | undefined;
 
   readonly boundarySafe: boolean;
@@ -298,7 +298,7 @@ export async function runWithDiagnostics<T>(
 ): Promise<RunWithDiagnosticsResult<T>> {
   // 1) reset counters
   // 2) start session
-  // 3) run scenario (capture value / SeqlokError)
+  // 3) run scenario (capture value / BoundaryError)
   // 4) end session
   // 5) snapshot counters
   // 6) export JSON

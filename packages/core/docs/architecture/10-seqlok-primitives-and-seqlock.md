@@ -11,7 +11,7 @@ Lock-free building blocks used by the planner, backing layer, and bindings.
 - SWMR-friendly (Single-Writer / Multiple-Reader)
 - Thin, policy-light surfaces – all higher-level policy lives in bindings and composition layers
 
-Primitives live as a **small internal layer** in `@seqlok-internal/prototype-core`:
+Primitives live as a **small internal layer** in `@exclave/boundary`:
 
 - Seqlock (dual-counter, SWMR)
 - Atomics helpers
@@ -121,7 +121,7 @@ const pair = createSeqPair(u32Plane, lockIndex, seqIndex);
 Guarantees:
 
 - Validates `lockIndex` and `seqIndex` are within bounds of the `Uint32Array`.
-- Throws `SeqlokError<'internal.assertionFailed'>` if indices are invalid.
+- Throws `BoundaryError<'internal.assertionFailed'>` if indices are invalid.
 - Used by the backing/layout layer to hook the **control planes** (`PU`, `MU`) into seqlock logic.
 
 This is the **only** supported way to construct a `SeqPair`.
@@ -223,7 +223,7 @@ Behavior:
 
 1. Validates `spinBudget` / `retryBudget` as finite, non-negative integers.
 
-- On invalid budgets → throws `SeqlokError<'primitives.invalidSpinBudget'>`.
+- On invalid budgets → throws `BoundaryError<'primitives.invalidSpinBudget'>`.
 
 2. Repeatedly tries to obtain a coherent snapshot:
 
@@ -250,7 +250,7 @@ Behavior:
 
 4. If spin/retry budgets are **fully exhausted** without a coherent sample:
 
-- Throws `SeqlokError<'primitives.seqlockTimeout'>` with a `ReadStatus` payload whose `kind` is
+- Throws `BoundaryError<'primitives.seqlockTimeout'>` with a `ReadStatus` payload whose `kind` is
   `'budgetExhausted'`.
 
 Important nuance:
@@ -346,14 +346,14 @@ declare function spinUntilEven(
 
 ### 2.1 Error normalization
 
-These wrappers normalize errors into structured `SeqlokError`s:
+These wrappers normalize errors into structured `BoundaryError`s:
 
-- `SeqlokError<'primitives.atomicsFailed'>`
+- `BoundaryError<'primitives.atomicsFailed'>`
 
   - Underlying `Atomics.load` / `Atomics.add` threw (e.g. wrong typed array, detached buffer, non-shared view).
   - Carries `detail.where` / `detail.operation` / indices for diagnostics.
 
-- `SeqlokError<'primitives.invalidSpinBudget'>`
+- `BoundaryError<'primitives.invalidSpinBudget'>`
 
   - For `spinUntilEven` when `spinBudget` is negative, non-integer, or otherwise invalid.
 

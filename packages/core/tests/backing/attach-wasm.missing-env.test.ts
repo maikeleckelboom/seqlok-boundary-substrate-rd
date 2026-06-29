@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { allocateWasmShared } from "../../src/backing/allocate-wasm-shared";
-import { isSeqlokError } from "../../src/errors/error";
+import { isBoundaryError } from "../../src/errors/error";
 import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
 
@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 describe("Allocate Wasm Shared: Constructor Failure Handling", () => {
-  it("wraps synchronous WebAssembly.Memory constructor errors into a typed SeqlokError", () => {
+  it("wraps synchronous WebAssembly.Memory constructor errors into a typed BoundaryError", () => {
     // Define a minimal spec to generate a valid layout plan
     const spec = defineSpec(({ param, meter }) => ({
       id: "wasm-failure-test",
@@ -44,8 +44,8 @@ describe("Allocate Wasm Shared: Constructor Failure Handling", () => {
     }
 
     // Verify the error was caught, wrapped, and typed correctly
-    if (!isSeqlokError(thrown)) {
-      throw new Error("Expected allocateWasmShared to throw a SeqlokError");
+    if (!isBoundaryError(thrown)) {
+      throw new Error("Expected allocateWasmShared to throw a BoundaryError");
     }
 
     expect(thrown.code).toBe("backing.wasmMemoryNotShared");

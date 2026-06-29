@@ -1,13 +1,14 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  title: "Seqlok Core",
+  title: "Exclave Boundary",
   description:
-    "Typed shared-memory boundary substrate for controller, processor, and observer flows.",
+    "typed shared-memory boundary substrate for coherent state, deterministic layout, explicit handoff, and timing-sensitive runtimes.",
   cleanUrls: true,
   lastUpdated: true,
   themeConfig: {
     nav: [
+      { text: "Exclave Boundary", link: "/" },
       { text: "Guide", link: "/quickstart" },
       { text: "API", link: "/api" },
       { text: "Release", link: "/release-checklist" },
@@ -18,7 +19,7 @@ export default defineConfig({
         items: [
           { text: "Install", link: "/install" },
           { text: "Quickstart", link: "/quickstart" },
-          { text: "Core Flow", link: "/core-flow" },
+          { text: "Boundary Flow", link: "/core-flow" },
         ],
       },
       {

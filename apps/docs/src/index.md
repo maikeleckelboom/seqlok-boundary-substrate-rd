@@ -1,9 +1,9 @@
 ---
 layout: home
 hero:
-  name: Seqlok Core
+  name: Exclave Boundary
   text: Typed shared-memory boundary substrate
-  tagline: One public package for defining specs, planning memory, allocating SharedArrayBuffer backing, and binding controller, processor, and observer roles.
+  tagline: One package for coherent state, deterministic layout, explicit handoff, and timing-sensitive runtimes.
   actions:
     - theme: brand
       text: Quickstart
@@ -17,11 +17,11 @@ features:
   - title: Runtime-explicit
     details: Plan, allocate, build handoff artifacts, and bind each role with visible boundaries.
   - title: Release-focused
-    details: The public package is @seqlok/core; internal implementation layers stay inside the package for this pass.
+    details: The public package is @exclave/boundary; internal implementation layers stay inside the package.
 ---
 
 ## Public Package
 
-`@seqlok/core` is the public package from this repository. It is ESM, typed, tree-shakeable, and scoped to the core boundary-substrate flow.
+`@exclave/boundary` is Exclave Boundary: a typed shared-memory boundary substrate. It is ESM, typed, tree-shakeable, and scoped to the boundary flow rather than a complete application runtime.
 
-Start with [Install](/install), then read the [Core Flow](/core-flow) and [Authored AST vs Runtime](/authoring-contract) pages before publishing or integrating across a worker boundary.
+Start with [Install](/install), then read the [Boundary Flow](/core-flow) and [Authored AST vs Runtime](/authoring-contract) pages before publishing or integrating across a worker boundary.

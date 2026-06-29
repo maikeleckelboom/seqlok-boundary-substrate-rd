@@ -4,7 +4,7 @@
  *
  * @remarks
  * - Provides type-safe invariant checks for runtime validation.
- * - Throws standardized SeqlokError with proper error codes and details.
+ * - Throws standardized BoundaryError with proper error codes and details.
  * - Used for internal assertions and preconditions throughout the codebase.
  */
 

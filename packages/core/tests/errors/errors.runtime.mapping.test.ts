@@ -37,7 +37,7 @@ function expectHasFeatureReason(
   expect(typeof rec.reason, "details.reason must be a string").toBe("string");
 }
 
-describe("SeqlokError Factory: Runtime Composition", () => {
+describe("BoundaryError Factory: Runtime Composition", () => {
   it("composes error objects with structured details and preserves underlying causes", () => {
     // Simulate an upstream system error to verify cause preservation
     const cause = new TypeError("shared memory not supported");

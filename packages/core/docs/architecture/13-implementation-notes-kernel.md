@@ -26,7 +26,7 @@ Those live in higher layers such as devices, drivers, apps, and host/runtime int
 ### Fail-fast over fail-safe
 
 When invariants are broken (mismatched layouts, wrong handoff, undersized backing, out-of-range writes), the library
-throws a typed `SeqlokError`.
+throws a typed `BoundaryError`.
 
 - No silent recovery
 - No "best effort" remapping of incompatible layouts
@@ -242,7 +242,7 @@ Behaviour:
 
 7. If the retry budget is exhausted:
 
-- `kind: 'budgetExhausted'`, and `tryRead` (or its wrapper) throws `SeqlokError<'primitives.seqlockTimeout'>`.
+- `kind: 'budgetExhausted'`, and `tryRead` (or its wrapper) throws `BoundaryError<'primitives.seqlockTimeout'>`.
 
 `acquire` wraps `tryRead` with a policy (`'fallback' | 'timeout'`) and is what bindings call in hot paths.
 
@@ -506,7 +506,7 @@ Only equality comparisons are used; wraparound does not matter for this pattern.
 
 ### Error detail payloads
 
-All `SeqlokError` instances carry structured `details`, for example:
+All `BoundaryError` instances carry structured `details`, for example:
 
 - Seqlock timeouts:
 

@@ -1,20 +1,30 @@
 {
-  "name": "@seqlok/core",
+  "name": "@exclave/boundary",
+  "title": "Exclave Boundary",
   "version": "0.3.0-next.0",
-  "description": "Shared-memory boundary substrate primitives for typed controller, processor, and observer flows.",
+  "description": "typed shared-memory boundary substrate for coherent state, deterministic layout, explicit handoff, and timing-sensitive runtimes.",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/maikeleckelboom/seqlok-boundary-substrate-rd.git",
+    "url": "git+https://github.com/maikeleckelboom/exclave-boundary.git",
     "directory": "packages/core"
   },
+  "homepage": "https://github.com/maikeleckelboom/exclave-boundary#readme",
+  "bugs": {
+    "url": "https://github.com/maikeleckelboom/exclave-boundary/issues"
+  },
   "keywords": [
+    "exclave",
+    "boundary",
+    "typed",
     "sharedarraybuffer",
     "seqlock",
-    "concurrency",
     "shared-memory",
+    "deterministic-layout",
+    "handoff",
     "typescript",
-    "realtime"
+    "realtime",
+    "timing-sensitive"
   ],
   "sideEffects": false,
   "publishConfig": {
@@ -40,6 +50,7 @@
   "files": [
     "dist/**/*",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {

@@ -3,7 +3,7 @@
 Install the public package:
 
 ```sh
-pnpm add @seqlok/core
+pnpm add @exclave/boundary
 ```
 
 The package is ESM-only and ships TypeScript declarations through its `exports` map.
@@ -17,12 +17,12 @@ import {
   buildHandoff,
   defineSpec,
   planLayout,
-} from "@seqlok/core";
+} from "@exclave/boundary";
 ```
 
 ## Runtime Requirements
 
-`@seqlok/core` uses `SharedArrayBuffer` for shared backing memory. In browsers, pages must be cross-origin isolated before `SharedArrayBuffer` is available. In Node.js, worker-thread usage depends on the Node version and host runtime.
+`@exclave/boundary` uses `SharedArrayBuffer` for shared backing memory. In browsers, pages must be cross-origin isolated before `SharedArrayBuffer` is available. In Node.js, worker-thread usage depends on the Node version and host runtime.
 
 ## Package Shape
 

@@ -6,7 +6,7 @@ import {
   setCounter,
   snapshotCounters,
 } from "../../src/diagnostics/counters";
-import { isSeqlokError, type SeqlokError } from "../../src/errors/error";
+import { isBoundaryError, type BoundaryError } from "../../src/errors/error";
 
 describe("Diagnostics Counters: Runtime State & Validation", () => {
   beforeEach(() => {
@@ -74,11 +74,13 @@ describe("Diagnostics Counters: Runtime State & Validation", () => {
       thrown = error;
     }
 
-    if (!isSeqlokError(thrown)) {
-      throw new Error("Expected a SeqlokError from incrementCounter overflow");
+    if (!isBoundaryError(thrown)) {
+      throw new Error(
+        "Expected a BoundaryError from incrementCounter overflow",
+      );
     }
 
-    const err = thrown as SeqlokError<"diagnostics.counterInvalid">;
+    const err = thrown as BoundaryError<"diagnostics.counterInvalid">;
 
     expect(err.code).toBe("diagnostics.counterInvalid");
     expect(err.details.name).toBe("degradedSnapshots");
@@ -95,13 +97,13 @@ describe("Diagnostics Counters: Runtime State & Validation", () => {
       thrown = error;
     }
 
-    if (!isSeqlokError(thrown)) {
+    if (!isBoundaryError(thrown)) {
       throw new Error(
-        "Expected a SeqlokError from setCounter with negative value",
+        "Expected a BoundaryError from setCounter with negative value",
       );
     }
 
-    const err = thrown as SeqlokError<"diagnostics.counterInvalid">;
+    const err = thrown as BoundaryError<"diagnostics.counterInvalid">;
 
     expect(err.code).toBe("diagnostics.counterInvalid");
     expect(err.details.name).toBe("spinBudgetExhausted");

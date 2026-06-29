@@ -19,8 +19,8 @@ import {
   acceptHandoff,
   bindController,
   bindProcessor,
-} from "@seqlok-internal/prototype-core";
-import type { Handoff } from "@seqlok-internal/prototype-core";
+} from "@exclave/boundary";
+import type { Handoff } from "@exclave/boundary";
 
 // Owner / controller side
 const spec = defineSpec(/* ... */);
@@ -571,13 +571,13 @@ import {
   planLayout,
   acceptHandoff,
   bindProcessor,
-} from "@seqlok-internal/prototype-core";
+} from "@exclave/boundary";
 import type {
   SpecInput,
   ControllerBinding,
   ProcessorBinding,
   Handoff,
-} from "@seqlok-internal/prototype-core";
+} from "@exclave/boundary";
 
 export interface SharedWire<S extends SpecInput> {
   spec: S;

@@ -1,6 +1,6 @@
-# Core Flow
+# Boundary Flow
 
-`@seqlok/core` is organized around five explicit steps.
+Exclave Boundary is organized around five explicit steps.
 
 ## Define
 

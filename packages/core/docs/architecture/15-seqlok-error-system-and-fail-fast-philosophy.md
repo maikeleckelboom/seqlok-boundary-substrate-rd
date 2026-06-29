@@ -7,7 +7,7 @@ This document explains:
 - Where Seqlok can fail
 - How errors are structured and surfaced
 - Why the library **refuses** to silently recover from certain problems
-- How to work with `SeqlokError` as a user or contributor
+- How to work with `BoundaryError` as a user or contributor
 
 The short version:
 
@@ -38,7 +38,7 @@ That is worse than:
 
 So the philosophy is:
 
-> If Seqlok detects a violation of its invariants, it throws a structured `SeqlokError`.
+> If Seqlok detects a violation of its invariants, it throws a structured `BoundaryError`.
 > It does **not** attempt best-effort recovery or automatic fallback.
 
 Higher-level code is free to catch those and decide what to do (show a dialog, disable a device, rebuild a graph), but **Seqlok itself** doesn't try to patch over broken fundamentals.
@@ -62,19 +62,19 @@ import {
   type ErrorCode,
   type ErrorPayload,
   type ErrorMeta,
-  SeqlokError,
-  isSeqlokError,
+  BoundaryError,
+  isBoundaryError,
   getErrorMeta,
   interpretHealth,
-} from "@seqlok-internal/prototype-core";
+} from "@exclave/boundary";
 ```
 
 - `ErrorCode` – finite union of string codes (`'env.unsupported'`, `'backing.allocUndersized'`, …).
 - `ErrorPayload<C>` – details payload type for code `C`.
 - `ErrorMeta` – static metadata per code (severity, recoverable, docs section, etc.).
-- `SeqlokError<C extends ErrorCode>` – the concrete error class Seqlok throws.
+- `BoundaryError<C extends ErrorCode>` – the concrete error class Seqlok throws.
 
-`SeqlokError` carries:
+`BoundaryError` carries:
 
 - `code: C`
 - `message: string`
@@ -111,19 +111,19 @@ Design constraints:
 
 - **No `any` in payloads.** Every code has a dedicated payload type.
 - **No ad-hoc strings.** All codes live in domain-specific registries.
-- The only class thrown by the kernel is `SeqlokError`.
+- The only class thrown by the kernel is `BoundaryError`.
 
 ### 2.3 Health interpretation (consumer-side)
 
 Consumers never need to parse error messages. Instead, they use:
 
 ```ts
-import { isSeqlokError, getErrorMeta, interpretHealth } from "@seqlok-internal/prototype-core";
+import { isBoundaryError, getErrorMeta, interpretHealth } from "@exclave/boundary";
 
 try {
   // … Seqlok operations …
 } catch (err) {
-  if (isSeqlokError(err)) {
+  if (isBoundaryError(err)) {
     const meta = getErrorMeta(err.code);
     const health = interpretHealth(meta);
 
@@ -262,7 +262,7 @@ These are treated as **fatal** and point at problems in Seqlok itself, not user 
 
 ---
 
-## 4. `SeqlokError` Shape & Usage
+## 4. `BoundaryError` Shape & Usage
 
 ### 4.1 What you get at call sites
 
@@ -275,7 +275,7 @@ try {
   const backing = allocateShared(plan);
   const controller = bindController(spec, plan, backing);
 } catch (err) {
-  if (isSeqlokError(err)) {
+  if (isBoundaryError(err)) {
     console.error("Seqlok failed:", err.code, err.message, err.details);
   } else {
     throw err;
@@ -289,7 +289,7 @@ Key points:
 - `err.details` is a typed object; the shape depends on `err.code`.
 - `err.message` is for humans, not for branching logic.
 
-You never need to construct `SeqlokError` manually from application code; that's a kernel concern.
+You never need to construct `BoundaryError` manually from application code; that's a kernel concern.
 
 ### 4.2 Anatomy of a payload
 
@@ -339,7 +339,7 @@ APIs:
 - Broken handoffs
 - Unsupported environments
 
-This is where Seqlok is intentionally strict: if something is wrong, you get a `SeqlokError` and initialization fails.
+This is where Seqlok is intentionally strict: if something is wrong, you get a `BoundaryError` and initialization fails.
 
 Guideline:
 
@@ -428,10 +428,10 @@ import {
   planLayout,
   allocateShared,
   bindController,
-  isSeqlokError,
+  isBoundaryError,
   interpretHealth,
   getErrorMeta,
-} from "@seqlok-internal/prototype-core";
+} from "@exclave/boundary";
 
 function createSeqlokDevice() {
   try {
@@ -442,7 +442,7 @@ function createSeqlokDevice() {
 
     return { spec, plan, backing, controller };
   } catch (err) {
-    if (isSeqlokError(err)) {
+    if (isBoundaryError(err)) {
       const health = interpretHealth(getErrorMeta(err.code));
 
       console.error(`[Seqlok] ${health.label}: ${err.message}`, err.details);
@@ -464,7 +464,7 @@ function createSeqlokDevice() {
 Guidelines:
 
 - **Centralize** error handling around initialization and major topology changes.
-- Treat `SeqlokError` as "this device / environment / binding is misconfigured or unhealthy."
+- Treat `BoundaryError` as "this device / environment / binding is misconfigured or unhealthy."
 - Use `interpretHealth` to decide whether to retry, rebuild, or fail hard.
 
 ### 7.2 Runtime handling
@@ -509,7 +509,7 @@ invariant(
 );
 ```
 
-All kernel-originated failures that escape **must** be `SeqlokError`.
+All kernel-originated failures that escape **must** be `BoundaryError`.
 
 ### 8.2 Reuse existing codes where reasonable
 
@@ -573,10 +573,10 @@ it("throws backing.allocUndersized for too-small buffer", () => {
 ## 9. Summary
 
 - Seqlok is a **low-level shared-memory kernel**; silent failure is unacceptable.
-- All kernel-originated failures are surfaced as **`SeqlokError`** with a small, structured set of codes and typed payloads.
+- All kernel-originated failures are surfaced as **`BoundaryError`** with a small, structured set of codes and typed payloads.
 - Error **domains** (`spec.*`, `plan.*`, `backing.*`, `handoff.*`, `binding.*`, `primitives.*`, `env.*`, `diagnostics.*`, `internal.*`) mirror the architectural layers.
 - The library chooses **fail-fast** over "best-effort recovery" when core invariants are violated.
-- Users should handle errors primarily at **initialization time**, using `isSeqlokError`, `getErrorMeta`, and `interpretHealth` to decide on recovery.
+- Users should handle errors primarily at **initialization time**, using `isBoundaryError`, `getErrorMeta`, and `interpretHealth` to decide on recovery.
 - Contributors must:
 
   - Avoid bare `Error`

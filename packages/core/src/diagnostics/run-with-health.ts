@@ -1,6 +1,6 @@
 /**
  * @fileoverview
- * Run scenarios under a Seqlok diagnostics + health envelope.
+ * Run scenarios under an Exclave Boundary diagnostics + health envelope.
  *
  * @remarks
  * This helper is intended for:
@@ -19,7 +19,7 @@
 import { resetCounters, snapshotCounters } from "./counters";
 import { exportDiagnosticsCounters } from "./export";
 import { endDiagnosticsSession, startDiagnosticsSession } from "./session";
-import { isSeqlokError } from "../errors/error";
+import { isBoundaryError } from "../errors/error";
 import { getDocsUrl, interpretHealth, isBoundarySafe } from "../errors/health";
 import { getErrorMeta } from "../errors/registry";
 
@@ -28,7 +28,7 @@ import type {
   DiagnosticsCountersSnapshot,
 } from "./counters";
 import type { DiagnosticsSession } from "./session";
-import type { SeqlokError } from "../errors/error";
+import type { BoundaryError } from "../errors/error";
 import type { HealthInterpretation } from "../errors/health";
 import type { ErrorMeta } from "../errors/registry";
 
@@ -63,7 +63,7 @@ export interface ThresholdViolation {
  * - log from CLIs,
  * - serialize to JSON.
  *
- * With `exactOptionalPropertyTypes: true` we model “maybe present” fields
+ * With `exactOptionalPropertyTypes: true` we model "maybe present" fields
  * explicitly as `T | undefined` rather than using `?`.
  */
 export interface RunWithDiagnosticsResult<T> {
@@ -72,14 +72,14 @@ export interface RunWithDiagnosticsResult<T> {
 
   /**
    * Value returned by the scenario when it succeeds.
-   * `undefined` when the scenario fails with a SeqlokError.
+   * `undefined` when the scenario fails with a BoundaryError.
    */
   readonly value: T | undefined;
 
   /**
-   * Seqlok error thrown by the scenario, if any.
+   * Boundary error thrown by the scenario, if any.
    */
-  readonly error: SeqlokError | undefined;
+  readonly error: BoundaryError | undefined;
 
   /**
    * Interpreted health view for the error, if any.
@@ -147,19 +147,19 @@ export interface RunWithDiagnosticsOptions {
   readonly thresholds?: DiagnosticsThresholds;
 
   /**
-   * Optional hook invoked when a SeqlokError is caught.
+   * Optional hook invoked when a BoundaryError is caught.
    */
-  readonly onSeqlokError?: (
-    error: SeqlokError,
+  readonly onBoundaryError?: (
+    error: BoundaryError,
     health: HealthInterpretation,
     meta: ErrorMeta,
   ) => void;
 
   /**
-   * Optional hook invoked when a non-Seqlok error is caught.
+   * Optional hook invoked when a non-Boundary error is caught.
    *
    * @remarks
-   * By default, non-Seqlok errors are rethrown after diagnostics
+   * By default, non-Boundary errors are rethrown after diagnostics
    * bookkeeping. This hook is for logging/telemetry only.
    */
   readonly onUnknownError?: (error: unknown) => void;
@@ -219,9 +219,9 @@ export function checkDiagnosticsThresholds(
 }
 
 /**
- * Internal helper to derive meta + health from a SeqlokError.
+ * Internal helper to derive meta + health from a BoundaryError.
  */
-function getMetaAndHealth(error: SeqlokError): {
+function getMetaAndHealth(error: BoundaryError): {
   meta: ErrorMeta;
   health: HealthInterpretation;
 } {
@@ -231,7 +231,7 @@ function getMetaAndHealth(error: SeqlokError): {
 }
 
 interface ErrorState {
-  error: SeqlokError | undefined;
+  error: BoundaryError | undefined;
   meta: ErrorMeta | undefined;
   health: HealthInterpretation | undefined;
 }
@@ -240,17 +240,17 @@ interface ErrorState {
  * Shared error handling for async/sync variants.
  *
  * @remarks
- * - Fills `errorState` for Seqlok errors.
+ * - Fills `errorState` for Boundary errors.
  * - Invokes hooks.
- * - Rethrows non-Seqlok errors after `onUnknownError`.
+ * - Rethrows non-Boundary errors after `onUnknownError`.
  */
 function handleCaughtError(
   caught: unknown,
   errorState: ErrorState,
-  onSeqlokError: RunWithDiagnosticsOptions["onSeqlokError"],
+  onBoundaryError: RunWithDiagnosticsOptions["onBoundaryError"],
   onUnknownError: RunWithDiagnosticsOptions["onUnknownError"],
 ): void {
-  if (isSeqlokError(caught)) {
+  if (isBoundaryError(caught)) {
     const error = caught;
     const { meta, health } = getMetaAndHealth(error);
 
@@ -258,8 +258,8 @@ function handleCaughtError(
     errorState.meta = meta;
     errorState.health = health;
 
-    if (onSeqlokError !== undefined) {
-      onSeqlokError(error, health, meta);
+    if (onBoundaryError !== undefined) {
+      onBoundaryError(error, health, meta);
     }
     return;
   }
@@ -268,7 +268,7 @@ function handleCaughtError(
     onUnknownError(caught);
   }
 
-  // Non-Seqlok errors are considered programmer or environment bugs.
+  // Non-Boundary errors are considered programmer or environment bugs.
   throw caught;
 }
 
@@ -279,7 +279,7 @@ interface BuildResultArgs<T> {
   readonly startedSession: DiagnosticsSession;
   readonly completedSession: DiagnosticsSession | null;
   readonly value: T | undefined;
-  readonly error: SeqlokError | undefined;
+  readonly error: BoundaryError | undefined;
   readonly meta: ErrorMeta | undefined;
   readonly health: HealthInterpretation | undefined;
 }
@@ -346,7 +346,7 @@ export async function runWithDiagnostics<T>(
     scenarioId,
     metadata = {},
     thresholds,
-    onSeqlokError,
+    onBoundaryError,
     onUnknownError,
   } = options;
 
@@ -367,7 +367,7 @@ export async function runWithDiagnostics<T>(
   try {
     value = await run();
   } catch (caught: unknown) {
-    handleCaughtError(caught, errorState, onSeqlokError, onUnknownError);
+    handleCaughtError(caught, errorState, onBoundaryError, onUnknownError);
   } finally {
     completedSession = endDiagnosticsSession();
   }
@@ -402,7 +402,7 @@ export function runWithDiagnosticsSync<T>(
     scenarioId,
     metadata = {},
     thresholds,
-    onSeqlokError,
+    onBoundaryError,
     onUnknownError,
   } = options;
 
@@ -423,7 +423,7 @@ export function runWithDiagnosticsSync<T>(
   try {
     value = run();
   } catch (caught: unknown) {
-    handleCaughtError(caught, errorState, onSeqlokError, onUnknownError);
+    handleCaughtError(caught, errorState, onBoundaryError, onUnknownError);
   } finally {
     completedSession = endDiagnosticsSession();
   }

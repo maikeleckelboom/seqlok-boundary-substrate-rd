@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   createError,
-  isSeqlokError,
-  type SeqlokError,
+  isBoundaryError,
+  type BoundaryError,
 } from "../../src/errors/error";
 
-describe("SeqlokError: Serialization & Type Identity", () => {
+describe("BoundaryError: Serialization & Type Identity", () => {
   it("serializes to a minimal, stable JSON structure omitting sensitive details and causes", () => {
     const err = createError("backing.wasmMemoryNotShared", "wrapped", {
       detail: "WebAssembly.Memory.buffer is not SharedArrayBuffer",
@@ -14,15 +14,15 @@ describe("SeqlokError: Serialization & Type Identity", () => {
       shared: false,
     });
 
-    expect(isSeqlokError(err)).toBe(true);
+    expect(isBoundaryError(err)).toBe(true);
 
     // Simulate the serialization/deserialization cycle
     const json = JSON.parse(JSON.stringify(err)) as ReturnType<
-      SeqlokError["toJSON"]
+      BoundaryError["toJSON"]
     >;
 
     // Verify core identity fields
-    expect(json.name).toBe("SeqlokError");
+    expect(json.name).toBe("BoundaryError");
     expect(json.code).toBe("backing.wasmMemoryNotShared");
     expect(typeof json.message).toBe("string");
 
@@ -35,14 +35,14 @@ describe("SeqlokError: Serialization & Type Identity", () => {
     expect("cause" in json).toBe(false);
   });
 
-  it("correctly distinguishes SeqlokError instances from generic errors and plain objects", () => {
-    const seqlokErr = createError("env.unsupported", "Feature unavailable", {
+  it("correctly distinguishes BoundaryError instances from generic errors and plain objects", () => {
+    const boundaryErr = createError("env.unsupported", "Feature unavailable", {
       feature: "SharedArrayBuffer",
       reason: "Missing COOP/COEP",
     });
 
     // Positive validation
-    expect(isSeqlokError(seqlokErr)).toBe(true);
+    expect(isBoundaryError(boundaryErr)).toBe(true);
 
     // Negative validation cases
     const genericError = new Error("Standard JS Error");
@@ -54,9 +54,9 @@ describe("SeqlokError: Serialization & Type Identity", () => {
     const nullValue = null;
     const primitiveValue = 42;
 
-    expect(isSeqlokError(genericError)).toBe(false);
-    expect(isSeqlokError(mimickedShape)).toBe(false);
-    expect(isSeqlokError(nullValue)).toBe(false);
-    expect(isSeqlokError(primitiveValue)).toBe(false);
+    expect(isBoundaryError(genericError)).toBe(false);
+    expect(isBoundaryError(mimickedShape)).toBe(false);
+    expect(isBoundaryError(nullValue)).toBe(false);
+    expect(isBoundaryError(primitiveValue)).toBe(false);
   });
 });

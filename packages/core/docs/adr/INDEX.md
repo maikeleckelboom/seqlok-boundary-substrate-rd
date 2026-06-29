@@ -1,6 +1,8 @@
 # ADRs – Architecture Decision Records
 
-This folder contains **Architecture Decision Records (ADRs)** and related design docs for Seqlok.
+This folder contains **Architecture Decision Records (ADRs)** and related design docs for Exclave Boundary.
+
+Older ADRs may retain the Seqlok prototype name in titles or historical context. Current package references should use Exclave Boundary and `@exclave/boundary`.
 
 An ADR is a small, permanent note that captures a **specific architectural decision**:
 
@@ -208,7 +210,7 @@ Larger design documents and recurring patterns also live in this folder:
   WebGPU "digital twin" pattern: meters → observer → GPU buffer → WGSL.
 
 - [DESIGN-003-telemetry-bridge-pattern.md](./DESIGN-003-telemetry-bridge-pattern.md)
-  Mirroring Seqlok state into external telemetry or hardware without violating SWMR.
+  Mirroring boundary state into external telemetry or hardware without violating SWMR.
 
 Use ADRs when the decision is made, and DESIGN docs when you are still exploring options.
 

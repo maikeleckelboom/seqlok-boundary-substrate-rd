@@ -48,7 +48,7 @@ export interface DiagnosticsExportOptions {
  * Defensive layer that catches corrupted introspection state before it
  * hits external systems.
  *
- * @throws SeqlokError<'diagnostics.counterInvalid'>
+ * @throws BoundaryError<'diagnostics.counterInvalid'>
  */
 function assertValidCounterSnapshot(
   snapshot: DiagnosticsCountersSnapshot,
@@ -97,7 +97,7 @@ function exportToPrometheus(
   snapshot: DiagnosticsCountersSnapshot,
   options: DiagnosticsExportOptions,
 ): string {
-  const prefix = options.metricPrefix ?? "seqlok";
+  const prefix = options.metricPrefix ?? "exclave_boundary";
   const lines: string[] = [];
 
   const entries = Object.entries(snapshot) as [
@@ -152,7 +152,7 @@ function exportToCsv(
  * Validates the snapshot first; suitable for CLIs, metrics pollers, or
  * dev tooling that periodically scrapes diagnostics.
  *
- * @throws SeqlokError<'diagnostics.counterInvalid'>
+ * @throws BoundaryError<'diagnostics.counterInvalid'>
  */
 export function exportDiagnosticsCounters(
   snapshot: DiagnosticsCountersSnapshot,

@@ -39,7 +39,7 @@ function assertNoWorkspaceDeps(
 }
 
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
-const tempRoot = mkdtempSync(join(tmpdir(), "seqlok-core-pack-"));
+const tempRoot = mkdtempSync(join(tmpdir(), "exclave-boundary-pack-"));
 
 try {
   const packOutput = runPnpm(
@@ -75,7 +75,7 @@ import {
   buildHandoff,
   defineSpec,
   planLayout
-} from "@seqlok/core";
+} from "@exclave/boundary";
 
 const spec = defineSpec(({ param, meter }) => ({
   params: {
@@ -97,12 +97,12 @@ controller.params.set("nested.count", 7);
 controller.params.stage("nested.words", (view) => view.set([1, 2]));
 processor.params.within((params) => {
   if (params.nested.count !== 7 || params.nested.words[1] !== 2) {
-    throw new Error("packed @seqlok/core param flow failed");
+    throw new Error("packed @exclave/boundary param flow failed");
   }
 });
 processor.meters.publish((meters) => meters.signed(-3));
 if (controller.meters.snapshot().signed !== -3) {
-  throw new Error("packed @seqlok/core meter flow failed");
+  throw new Error("packed @exclave/boundary meter flow failed");
 }
 `.trimStart(),
   );
@@ -114,7 +114,7 @@ if (controller.meters.snapshot().signed !== -3) {
         private: true,
         type: "module",
         dependencies: {
-          "@seqlok/core": tarballSpec,
+          "@exclave/boundary": tarballSpec,
         },
       },
       null,
@@ -126,7 +126,13 @@ if (controller.meters.snapshot().signed !== -3) {
 
   const installedPackageJson = JSON.parse(
     readFileSync(
-      join(consumerRoot, "node_modules", "@seqlok", "core", "package.json"),
+      join(
+        consumerRoot,
+        "node_modules",
+        "@exclave",
+        "boundary",
+        "package.json",
+      ),
       "utf8",
     ),
   ) as {

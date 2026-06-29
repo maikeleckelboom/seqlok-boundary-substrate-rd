@@ -64,14 +64,14 @@ the handoff:
 
 ```ts
 // worker / AudioWorklet
-import { acceptHandoff, bindProcessor, bindObserver } from "@seqlok-internal/prototype-core";
+import { acceptHandoff, bindProcessor, bindObserver } from "@exclave/boundary";
 import type { MySpec } from "./spec";
-import type { Handoff } from "@seqlok-internal/prototype-core";
+import type { Handoff } from "@exclave/boundary";
 
 type InitMessage = { type: "INIT"; handoff: Handoff<MySpec> };
 
-let proc: import("@seqlok-internal/prototype-core").ProcessorBinding<MySpec> | undefined;
-let hud: import("@seqlok-internal/prototype-core").ObserverBinding<MySpec> | undefined;
+let proc: import("@exclave/boundary").ProcessorBinding<MySpec> | undefined;
+let hud: import("@exclave/boundary").ObserverBinding<MySpec> | undefined;
 
 self.onmessage = (ev: MessageEvent<InitMessage>) => {
   if (ev.data.type !== "INIT") return;
@@ -661,7 +661,7 @@ We explicitly _do not_ require re-planning on the processor side in v2; `bindPro
 
 ## 6. Error model: why a structured error type
 
-We use a dedicated `SeqlokError` with:
+We use a dedicated `BoundaryError` with:
 
 - `code` – machine-readable identifier (e.g. `spec.invalid`, `plan.overflowRisk`, `binding.doubleBind`),
 - `details` – structured per-throw payload (where, key, expected, accepted, etc.),
@@ -855,7 +855,7 @@ A property-style API like `controller.params.volume.set(0.8)`:
 
 If you prefer "handles" like `volume.set(value)` and `volume.get()`, build them in your own control layer on top of the
 controller binding (for example, small helpers that delegate to `params.set` / `params.snapshot`).
-`@seqlok-internal/prototype-core` stays the boring, explicit wire.
+`@exclave/boundary` stays the boring, explicit wire.
 
 ---
 

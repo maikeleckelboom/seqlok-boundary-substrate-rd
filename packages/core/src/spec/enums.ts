@@ -72,7 +72,7 @@ function getEnumDef(spec: SpecInput, key: string): EnumDefLike {
 
   if (!def || !Array.isArray(def.values)) {
     // Programmer error: wrong key for these helpers.
-    // We keep this as a plain Error instead of a SeqlokError.
+    // We keep this as a plain Error instead of a BoundaryError.
     throw new Error(`Key ${key} is not an enum / enum.array in this spec`);
   }
 

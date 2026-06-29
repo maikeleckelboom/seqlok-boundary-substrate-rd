@@ -1,8 +1,18 @@
 {
-  "name": "seqlok-boundary-substrate-rd",
+  "name": "exclave-boundary",
   "type": "module",
   "version": "0.0.0",
   "private": true,
+  "description": "typed shared-memory boundary substrate for coherent state, deterministic layout, explicit handoff, and timing-sensitive runtimes.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maikeleckelboom/exclave-boundary.git"
+  },
+  "homepage": "https://github.com/maikeleckelboom/exclave-boundary#readme",
+  "bugs": {
+    "url": "https://github.com/maikeleckelboom/exclave-boundary/issues"
+  },
   "devDependencies": {
     "@commitlint/cli": "catalog:",
     "@commitlint/config-conventional": "catalog:",
@@ -23,30 +33,31 @@
   },
   "scripts": {
     "prepare": "simple-git-hooks",
-    "clean": "pnpm -w -r -F \"@seqlok/core\" -F \"@seqlok/docs\" run clean && rimraf .eslintcache node_modules/.vite node_modules/.cache pnpm-debug.log",
+    "clean": "pnpm -w -r -F \"@exclave/boundary\" -F \"@exclave/docs\" run clean && rimraf .eslintcache node_modules/.vite node_modules/.cache pnpm-debug.log",
     "clean:cache": "rimraf node_modules/.vite node_modules/.cache packages/*/node_modules/.vite packages/*/node_modules/.cache apps/*/node_modules/.vite apps/*/node_modules/.cache",
     "clean:caches": "pnpm run clean:cache",
     "purge": "pnpm run clean && rimraf node_modules packages/**/node_modules",
-    "build": "pnpm -w run clean && pnpm -w -r -F \"@seqlok/core\" run build",
-    "test": "pnpm -w -F \"@seqlok/core\" run test",
-    "bench": "pnpm -w -F \"@seqlok/core\" run bench",
-    "bench:report": "pnpm -w -F \"@seqlok/core\" run bench:report",
-    "test:types": "pnpm -w -F \"@seqlok/core\" run test:types",
+    "build": "pnpm -w run clean && pnpm -w -r -F \"@exclave/boundary\" run build",
+    "test": "pnpm -w -F \"@exclave/boundary\" run test",
+    "bench": "pnpm -w -F \"@exclave/boundary\" run bench",
+    "bench:report": "pnpm -w -F \"@exclave/boundary\" run bench:report",
+    "test:types": "pnpm -w -F \"@exclave/boundary\" run test:types",
     "test:watch": "pnpm run test --watch",
-    "test:cov": "pnpm -w -F \"@seqlok/core\" run test:cov",
-    "test:pack": "pnpm -w -F \"@seqlok/core\" run test:pack",
+    "test:cov": "pnpm -w -F \"@exclave/boundary\" run test:cov",
+    "test:pack": "pnpm -w -F \"@exclave/boundary\" run test:pack",
     "commitlint": "commitlint --color",
     "lint:md": "markdownlint-cli2",
     "lint:md:fix": "markdownlint-cli2 --fix",
-    "lint": "pnpm -w -r -F \"@seqlok/core\" -F \"@seqlok/docs\" run lint",
-    "lint:fix": "pnpm -w -r -F \"@seqlok/core\" -F \"@seqlok/docs\" run lint:fix",
+    "lint": "pnpm -w -r -F \"@exclave/boundary\" -F \"@exclave/docs\" run lint",
+    "lint:fix": "pnpm -w -r -F \"@exclave/boundary\" -F \"@exclave/docs\" run lint:fix",
     "lint:all": "pnpm lint && pnpm lint:md",
     "format": "prettier --ignore-path .prettierignore --write .",
-    "docs:dev": "pnpm -F @seqlok/docs run docs:dev",
-    "docs:build": "pnpm -F @seqlok/docs run docs:build",
-    "docs:preview": "pnpm -F @seqlok/docs run docs:preview",
-    "support": "node scripts/support/seqlok-support.ts",
-    "verify": "pnpm clean && pnpm build && pnpm lint && pnpm test:types && pnpm test && pnpm docs:build && pnpm test:pack && pnpm support --json"
+    "docs": "pnpm docs:build",
+    "docs:dev": "pnpm -F @exclave/docs run docs:dev",
+    "docs:build": "pnpm -F @exclave/docs run docs:build",
+    "docs:preview": "pnpm -F @exclave/docs run docs:preview",
+    "support": "node scripts/support/boundary-support.ts",
+    "verify": "pnpm clean && pnpm build && pnpm lint && pnpm test:types && pnpm test && pnpm run docs && pnpm test:pack && pnpm support --json"
   },
   "simple-git-hooks": {
     "commit-msg": "pnpm commitlint --edit $1"

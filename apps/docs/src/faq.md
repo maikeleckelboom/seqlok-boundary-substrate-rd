@@ -2,7 +2,7 @@
 
 ## Is This Still a Prototype Package?
 
-No. The public package for this pass is `@seqlok/core`. Historical prototype docs may remain in the repository, but current integration should target the public package.
+No. The public package is `@exclave/boundary`. Historical prototype docs may remain in the repository, but current integration should target Exclave Boundary.
 
 ## Why Dot Keys?
 
@@ -10,7 +10,7 @@ Dot keys make the runtime contract flat and deterministic while keeping the auth
 
 ## Why Not Publish Base, Schema, and Primitives Separately?
 
-This pass prefers one public package. Internal layers can stay split in source, but consumers should not need multiple packages to import and run the core flow.
+This package keeps those layers behind one public boundary. Internal layers can stay split in source, but consumers should not need multiple packages to import and run the boundary flow.
 
 ## Can I Use This Without SharedArrayBuffer?
 
@@ -18,4 +18,4 @@ The core binding flow is built around shared backing memory. A host can decide w
 
 ## Are Domain Semantics Built In?
 
-No. The package provides typed params, meters, plans, backings, handoff validation, bindings, diagnostics, and structured errors. Domain commands and higher-level orchestration belong outside core.
+No. Exclave Boundary provides typed params, meters, plans, backings, handoff validation, bindings, diagnostics, and structured errors. Domain commands and higher-level orchestration belong outside the package.

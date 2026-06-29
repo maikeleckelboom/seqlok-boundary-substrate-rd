@@ -1,9 +1,9 @@
 /**
  * @fileoverview
- * Core error handling for Seqlok.
+ * Core error handling for Exclave Boundary.
  *
  * @remarks
- * - Defines the main `SeqlokError` class for all library errors.
+ * - Defines the main `BoundaryError` class for all library errors.
  * - Provides type-safe error creation and checking utilities.
  * - Integrates with the error registry for consistent error handling.
  */
@@ -11,12 +11,12 @@
 import type { ErrorCode, ErrorPayload } from "./registry";
 
 /**
- * Custom error class for @seqlok/core library errors.
+ * Custom error class for @exclave/boundary library errors.
  *
  * @template C - The error code type (must be a valid ErrorCode)
  */
-export class SeqlokError<C extends ErrorCode = ErrorCode> extends Error {
-  override readonly name = "SeqlokError";
+export class BoundaryError<C extends ErrorCode = ErrorCode> extends Error {
+  override readonly name = "BoundaryError";
   readonly code: C;
   readonly details: ErrorPayload<C>;
   override readonly cause?: unknown;
@@ -33,7 +33,7 @@ export class SeqlokError<C extends ErrorCode = ErrorCode> extends Error {
     if (cause !== undefined) {
       this.cause = cause;
     }
-    Object.setPrototypeOf(this, SeqlokError.prototype);
+    Object.setPrototypeOf(this, BoundaryError.prototype);
   }
 
   /**
@@ -46,13 +46,13 @@ export class SeqlokError<C extends ErrorCode = ErrorCode> extends Error {
 }
 
 /**
- * Type guard to check if an error is a SeqlokError.
+ * Type guard to check if an error is a BoundaryError.
  */
-export function isSeqlokError(e: unknown): e is SeqlokError {
+export function isBoundaryError(e: unknown): e is BoundaryError {
   return (
     !!e &&
     typeof e === "object" &&
-    (e as { name?: unknown }).name === "SeqlokError"
+    (e as { name?: unknown }).name === "BoundaryError"
   );
 }
 
@@ -63,7 +63,7 @@ export function isSeqlokError(e: unknown): e is SeqlokError {
  * @param message - Human-readable error message
  * @param details - Structured error details (type depends on error code)
  * @param cause - Optional underlying error that caused this error
- * @returns SeqlokError instance
+ * @returns BoundaryError instance
  *
  * @example
  * ```ts
@@ -78,6 +78,6 @@ export function createError<C extends ErrorCode>(
   message: string,
   details: ErrorPayload<C>,
   cause?: unknown,
-): SeqlokError<C> {
-  return new SeqlokError(code, message, details, cause);
+): BoundaryError<C> {
+  return new BoundaryError(code, message, details, cause);
 }

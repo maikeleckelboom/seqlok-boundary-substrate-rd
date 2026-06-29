@@ -1,22 +1,24 @@
 # Architecture Docs
 
-Narrative system docs for `@seqlok-internal/prototype-core`.
+Narrative system docs for `@exclave/boundary`.
 
 These explain the concepts, roles, and flows behind the API. If you want to understand **why** the primitives and
 bindings look the way they do, this is the place.
+
+Files with `seqlok` in the filename are retained as historical design notes from the Seqlok prototype era. Current public package wording should use Exclave Boundary.
 
 ---
 
 ## Recommended reading order
 
 1. [00-seqlok-origin-and-design-history.md](./00-seqlok-origin-and-design-history.md)
-   Where Seqlok came from and what problems it is reacting to.
+   Where the Seqlok prototype came from and what problems Exclave Boundary is reacting to.
 
 2. [01-seqlok-goals-and-non-goals.md](./01-seqlok-goals-and-non-goals.md)
-   Goals, non-goals, and the boundaries of what Seqlok is meant to solve.
+   Goals, non-goals, and the boundaries of what Exclave Boundary is meant to solve.
 
 3. [02-seqlok-intellectual-heritage.md](./02-seqlok-intellectual-heritage.md)
-   Prior art and how Seqlok ended up as "seqlock + SharedArrayBuffer" instead of message passing only.
+   Prior art and how the design ended up as "seqlock + SharedArrayBuffer" instead of message passing only.
 
 4. [03-seqlok-concurrency-model-and-roles.md](./03-seqlok-concurrency-model-and-roles.md)
    Controller vs Processor vs Observer and the SWMR model per domain.

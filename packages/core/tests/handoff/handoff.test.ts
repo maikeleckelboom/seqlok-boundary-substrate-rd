@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { allocateShared } from "../../src/backing/allocate-shared";
 import { allocateSharedPartitioned } from "../../src/backing/allocate-shared-partitioned";
-import { isSeqlokError } from "../../src/errors/error";
+import { isBoundaryError } from "../../src/errors/error";
 import {
   buildHandoff,
   acceptHandoff,
@@ -65,7 +65,7 @@ describe("Handoff Mechanisms (Contiguous SAB)", () => {
       verifyHandoff(plan2, accepted.plan);
       expect.unreachable("verifyHandoff should throw on hash mismatch");
     } catch (error: unknown) {
-      if (!isSeqlokError(error)) {
+      if (!isBoundaryError(error)) {
         throw error;
       }
       expect(error.code).toBe("handoff.specHashMismatch");
@@ -167,7 +167,7 @@ describe("Handoff Mechanisms (Partitioned SAB)", () => {
         "buildHandoff should throw on undersized plane backing",
       );
     } catch (error: unknown) {
-      if (!isSeqlokError(error)) {
+      if (!isBoundaryError(error)) {
         throw error;
       }
       expect(error.code).toBe("handoff.invalidArtifact");
@@ -198,7 +198,7 @@ describe("Handoff Mechanisms (Wasm shared)", () => {
       buildHandoff(plan, wasmBacking);
       expect.unreachable("buildHandoff should throw for wasm-shared backing");
     } catch (error: unknown) {
-      if (!isSeqlokError(error)) {
+      if (!isBoundaryError(error)) {
         throw error;
       }
       expect(error.code).toBe("handoff.invalidArtifact");

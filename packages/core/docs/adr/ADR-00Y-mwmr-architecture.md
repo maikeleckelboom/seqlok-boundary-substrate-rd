@@ -8,9 +8,9 @@
 
 - ADR-001 – Seqlok Core Golden Flow
 - ADR-002 – Memory Growth & Swap via Handoff Sequences
-- ADR-00Z – Observer Binding Role in `@seqlok-internal/prototype-core`
+- ADR-00Z – Observer Binding Role in `@exclave/boundary`
 - ADR-00X - Historical System-Level Composition Proposal
-- ADR-010 – Ring Primitive in `@seqlok-internal/prototype-core` (SWSR queue)
+- ADR-010 – Ring Primitive in `@exclave/boundary` (SWSR queue)
 
 ---
 
@@ -96,7 +96,7 @@ The **system** is a graph of such domains wired with:
 - one or more **rings** for **fan-in** (many writers → hub/governor),
 - an optional registry domain for discovery/co-ordination.
 
-`@seqlok-internal/prototype-core` knows only about **domains** and the ring primitive itself. MWMR lives above it in topology code and drivers.
+`@exclave/boundary` knows only about **domains** and the ring primitive itself. MWMR lives above it in topology code and drivers.
 
 ### 3.2 New Binding Role: `bindObserver` (delegated to ADR-00Z)
 
@@ -128,7 +128,7 @@ System-level MWMR uses **intent buses** built from the SWSR ring primitive (ADR-
 
 The ring primitive:
 
-- lives in `@seqlok-internal/prototype-core` as a generic, semantic-free SWSR queue,
+- lives in `@exclave/boundary` as a generic, semantic-free SWSR queue,
 - operates over `SharedArrayBuffer` / shared Wasm memory with a fixed ABI,
 - is composed into MPSC patterns by higher-level topology code and drivers.
 
@@ -237,7 +237,7 @@ No code outside controller/processor bindings writes into Seqlok planes, regardl
 
 ## 6. Orchestration Responsibilities
 
-This ADR clarifies that **orchestration is not** a concern of `@seqlok-internal/prototype-core` or `bindObserver`:
+This ADR clarifies that **orchestration is not** a concern of `@exclave/boundary` or `bindObserver`:
 
 - The "driver" (DeckDriver / DomainOrchestrator / SystemManager) is responsible for:
 

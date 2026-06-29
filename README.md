@@ -1,14 +1,14 @@
-# Seqlok Boundary Substrate R&D
+# Exclave Boundary
 
-Status: public core extraction in progress.
+Status: public package rename complete.
 
-This repository contains `@seqlok/core`, a typed shared-memory boundary substrate for systems where one side writes control parameters and another timing-sensitive side reads them coherently. It demonstrates authored contracts, deterministic layout planning, shared backing allocation, explicit handoff artifacts, role-specific bindings, diagnostics, tests, benchmarks, and release smoke checks.
+This repository contains `@exclave/boundary`, a typed shared-memory boundary substrate for coherent state, deterministic layout, explicit handoff, and timing-sensitive runtimes. It demonstrates authored contracts, deterministic layout planning, shared backing allocation, explicit handoff artifacts, role-specific bindings, diagnostics, tests, benchmarks, and release smoke checks.
 
-The public package is `@seqlok/core`. The former prototype package name was `@seqlok-internal/prototype-core`; new integrations should not use that name.
+Exclave is the ecosystem. Boundary is this package. It was formerly developed under the Seqlok prototype name; new integrations should use `@exclave/boundary`.
 
 ## What This Is
 
-Seqlok makes a runtime boundary explicit:
+Exclave Boundary makes a runtime boundary explicit:
 
 - what fields exist across the boundary
 - where they live in shared memory
@@ -22,10 +22,10 @@ The current vocabulary is controller, processor, observer, params, and meters. T
 ## Install
 
 ```sh
-pnpm add @seqlok/core
+pnpm add @exclave/boundary
 ```
 
-`@seqlok/core` is ESM-only, typed, and published as one package for this pass. Internal base, schema, and primitive layers are kept inside the package rather than exposed as workspace runtime dependencies.
+`@exclave/boundary` is ESM-only, typed, and published as one package. Internal base, schema, and primitive layers are kept inside the package rather than exposed as workspace runtime dependencies.
 
 ## Quickstart
 
@@ -38,7 +38,7 @@ import {
   buildHandoff,
   defineSpec,
   planLayout,
-} from "@seqlok/core";
+} from "@exclave/boundary";
 
 const spec = defineSpec(({ param, meter }) => ({
   params: {
@@ -85,10 +85,10 @@ Authored specs may use nested namespaces. Write APIs use explicit canonical stri
 
 ## Current Package
 
-- `packages/core` publishes `@seqlok/core`.
+- `packages/core` publishes `@exclave/boundary`.
 - The package is MIT licensed, ESM, typed, and marked `sideEffects: false`.
 - The packed output includes built `dist` files, `README.md`, `LICENSE`, and `package.json`.
-- The release smoke test packs the package, installs the tarball into a fresh consumer, imports `@seqlok/core`, and verifies there are no `workspace:*` runtime dependencies.
+- The release smoke test packs the package, installs the tarball into a fresh consumer, imports `@exclave/boundary`, and verifies there are no `workspace:*` runtime dependencies.
 
 ## Documentation
 
@@ -105,7 +105,7 @@ pnpm docs:dev
 Build it:
 
 ```sh
-pnpm docs:build
+pnpm run docs
 ```
 
 ## Verification
@@ -117,7 +117,7 @@ pnpm lint
 pnpm test:types
 pnpm test
 pnpm build
-pnpm docs:build
+pnpm run docs
 pnpm test:pack
 ```
 

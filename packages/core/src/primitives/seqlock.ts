@@ -1,6 +1,6 @@
 /**
  * @fileoverview
- * Seqlock primitives for Seqlok (LOCK/SEQ pair).
+ * Seqlock primitives for boundary coherence (LOCK/SEQ pair).
  *
  * This module implements the low-level protocol used by the bindings to
  * publish and sample coherent state via a single-writer / multi-reader
@@ -14,7 +14,7 @@
  *   by primitives tests.
  *
  * @remarks
- * This module is an internal implementation detail of `@seqlok/core`.
+ * This module is an internal implementation detail of `@exclave/boundary`.
  * Runtime bindings call into it indirectly via higher-level helpers.
  *
  * Functions {@link createSeqPair} and {@link tryRead} exist primarily for
@@ -48,7 +48,7 @@ export interface SeqPair {
  * @remarks
  * This helper is primarily used in primitives tests.
  *
- * @throws {@link import('../errors').SeqlokError}
+ * @throws {@link import('../errors').BoundaryError}
  * - `internal.assertionFailed` – if indices are out of range or equal.
  *
  * @internal

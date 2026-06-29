@@ -18,7 +18,7 @@ import {
 import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
 
-import type { SeqlokError } from "../../src/errors/error";
+import type { BoundaryError } from "../../src/errors/error";
 
 describe("allocate-shared.env-guard", () => {
   let originalSharedArrayBuffer: typeof SharedArrayBuffer | undefined;
@@ -58,11 +58,11 @@ describe("allocate-shared.env-guard", () => {
     try {
       assertSabSupportFromSummary("allocate-shared.env-guard.test", summary);
     } catch (error) {
-      const seqlokError = error as SeqlokError<"env.unsupported">;
-      expect(seqlokError.code).toBe("env.unsupported");
-      expect(seqlokError.message).toContain("SharedArrayBuffer");
-      expect(seqlokError.details).toBeDefined();
-      expect(seqlokError.details).toHaveProperty(
+      const boundaryError = error as BoundaryError<"env.unsupported">;
+      expect(boundaryError.code).toBe("env.unsupported");
+      expect(boundaryError.message).toContain("SharedArrayBuffer");
+      expect(boundaryError.details).toBeDefined();
+      expect(boundaryError.details).toHaveProperty(
         "where",
         "allocate-shared.env-guard.test",
       );
@@ -90,16 +90,16 @@ describe("allocate-shared.env-guard", () => {
     try {
       allocateShared(plan);
     } catch (error) {
-      const seqlokError = error as SeqlokError<"env.unsupported">;
-      expect(seqlokError.code).toBe("env.unsupported");
-      expect(seqlokError.message).toContain("SharedArrayBuffer");
-      expect(seqlokError.details).toBeDefined();
-      expect(seqlokError.details).toHaveProperty(
+      const boundaryError = error as BoundaryError<"env.unsupported">;
+      expect(boundaryError.code).toBe("env.unsupported");
+      expect(boundaryError.message).toContain("SharedArrayBuffer");
+      expect(boundaryError.details).toBeDefined();
+      expect(boundaryError.details).toHaveProperty(
         "feature",
         "SharedArrayBuffer",
       );
-      if ("reason" in seqlokError.details) {
-        expect(seqlokError.details.reason).not.toHaveLength(0);
+      if ("reason" in boundaryError.details) {
+        expect(boundaryError.details.reason).not.toHaveLength(0);
       }
     }
   });
@@ -143,17 +143,17 @@ describe("allocate-shared.env-guard", () => {
     try {
       allocateShared(plan);
     } catch (error) {
-      const seqlokError = error as SeqlokError<"env.unsupported">;
-      expect(seqlokError.code).toBe("env.unsupported");
-      expect(seqlokError.details).toBeDefined();
-      expect(seqlokError.details).toHaveProperty(
+      const boundaryError = error as BoundaryError<"env.unsupported">;
+      expect(boundaryError.code).toBe("env.unsupported");
+      expect(boundaryError.details).toBeDefined();
+      expect(boundaryError.details).toHaveProperty(
         "feature",
         "SharedArrayBuffer",
       );
-      if ("reason" in seqlokError.details) {
-        expect(seqlokError.details.reason).not.toHaveLength(0);
+      if ("reason" in boundaryError.details) {
+        expect(boundaryError.details.reason).not.toHaveLength(0);
       }
-      expect(seqlokError.message).toBeDefined();
+      expect(boundaryError.message).toBeDefined();
     }
   });
 });

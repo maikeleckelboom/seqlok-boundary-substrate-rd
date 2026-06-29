@@ -148,7 +148,7 @@ to remember.
 
 These descriptions are intentionally informal. They are here to build intuition, not to replace the technical reference.
 
-### `@seqlok-internal/prototype-core` - the physics
+### `@exclave/boundary` - the physics
 
 You can think of `core` as the **physics engine** of the shared state:
 

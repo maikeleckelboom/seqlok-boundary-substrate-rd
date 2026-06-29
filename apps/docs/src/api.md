@@ -1,6 +1,6 @@
 # API Reference
 
-This page covers the public `@seqlok/core` surface. Internal folders such as backing planes, seqlock primitives, and validation helpers are implementation details unless exported here.
+This page covers the public `@exclave/boundary` surface. Internal folders such as backing planes, seqlock primitives, and validation helpers are implementation details unless exported here.
 
 ## Spec
 
@@ -38,9 +38,9 @@ Supported meters include `f32`, `f64`, `i32`, `u32`, `bool`, `enum`, and arrays 
 
 ## Diagnostics and Errors
 
-- `SeqlokError` is the structured error class.
-- `isSeqlokError(value)` narrows unknown errors.
+- `BoundaryError` is the structured error class.
+- `isBoundaryError(value)` narrows unknown errors.
 - `getErrorMeta(code)` and `getErrorMessage(code)` expose registry metadata.
 - `interpretHealth(error)` maps known error domains to health guidance.
 
-Diagnostics exports live at `@seqlok/core/diagnostics`.
+Diagnostics exports live at `@exclave/boundary/diagnostics`.

@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 
-import * as seqlok from "../../src";
+import * as boundary from "../../src";
 
 describe("Public API Surface (Runtime Exports)", () => {
   it("exports the expected value symbols and nothing else", () => {
-    const runtimeExports = Object.keys(seqlok).sort();
+    const runtimeExports = Object.keys(boundary).sort();
 
     const expectedExports: string[] = [
       // SPEC
@@ -29,8 +29,8 @@ describe("Public API Surface (Runtime Exports)", () => {
       "verifyHandoff",
 
       // ERRORS + HEALTH
-      "SeqlokError",
-      "isSeqlokError",
+      "BoundaryError",
+      "isBoundaryError",
       "getErrorMeta",
       "getErrorMessage",
       "isErrorCode",
@@ -66,17 +66,17 @@ describe("Public API Surface (Runtime Exports)", () => {
     const code = "diagnostics.counterInvalid";
 
     // The code should be recognized by the public isErrorCode helper.
-    expect(seqlok.isErrorCode(code)).toBe(true);
+    expect(boundary.isErrorCode(code)).toBe(true);
 
     // Meta should come back with the expected basic shape.
-    const meta = seqlok.getErrorMeta(code);
+    const meta = boundary.getErrorMeta(code);
     expect(meta.severity).toBe("warning");
     expect(meta.recoverable).toBe(true);
     expect(meta.boundarySafe).toBe(false);
 
     // InterpretHealth should be callable via the public surface and
     // return a structured status + label + hint.
-    const health = seqlok.interpretHealth(meta);
+    const health = boundary.interpretHealth(meta);
 
     // Narrow: we do not re-specify the exact mapping here, only that
     // it returns a known status and operator-facing strings.
@@ -88,6 +88,6 @@ describe("Public API Surface (Runtime Exports)", () => {
   });
 
   it("does not define a default export", () => {
-    expect("default" in seqlok).toBe(false);
+    expect("default" in boundary).toBe(false);
   });
 });

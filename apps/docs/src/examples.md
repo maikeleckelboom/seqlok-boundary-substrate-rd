@@ -42,4 +42,4 @@ const meters = observer.meters.snapshot(["transport.state"]);
 
 ## Pack Smoke Shape
 
-The release smoke test installs the packed tarball in a fresh consumer and imports from `@seqlok/core`. That catches missing files, workspace-only dependencies, and broken export maps before publish.
+The release smoke test installs the packed tarball in a fresh consumer and imports from `@exclave/boundary`. That catches missing files, workspace-only dependencies, and broken export maps before publish.

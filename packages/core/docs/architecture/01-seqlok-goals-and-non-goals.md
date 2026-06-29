@@ -190,7 +190,7 @@ If you:
 - Pass malformed or incompatible handoffs
 - Attempt to bind with a mismatched spec/plan
 
-Seqlok will throw a typed `SeqlokError` _immediately_.
+Seqlok will throw a typed `BoundaryError` _immediately_.
 
 It will **not**:
 
@@ -423,7 +423,7 @@ They complement each other; neither fully replaces the other.
 | Type safety    | Manual casting / indexing            | Rich TS types, no `any`           |
 | Layout         | Hand-written offsets & magic numbers | Automatic, deterministic planning |
 | Concurrency    | DIY protocol                         | Built-in SWMR seqlock             |
-| Error handling | Easy silent corruption               | Typed `SeqlokError` on violation  |
+| Error handling | Easy silent corruption               | Typed `BoundaryError` on violation  |
 | Dev ergonomics | Low-level, error-prone               | High-level, role-based bindings   |
 
 **Use raw SAB + Atomics when:**
@@ -580,7 +580,7 @@ If only one or two are true, you might be better served by:
 - Designed for **real-time SWMR communication** between Controller and Processor
 - **Schema-first**, with deterministic plan from a typed DSL
 - **Type-safe**, with zero `any` and strong TS integration
-- **Fail-fast**, with structured `SeqlokError` instead of silent corruption
+- **Fail-fast**, with structured `BoundaryError` instead of silent corruption
 
 **Seqlok is not:**
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { SeqlokError } from "../../src/errors/error";
+import { BoundaryError } from "../../src/errors/error";
 import {
   allocateSwsrRing,
   bindSwsrRingConsumer,
@@ -63,13 +63,13 @@ describe("SWSR Ring Primitives: Runtime Behavior", () => {
   it("rejects invalid layouts with specific error codes", () => {
     // Case: Capacity <= 0
     expect(() => allocateSwsrRing({ capacity: 0, wordsPerSlot: 1 })).toThrow(
-      SeqlokError,
+      BoundaryError,
     );
 
     try {
       allocateSwsrRing({ capacity: 0, wordsPerSlot: 1 });
     } catch (error) {
-      const err = error as SeqlokError<"primitives.swsrRingInvalidLayout">;
+      const err = error as BoundaryError<"primitives.swsrRingInvalidLayout">;
       expect(err.code).toBe("primitives.swsrRingInvalidLayout");
       expect(err.details.capacity).toBe(0);
       expect(err.details.wordsPerSlot).toBe(1);
@@ -77,7 +77,7 @@ describe("SWSR Ring Primitives: Runtime Behavior", () => {
 
     // Case: WordsPerSlot <= 0
     expect(() => allocateSwsrRing({ capacity: 1, wordsPerSlot: 0 })).toThrow(
-      SeqlokError,
+      BoundaryError,
     );
   });
 

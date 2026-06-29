@@ -63,7 +63,7 @@ function isKnownDiagnosticsFeature(
  * @remarks
  * Primary entrypoint for CLI flags, env vars, config files.
  *
- * @throws SeqlokError<'diagnostics.featureInvalid'>
+ * @throws BoundaryError<'diagnostics.featureInvalid'>
  */
 export function enableDiagnosticsFeatureByName(feature: string): void {
   if (!isKnownDiagnosticsFeature(feature)) {

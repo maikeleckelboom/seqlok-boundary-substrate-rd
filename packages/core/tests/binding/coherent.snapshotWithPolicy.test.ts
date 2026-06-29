@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { snapshotWithPolicy } from "../../src/binding/common/coherent";
 import * as counters from "../../src/diagnostics/counters";
-import { isSeqlokError, type SeqlokError } from "../../src/errors/error";
+import { isBoundaryError, type BoundaryError } from "../../src/errors/error";
 import * as seqlock from "../../src/primitives/seqlock";
 
 import type { SeqPair } from "../../src/primitives/seqlock";
@@ -145,11 +145,11 @@ describe("Snapshot With Policy: Coherent Snapshot & Fallback Strategies", () => 
     expect(countersSpy).toHaveBeenCalledWith("spinBudgetExhausted");
 
     // Verify error structure
-    if (!isSeqlokError(thrown)) {
-      throw new Error("Expected snapshotWithPolicy to throw a SeqlokError");
+    if (!isBoundaryError(thrown)) {
+      throw new Error("Expected snapshotWithPolicy to throw a BoundaryError");
     }
 
-    const err = thrown as SeqlokError<"binding.snapshotRetryExhausted">;
+    const err = thrown as BoundaryError<"binding.snapshotRetryExhausted">;
     expect(err.code).toBe("binding.snapshotRetryExhausted");
     expect(err.details.where).toBe("controller.meters.snapshot");
     expect(err.details.section).toBe("meters");

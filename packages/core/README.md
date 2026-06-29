@@ -1,13 +1,15 @@
-# @seqlok/core
+# Exclave Boundary
 
-`@seqlok/core` is the public core package for the Seqlok boundary-substrate R&D repository. It provides authored spec compilation, deterministic memory planning, shared backing allocation, explicit handoff artifacts, controller/processor/observer bindings, diagnostics, and structured errors.
+`@exclave/boundary` is a typed shared-memory boundary substrate for coherent state, deterministic layout, explicit handoff, and timing-sensitive runtimes. It provides authored spec compilation, deterministic memory planning, shared backing allocation, explicit handoff artifacts, controller/processor/observer bindings, diagnostics, and structured errors.
+
+Exclave is the ecosystem. Boundary is this package.
 
 The package is ESM-only, typed, MIT licensed, and marked `sideEffects: false`.
 
 ## Install
 
 ```sh
-pnpm add @seqlok/core
+pnpm add @exclave/boundary
 ```
 
 ## Flow
@@ -32,7 +34,7 @@ import {
   buildHandoff,
   defineSpec,
   planLayout,
-} from "@seqlok/core";
+} from "@exclave/boundary";
 
 const spec = defineSpec(({ param, meter }) => ({
   params: {
@@ -80,21 +82,21 @@ Anonymous specs receive deterministic `anon_<hash>` ids derived from canonical c
 
 ## Package Boundary
 
-This pass publishes one package: `@seqlok/core`. Internal base, schema, and primitive layers are implementation details unless exported from the root package or `@seqlok/core/diagnostics`.
+This package publishes one runtime package: `@exclave/boundary`. Internal base, schema, and primitive layers are implementation details unless exported from the root package or `@exclave/boundary/diagnostics`.
 
 The packed package must not contain `workspace:*` runtime dependencies. Run:
 
 ```sh
-pnpm -F @seqlok/core run test:pack
+pnpm -F @exclave/boundary run test:pack
 ```
 
 ## Development
 
 ```sh
-pnpm -F @seqlok/core run build
-pnpm -F @seqlok/core run test
-pnpm -F @seqlok/core run test:types
-pnpm -F @seqlok/core run bench
+pnpm -F @exclave/boundary run build
+pnpm -F @exclave/boundary run test
+pnpm -F @exclave/boundary run test:types
+pnpm -F @exclave/boundary run bench
 ```
 
 ## Documentation

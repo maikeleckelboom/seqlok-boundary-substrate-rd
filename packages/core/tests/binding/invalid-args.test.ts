@@ -8,7 +8,7 @@ import {
   defineSpec,
   planLayout,
 } from "../../src";
-import { isSeqlokError } from "../../src/errors/error";
+import { isBoundaryError } from "../../src/errors/error";
 
 describe("binding invalid argument errors", () => {
   const spec = defineSpec(({ param }) => ({
@@ -26,8 +26,8 @@ describe("binding invalid argument errors", () => {
       thrown = error;
     }
 
-    expect(isSeqlokError(thrown)).toBe(true);
-    if (isSeqlokError(thrown)) {
+    expect(isBoundaryError(thrown)).toBe(true);
+    if (isBoundaryError(thrown)) {
       expect(thrown.code).toBe("binding.invalidArgs");
       expect(thrown.details.fn).toBe("bindController");
       expect(thrown.details.reason).toBe("missingPlan");
@@ -43,8 +43,8 @@ describe("binding invalid argument errors", () => {
       thrown = error;
     }
 
-    expect(isSeqlokError(thrown)).toBe(true);
-    if (isSeqlokError(thrown)) {
+    expect(isBoundaryError(thrown)).toBe(true);
+    if (isBoundaryError(thrown)) {
       expect(thrown.code).toBe("binding.invalidArgs");
       expect(thrown.details.fn).toBe("bindProcessor");
       expect(thrown.details.reason).toBe("missingBacking");
@@ -60,8 +60,8 @@ describe("binding invalid argument errors", () => {
       thrown = error;
     }
 
-    expect(isSeqlokError(thrown)).toBe(true);
-    if (isSeqlokError(thrown)) {
+    expect(isBoundaryError(thrown)).toBe(true);
+    if (isBoundaryError(thrown)) {
       expect(thrown.code).toBe("binding.invalidArgs");
       expect(thrown.details.fn).toBe("bindObserver");
       expect(thrown.details.reason).toBe("missingBacking");

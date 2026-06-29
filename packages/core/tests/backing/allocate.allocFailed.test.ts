@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createError } from "../../src/errors/error";
 
-describe("SeqlokError Factory: Runtime Composition", () => {
+describe("BoundaryError Factory: Runtime Composition", () => {
   it("correctly composes error messages and preserves the underlying cause", () => {
     const cause = new TypeError("shared memory not supported");
 

@@ -3,7 +3,7 @@
  * Thin wrappers around Atomics for U32 planes.
  *
  * These helpers centralize error handling so that failures can be surfaced
- * as structured `SeqlokError<'primitives.atomicsFailed'>` instead of raw
+ * as structured `BoundaryError<'primitives.atomicsFailed'>` instead of raw
  * Atomics exceptions.
  */
 import { createError } from "../errors/error";

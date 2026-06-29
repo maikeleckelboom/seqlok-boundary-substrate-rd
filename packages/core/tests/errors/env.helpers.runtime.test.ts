@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isSeqlokError } from "../../src/errors/error";
+import { isBoundaryError } from "../../src/errors/error";
 import { throwEnvUnsupported } from "../../src/errors/helpers";
 
 import type { EnvUnsupportedDetails } from "../../src/errors/codes/env";
@@ -14,8 +14,8 @@ describe("throwEnvUnsupported", () => {
     try {
       throwEnvUnsupported(feature, reason, cause);
     } catch (err) {
-      if (!isSeqlokError(err)) {
-        expect.unreachable("expected a SeqlokError");
+      if (!isBoundaryError(err)) {
+        expect.unreachable("expected a BoundaryError");
       }
 
       expect(err.code).toBe("env.unsupported");

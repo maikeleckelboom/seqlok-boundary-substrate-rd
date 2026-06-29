@@ -6,7 +6,7 @@ This doc explains how a validated **Plan** turns into concrete shared memory **B
 including plane layout, packing rules, and how `mapViews` ties it together.
 
 It's written for people working _inside_ Seqlok (or doing advanced diagnostics), not for everyday users of
-`@seqlok-internal/prototype-core`.
+`@exclave/boundary`.
 
 ---
 
@@ -25,7 +25,7 @@ import {
   acceptHandoff,
   bindController,
   bindProcessor,
-} from "@seqlok-internal/prototype-core";
+} from "@exclave/boundary";
 
 const spec = defineSpec(/* ... */);
 
@@ -231,7 +231,7 @@ Common properties:
 
 - All expect a **validated Plan**.
 - All enforce `bytesTotal` and per-plane byte-length invariants.
-- All throw typed `SeqlokError`s from the `backing.*` or `env.*` domains on failure.
+- All throw typed `BoundaryError`s from the `backing.*` or `env.*` domains on failure.
 
 Bindings work against the union `Backing` abstraction; they do not care which flavor produced it.
 

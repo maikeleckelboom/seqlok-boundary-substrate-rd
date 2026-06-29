@@ -109,7 +109,7 @@ export function probeEnv(): EnvSummary {
 /**
  * Assert that SharedArrayBuffer can be safely used from this environment.
  *
- * Throws a typed SeqlokError on failure:
+ * Throws a typed BoundaryError on failure:
  *  - `env.unsupported`      → no SharedArrayBuffer support at all.
  *  - `env.coopCoepRequired` → browser/worker without COOP/COEP headers
  *                             (`crossOriginIsolated === false`).

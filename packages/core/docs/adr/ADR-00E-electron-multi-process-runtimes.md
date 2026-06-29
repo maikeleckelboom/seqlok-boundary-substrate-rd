@@ -128,7 +128,7 @@ is done via:
 
 but **not** via Seqlok-managed shared memory.
 
-Seqlok sees **one process at a time**. Anything cross-process is outside `@seqlok-internal/prototype-core` and the boundary-substrate prototype.
+Seqlok sees **one process at a time**. Anything cross-process is outside `@exclave/boundary` and the historical typed shared-memory boundary substrate prototype.
 
 ---
 
@@ -229,13 +229,13 @@ Seqlok does **not** attempt to:
 - hide Electron's process model behind a Seqlok API
 
 Electron-specific features (e.g., window management, menus, OS integration) are handled at the app layer, not in
-`@seqlok-internal/prototype-core`.
+`@exclave/boundary`.
 
 ---
 
 ## 6. Consequences
 
-- `@seqlok-internal/prototype-core` remains **platform-neutral**:
+- `@exclave/boundary` remains **platform-neutral**:
 
   - no special Electron types or concepts
   - still usable in plain browser / Node / workers
@@ -261,7 +261,7 @@ Electron-specific features (e.g., window management, menus, OS integration) are 
 
   - contrasting “all-in-renderer” vs “split” architectures.
 
-- Optional helper outside `@seqlok-internal/prototype-core` to:
+- Optional helper outside `@exclave/boundary` to:
 
   - serialize ring payloads / hydrate patches across IPC
   - document recommended message formats

@@ -69,7 +69,7 @@ const MAX_COUNTER_VALUE = Number.MAX_SAFE_INTEGER;
  * Validate a single counter value and throw a diagnostics error when
  * the value is not a sane introspection metric.
  *
- * @throws SeqlokError<'diagnostics.counterInvalid'>
+ * @throws BoundaryError<'diagnostics.counterInvalid'>
  */
 function assertValidCounterValue(
   name: DiagnosticsCounterName,

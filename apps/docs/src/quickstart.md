@@ -1,6 +1,6 @@
 # Quickstart
 
-This is the smallest complete flow: define a spec, plan memory, allocate backing, bind controller and processor roles, then publish values through the seqlock-protected boundary.
+This is the smallest complete Exclave Boundary flow: define a spec, plan memory, allocate backing, bind controller and processor roles, then publish values through the seqlock-protected boundary.
 
 ```ts
 import {
@@ -11,7 +11,7 @@ import {
   buildHandoff,
   defineSpec,
   planLayout,
-} from "@seqlok/core";
+} from "@exclave/boundary";
 
 const spec = defineSpec(({ param, meter }) => ({
   params: {

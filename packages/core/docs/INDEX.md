@@ -1,8 +1,10 @@
-# `@seqlok-internal/prototype-core` – Documentation Index
+# `@exclave/boundary` – Documentation Index
 
-This folder is the **design brain** of Seqlok core.
+This folder is the historical design archive for Exclave Boundary.
 
-It explains why the API looks the way it does, how coherence works, and how to plug Seqlok into serious multi-threaded systems (workers, visualizers, telemetry, etc.).
+It explains why the API looks the way it does, how coherence works, and how to plug Exclave Boundary into serious multi-threaded systems (workers, visualizers, telemetry, etc.).
+
+Many older files and filenames still use the Seqlok prototype name because they are retained as design history. Current public package docs should use Exclave Boundary and `@exclave/boundary`.
 
 Docs are grouped into:
 
@@ -19,7 +21,7 @@ Docs are grouped into:
 Use these as entry points; each has its own `INDEX.md`.
 
 - **[architecture/](./architecture/INDEX.md)**
-  “Book chapters” that explain Seqlok’s concepts, concurrency model, DSL, and golden flow.
+  "Book chapters" that explain the package concepts, concurrency model, DSL, and golden flow.
 
 - **[adr/](./adr/INDEX.md)**
   Architecture Decision Records and design docs. This is the canonical "why did we pick this?" archive.
@@ -42,7 +44,7 @@ Use these as entry points; each has its own `INDEX.md`.
 
 Pick the path that matches your current job.
 
-### 2.1 "I just want to _use_ Seqlok"
+### 2.1 "I just want to _use_ Exclave Boundary"
 
 1. **Repo root `README.md`** – learn the golden flow:
 
@@ -52,7 +54,7 @@ Pick the path that matches your current job.
 
 - **Goals and boundaries**
   [architecture/01-seqlok-goals-and-non-goals.md](./architecture/01-seqlok-goals-and-non-goals.md)
-  What Seqlok is for, and where it deliberately stops.
+  What Exclave Boundary is for, and where it deliberately stops.
 
 - **End-to-end visual**
   [architecture/16-seqlok-e2e-flow-visual-guide.md](./architecture/16-seqlok-e2e-flow-visual-guide.md)
@@ -64,7 +66,7 @@ Pick the path that matches your current job.
   [guides/enum-helpers.md](./guides/enum-helpers.md)
   How to keep UI controls and DSL enum definitions in lockstep.
 
-That's enough to integrate Seqlok without absorbing every internal detail.
+That's enough to integrate Exclave Boundary without absorbing every internal detail.
 
 ---
 

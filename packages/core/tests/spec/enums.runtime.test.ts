@@ -9,7 +9,7 @@ import {
   enumPaletteFor,
   enumValues,
 } from "../../src";
-import { SeqlokError } from "../../src/errors/error";
+import { BoundaryError } from "../../src/errors/error";
 import { enumGuardFor } from "../../src/spec/enums";
 
 /**
@@ -48,15 +48,17 @@ describe("Enum Utilities & Helper Functions", () => {
   it("throws spec.enumInvalid when converting an out-of-bounds index to a label", () => {
     const indices = Int32Array.from([0, 99]);
 
-    expect(() => enumArrayToLabels(spec, "mode", indices)).toThrow(SeqlokError);
+    expect(() => enumArrayToLabels(spec, "mode", indices)).toThrow(
+      BoundaryError,
+    );
 
     try {
       enumArrayToLabels(spec, "mode", indices);
     } catch (error) {
-      const base = error as SeqlokError;
+      const base = error as BoundaryError;
       expect(base.code).toBe("spec.enumInvalid");
 
-      type EnumInvalidError = SeqlokError<"spec.enumInvalid">;
+      type EnumInvalidError = BoundaryError<"spec.enumInvalid">;
       const err = base as EnumInvalidError;
 
       expect(err.details.key).toBe("mode");
@@ -70,13 +72,13 @@ describe("Enum Utilities & Helper Functions", () => {
     expect(() => {
       // @ts-expect-error Intentional invalid label to verify runtime validation.
       enumLabelsToArray(spec, "mode", labels);
-    }).toThrow(SeqlokError);
+    }).toThrow(BoundaryError);
 
     try {
       // @ts-expect-error Intentional invalid label to verify runtime validation.
       enumLabelsToArray(spec, "mode", labels);
     } catch (error) {
-      const err = error as SeqlokError;
+      const err = error as BoundaryError;
       expect(err.code).toBe("spec.enumInvalid");
     }
   });
