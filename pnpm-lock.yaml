@@ -173,6 +173,9 @@ importers:
       globals:
         specifier: "catalog:"
         version: 16.5.0
+      tsx:
+        specifier: "catalog:"
+        version: 4.20.6
       typescript:
         specifier: "catalog:"
         version: 5.9.3

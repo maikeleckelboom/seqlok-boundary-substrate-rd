@@ -9,8 +9,17 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = dirname(dirname(HERE));
 
 const paths = {
-  allTs: ["src/**/*.ts", "tests/**/*.ts", "*.config.ts"],
-  ignores: ["dist/**", "coverage/**", "node_modules/**", "**/*.d.ts"],
+  allTs: ["src/**/*.ts", "tests/**/*.ts", "scripts/**/*.mts", "*.config.ts"],
+  ignores: [
+    ".cache/**",
+    "coverage/**",
+    "dist/**",
+    "generated/**",
+    "node_modules/**",
+    "third_party/**",
+    "vendor/**",
+    "**/*.d.ts",
+  ],
   tests: ["tests/**/*.ts"],
 };
 

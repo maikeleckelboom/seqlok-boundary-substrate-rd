@@ -38,6 +38,24 @@ function assertNoWorkspaceDeps(
   }
 }
 
+function assertNoProofFiles(tarballPath: string, packageRoot: string): void {
+  const contents = run("tar", ["-tf", tarballPath], packageRoot)
+    .split(/\r?\n/u)
+    .filter((line) => line.length > 0);
+  const forbidden = contents.filter(
+    (entry) =>
+      entry.includes("apps/signalsmith-stretch-lab/") ||
+      entry.includes("signalsmith-stretch-lab/vendor/") ||
+      entry.includes("signalsmith-stretch-lab/generated/"),
+  );
+
+  if (forbidden.length > 0) {
+    throw new Error(
+      `@exclave/boundary tarball contains private proof files:\n${forbidden.join("\n")}`,
+    );
+  }
+}
+
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const tempRoot = mkdtempSync(join(tmpdir(), "exclave-boundary-pack-"));
 
@@ -58,6 +76,8 @@ try {
   const tarballPath = isAbsolute(tarballName)
     ? tarballName
     : join(tempRoot, tarballName);
+  assertNoProofFiles(tarballPath, packageRoot);
+
   const consumerRoot = join(tempRoot, "consumer");
   mkdirSync(consumerRoot);
   const tarballSpec = `file:${relative(consumerRoot, tarballPath).replace(

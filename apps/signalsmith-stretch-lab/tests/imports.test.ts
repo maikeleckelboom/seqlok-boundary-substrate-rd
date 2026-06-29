@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
-const SOURCE_EXTENSIONS = new Set([".css", ".html", ".json", ".ts"]);
+const SOURCE_EXTENSIONS = new Set([".css", ".html", ".json", ".mts", ".ts"]);
 
 describe("Stage B app import and language guards", () => {
   it("uses the current boundary package and no stale prototype package names", () => {
@@ -36,7 +36,11 @@ function collectFiles(dir: string): string[] {
     if (
       entry.name === "dist" ||
       entry.name === "node_modules" ||
-      entry.name === "coverage"
+      entry.name === "coverage" ||
+      entry.name === ".cache" ||
+      entry.name === "generated" ||
+      entry.name === "third_party" ||
+      entry.name === "vendor"
     ) {
       continue;
     }

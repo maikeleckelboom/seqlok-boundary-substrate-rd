@@ -1,0 +1,24 @@
+[
+  {
+    "name": "signalsmith-stretch",
+    "repo": "https://github.com/Signalsmith-Audio/signalsmith-stretch.git",
+    "sourceBranch": "performance/output-seek",
+    "ref": "14f83ada78c772683c31c6e3f0c0497a4fbdb0df",
+    "includeDir": "include",
+    "extraFiles": [
+      "signalsmith-stretch.h",
+      "web/emscripten/main.cpp",
+      "web/release"
+    ],
+    "licenseFiles": ["LICENSE.txt"]
+  },
+  {
+    "name": "signalsmith-linear",
+    "repo": "https://github.com/Signalsmith-Audio/linear.git",
+    "sourceTag": "0.3.0",
+    "ref": "a436c9a53bddd65492a73f6e2dbf02af17ca8820",
+    "includeDir": "include",
+    "extraFiles": ["linear.h", "fft.h", "stft.h"],
+    "licenseFiles": ["LICENSE.txt"]
+  }
+]

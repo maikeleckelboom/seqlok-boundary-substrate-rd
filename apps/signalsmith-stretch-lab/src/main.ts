@@ -16,6 +16,16 @@ import {
 } from "./boundary/session";
 import { FakeStretchEngine } from "./runtime/fake-stretch-engine";
 import {
+  SIGNALSMITH_LINEAR_REF,
+  SIGNALSMITH_LINEAR_SOURCE_TAG,
+  SIGNALSMITH_STRETCH_REF,
+  SIGNALSMITH_STRETCH_SOURCE_BRANCH,
+} from "./signalsmith/upstream";
+import {
+  readSignalsmithWorkletAssets,
+  type SignalsmithWorkletAssetFacts,
+} from "./signalsmith/worklet-assets";
+import {
   defaultDesiredControls,
   defaultSimulatedSource,
   type DesiredStretchControls,
@@ -45,6 +55,7 @@ if (typeof SharedArrayBuffer === "undefined") {
 function startLab(appRoot: HTMLElement): void {
   try {
     const elements = renderAppShell(appRoot);
+    const signalsmithAssets = readSignalsmithWorkletAssets();
     const session = createStretchBoundarySession();
     const commands = createStretchCommandTransport();
     let desired = defaultDesiredControls();
@@ -62,6 +73,8 @@ function startLab(appRoot: HTMLElement): void {
     let clipBaselineRight = 0;
 
     initializeDesiredControls(session, desired);
+
+    renderAdapterHeader(elements, signalsmithAssets);
 
     const engine = new FakeStretchEngine(session, commands, { source });
     engine.tick({ renderQuantum: 128 });
@@ -324,6 +337,7 @@ function startLab(appRoot: HTMLElement): void {
         runtime.lastErrorCode === 0
           ? "Simulator runtime active."
           : `Recoverable simulator fault ${runtime.lastErrorCode.toString()}.`,
+        signalsmithAssets.realAdapterStatus,
         pending
           ? "Desired controls are pending runtime acknowledgement."
           : "Desired controls match applied acknowledgement.",
@@ -389,6 +403,18 @@ function startLab(appRoot: HTMLElement): void {
       levels: ProcessedLevelsSnapshot,
     ): void {
       renderKeyValues(elements.inspector, [
+        ["Signalsmith Stretch branch", SIGNALSMITH_STRETCH_SOURCE_BRANCH],
+        ["Signalsmith Stretch SHA", SIGNALSMITH_STRETCH_REF],
+        [
+          "Signalsmith Linear ref",
+          `${SIGNALSMITH_LINEAR_SOURCE_TAG} (${SIGNALSMITH_LINEAR_REF})`,
+        ],
+        ["Vendored source", vendorFact(signalsmithAssets)],
+        [
+          "Generated worklet",
+          signalsmithAssets.generatedWorkletExists ? "present" : "missing",
+        ],
+        ["Runtime adapter", runtimeModeFact(signalsmithAssets)],
         ["Desired plan", planFact(plans.desired)],
         ["Runtime plan", planFact(plans.runtime)],
         ["Levels plan", planFact(plans.levels)],
@@ -419,6 +445,17 @@ function startLab(appRoot: HTMLElement): void {
   } catch (error) {
     renderUnsupported(appRoot, describeBoundaryError(error));
   }
+}
+
+function renderAdapterHeader(
+  elements: ReturnType<typeof renderAppShell>,
+  assets: SignalsmithWorkletAssetFacts,
+): void {
+  elements.runtimeModeBadge.textContent =
+    assets.runtimeMode === "real-adapter"
+      ? "Real adapter"
+      : "Simulator fallback";
+  elements.adapterAvailability.textContent = assets.realAdapterStatus;
 }
 
 function collectDesiredFromInputs(
@@ -515,6 +552,21 @@ function versionFact(plans: ReturnType<typeof readPlanSummaries>): string {
     `runtime ${plans.runtime.paramVersion.toString()}/${plans.runtime.meterVersion.toString()}`,
     `levels ${plans.levels.paramVersion.toString()}/${plans.levels.meterVersion.toString()}`,
   ].join("; ");
+}
+
+function vendorFact(assets: SignalsmithWorkletAssetFacts): string {
+  const stretch = assets.stretchVendorMeta
+    ? "Stretch present"
+    : "Stretch missing";
+  const linear = assets.linearVendorMeta ? "Linear present" : "Linear missing";
+
+  return `${stretch}; ${linear}`;
+}
+
+function runtimeModeFact(assets: SignalsmithWorkletAssetFacts): string {
+  return assets.runtimeMode === "real-adapter"
+    ? "real adapter"
+    : "simulator fallback";
 }
 
 function nextSequence(current: number): number {

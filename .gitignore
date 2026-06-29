@@ -24,6 +24,8 @@ packages/**/.coverage/
 # ── Vite and other caches
 .vite/
 .cache/
+apps/signalsmith-stretch-lab/.cache/
+apps/signalsmith-stretch-lab/generated/
 apps/**/src/.vitepress/cache/
 packages/**/src/.vitepress/cache/
 .eslintcache

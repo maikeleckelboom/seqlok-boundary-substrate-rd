@@ -1,6 +1,7 @@
 export interface AppElements {
   readonly alignedSourceMode: HTMLInputElement;
   readonly appliedSequence: HTMLElement;
+  readonly adapterAvailability: HTMLElement;
   readonly clearClipButton: HTMLButtonElement;
   readonly clearLoopButton: HTMLButtonElement;
   readonly commandDrops: HTMLElement;
@@ -30,6 +31,7 @@ export interface AppElements {
   readonly rateValue: HTMLElement;
   readonly resetControlsButton: HTMLButtonElement;
   readonly resetFaultButton: HTMLButtonElement;
+  readonly runtimeModeBadge: HTMLElement;
   readonly seekFrame: HTMLInputElement;
   readonly seekRange: HTMLInputElement;
   readonly setLoopButton: HTMLButtonElement;
@@ -57,8 +59,8 @@ export function renderAppShell(root: HTMLElement): AppElements {
           <h1>Signalsmith Stretch Lab</h1>
         </div>
         <div class="header-facts" aria-label="Runtime facts">
-          <span class="mode-badge">Simulation mode</span>
-          <span>No Signalsmith WASM or AudioWorklet adapter is active</span>
+          <span id="runtimeModeBadge" class="mode-badge">Simulator fallback</span>
+          <span id="adapterAvailability">Real adapter unavailable</span>
         </div>
       </header>
 
@@ -219,6 +221,7 @@ export function renderAppShell(root: HTMLElement): AppElements {
   return {
     alignedSourceMode: must(root, "#alignedSourceMode", HTMLInputElement),
     appliedSequence: must(root, "#appliedSequence", HTMLElement),
+    adapterAvailability: must(root, "#adapterAvailability", HTMLElement),
     clearClipButton: must(root, "#clearClipButton", HTMLButtonElement),
     clearLoopButton: must(root, "#clearLoopButton", HTMLButtonElement),
     commandDrops: must(root, "#commandDrops", HTMLElement),
@@ -248,6 +251,7 @@ export function renderAppShell(root: HTMLElement): AppElements {
     rateValue: must(root, "#rateValue", HTMLElement),
     resetControlsButton: must(root, "#resetControlsButton", HTMLButtonElement),
     resetFaultButton: must(root, "#resetFaultButton", HTMLButtonElement),
+    runtimeModeBadge: must(root, "#runtimeModeBadge", HTMLElement),
     seekFrame: must(root, "#seekFrame", HTMLInputElement),
     seekRange: must(root, "#seekRange", HTMLInputElement),
     setLoopButton: must(root, "#setLoopButton", HTMLButtonElement),

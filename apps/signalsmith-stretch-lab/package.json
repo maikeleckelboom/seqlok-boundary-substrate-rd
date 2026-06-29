@@ -5,11 +5,13 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
+    "build:wasm": "tsx scripts/build-signalsmith-wasm.mts",
     "dev": "vite --host 127.0.0.1",
-    "lint": "eslint src tests *.config.ts",
+    "lint": "eslint --config eslint.config.mts src tests scripts *.config.ts",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
-    "test:types": "tsc -p tsconfig.json --noEmit --pretty"
+    "test:types": "tsc -p tsconfig.json --noEmit --pretty",
+    "vendor": "tsx scripts/vendor.mts"
   },
   "dependencies": {
     "@exclave/boundary": "workspace:*"
@@ -20,6 +22,7 @@
     "eslint-import-resolver-typescript": "catalog:",
     "eslint-plugin-import": "catalog:",
     "globals": "catalog:",
+    "tsx": "catalog:",
     "typescript": "catalog:",
     "typescript-eslint": "catalog:",
     "vite": "catalog:",
