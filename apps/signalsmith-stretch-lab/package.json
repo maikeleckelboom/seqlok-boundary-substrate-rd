@@ -1,0 +1,28 @@
+{
+  "name": "@exclave/signalsmith-stretch-lab",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite --host 127.0.0.1",
+    "lint": "eslint src tests *.config.ts",
+    "preview": "vite preview --host 127.0.0.1",
+    "test": "vitest run",
+    "test:types": "tsc -p tsconfig.json --noEmit --pretty"
+  },
+  "dependencies": {
+    "@exclave/boundary": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "eslint": "catalog:",
+    "eslint-import-resolver-typescript": "catalog:",
+    "eslint-plugin-import": "catalog:",
+    "globals": "catalog:",
+    "typescript": "catalog:",
+    "typescript-eslint": "catalog:",
+    "vite": "catalog:",
+    "vitest": "catalog:"
+  }
+}
