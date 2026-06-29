@@ -56,6 +56,7 @@ import type {
  * We drop the raw byte offset and just keep the logical index.
  */
 type SnapshotParamSlot = Readonly<{
+  kind?: string;
   plane: ParamPlane;
   index: number;
   length: number;
@@ -63,6 +64,7 @@ type SnapshotParamSlot = Readonly<{
 }>;
 
 type SnapshotMeterSlot = Readonly<{
+  kind?: string;
   plane: MeterPlane;
   index: number;
   length: number;
@@ -201,6 +203,7 @@ export function observerImpl<const S extends SpecInput>(
       validatedParams,
     )) {
       paramSnapshotSlots[key] = {
+        ...(slot.kind !== undefined ? { kind: slot.kind } : {}),
         plane: slot.plane,
         index: slot.index,
         length: slot.length,
@@ -213,6 +216,7 @@ export function observerImpl<const S extends SpecInput>(
       validatedMeters,
     )) {
       meterSnapshotSlots[key] = {
+        ...(slot.kind !== undefined ? { kind: slot.kind } : {}),
         plane: slot.plane,
         index: slot.index,
         length: slot.length,

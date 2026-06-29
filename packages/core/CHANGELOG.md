@@ -1,4 +1,15 @@
-# @seqlok-internal/prototype-core
+# @seqlok/core
+
+## 0.3.0-next.0
+
+- Extract public package metadata for `@seqlok/core`.
+- Compile authored nested spec ASTs to canonical dot-key runtime specs.
+- Add deterministic anonymous spec ids derived from canonical contents.
+- Add `CanonicalSpec` and `CanonicalSpecFromAst` type exports.
+- Expand supported params with `u32`, `u32.array`, `u8.array`, `i8.array`, `i16.array`, and `u16.array`.
+- Expand supported meters with `i32` and enum scalar meters.
+- Harden binding factory argument errors with `binding.invalidArgs`.
+- Add packed-consumer smoke coverage for the publish tarball.
 
 ## 0.2.0
 

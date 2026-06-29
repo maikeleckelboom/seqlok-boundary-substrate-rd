@@ -39,7 +39,14 @@ export function requireIndex(
   return value;
 }
 
-export type ParamArray = Float32Array | Int32Array | Uint8Array;
+export type ParamArray =
+  | Float32Array
+  | Int32Array
+  | Uint32Array
+  | Uint8Array
+  | Int8Array
+  | Int16Array
+  | Uint16Array;
 export type MeterArray = Float32Array | Float64Array | Uint32Array;
 
 function copyTypedArray<T extends ParamArray | MeterArray>(
@@ -67,6 +74,15 @@ function copyTypedArray<T extends ParamArray | MeterArray>(
   if (src instanceof Uint32Array) {
     return new Uint32Array(src) as T;
   }
+  if (src instanceof Int8Array) {
+    return new Int8Array(src) as T;
+  }
+  if (src instanceof Int16Array) {
+    return new Int16Array(src) as T;
+  }
+  if (src instanceof Uint16Array) {
+    return new Uint16Array(src) as T;
+  }
   return new Uint8Array(src) as T;
 }
 
@@ -75,7 +91,18 @@ export function copyParamArray(
   into?: Float32Array,
 ): Float32Array;
 export function copyParamArray(src: Int32Array, into?: Int32Array): Int32Array;
+export function copyParamArray(
+  src: Uint32Array,
+  into?: Uint32Array,
+): Uint32Array;
 export function copyParamArray(src: Uint8Array, into?: Uint8Array): Uint8Array;
+export function copyParamArray(src: Int8Array, into?: Int8Array): Int8Array;
+export function copyParamArray(src: Int16Array, into?: Int16Array): Int16Array;
+export function copyParamArray(
+  src: Uint16Array,
+  into?: Uint16Array,
+): Uint16Array;
+export function copyParamArray(src: ParamArray, into?: ParamArray): ParamArray;
 export function copyParamArray(src: ParamArray, into?: ParamArray): ParamArray {
   return copyTypedArray(src, into);
 }
@@ -100,22 +127,29 @@ export function copyMeterArray(src: MeterArray, into?: MeterArray): MeterArray {
  * Read a scalar meter value from the correct data plane.
  *
  * @remarks
- * - Scalars are always numbers (including "bool" meters represented as 0/1 in MU32).
+ * - MU32-backed scalars use the meter kind to decode signedness / booleans.
  */
 export function readMeterScalar(
   plane: MeterPlane,
   views: MeterPlaneViews,
   key: string,
   start: number,
-): number {
+  kind?: string,
+): number | boolean {
   if (plane === "MF32") {
     return requireIndex(views.MF32, start, key, "Meter MF32 scalar OOB");
   }
   if (plane === "MF64") {
     return requireIndex(views.MF64, start, key, "Meter MF64 scalar OOB");
   }
-  // MU32: used for integer / bool-like meters (0 / 1 / counters etc.)
-  return requireIndex(views.MU32, start, key, "Meter MU32 scalar OOB");
+  const raw = requireIndex(views.MU32, start, key, "Meter MU32 scalar OOB");
+  if (kind === "i32") {
+    return raw | 0;
+  }
+  if (kind === "bool") {
+    return raw !== 0;
+  }
+  return raw >>> 0;
 }
 
 /**
@@ -140,6 +174,9 @@ export function readParamScalar(
   if (plane === "PI32") {
     const raw = requireIndex(views.PI32, start, key, "Param PI32 scalar OOB");
     const def = defs[key];
+    if (def?.kind === "u32") {
+      return raw >>> 0;
+    }
     return isEnumDef(def) ? getEnumLabelForIndex(def, raw) : raw;
   }
 

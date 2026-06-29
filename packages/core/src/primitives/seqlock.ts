@@ -14,7 +14,7 @@
  *   by primitives tests.
  *
  * @remarks
- * This module is an internal implementation detail of `@seqlok-internal/prototype-core`.
+ * This module is an internal implementation detail of `@seqlok/core`.
  * Runtime bindings call into it indirectly via higher-level helpers.
  *
  * Functions {@link createSeqPair} and {@link tryRead} exist primarily for

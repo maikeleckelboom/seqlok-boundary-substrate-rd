@@ -1,18 +1,38 @@
 {
-  "name": "@seqlok-internal/prototype-core",
-  "version": "0.2.0",
-  "private": true,
+  "name": "@seqlok/core",
+  "version": "0.3.0-next.0",
+  "description": "Shared-memory boundary substrate primitives for typed controller, processor, and observer flows.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maikeleckelboom/seqlok-boundary-substrate-rd.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "sharedarraybuffer",
+    "seqlock",
+    "concurrency",
+    "shared-memory",
+    "typescript",
+    "realtime"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
-  "main": "dist/index.js",
-  "module": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
       "default": "./dist/index.js"
     },
     "./diagnostics": {
       "types": "./dist/diagnostics.d.ts",
+      "import": "./dist/diagnostics.js",
       "default": "./dist/diagnostics.js"
     },
     "./package.json": "./package.json"
@@ -35,7 +55,8 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "test:types": "tsc -b --noEmit --pretty",
-    "build": "pnpm run clean && vite build && rollup -c rollup.dts.config.mts"
+    "build": "pnpm run clean && vite build && rollup -c rollup.dts.config.mts",
+    "test:pack": "tsx scripts/pack-smoke.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",

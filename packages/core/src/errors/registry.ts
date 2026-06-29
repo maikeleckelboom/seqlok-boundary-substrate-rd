@@ -20,6 +20,7 @@ import {
 import {
   BINDING_ERRORS,
   type BindingErrorCode,
+  type BindingInvalidArgsDetails,
   type BindingInvalidValueDetails,
   type BindingParamRangeDetails,
   type BindingShapeDetails,
@@ -96,7 +97,10 @@ export type TypedArrayName =
   | "Float64Array"
   | "Uint32Array"
   | "Int32Array"
-  | "Uint8Array";
+  | "Uint8Array"
+  | "Int8Array"
+  | "Int16Array"
+  | "Uint16Array";
 
 /**
  * Error metadata used for governance / health interpretation.
@@ -160,6 +164,7 @@ export interface CodeToPayload {
   "env.coopCoepRequired": EnvCoopCoepDetails;
 
   // binding.*
+  "binding.invalidArgs": BindingInvalidArgsDetails;
   "binding.unknownKey": BindingUnknownKeyDetails;
   "binding.paramRange": BindingParamRangeDetails;
   "binding.paramInvalidValue": BindingInvalidValueDetails;
@@ -231,6 +236,7 @@ const RAW_META = {
   [ENV_ERRORS.coopCoepRequired.code]: ENV_ERRORS.coopCoepRequired.meta,
 
   // binding.*
+  [BINDING_ERRORS.invalidArgs.code]: BINDING_ERRORS.invalidArgs.meta,
   [BINDING_ERRORS.unknownKey.code]: BINDING_ERRORS.unknownKey.meta,
   [BINDING_ERRORS.paramRange.code]: BINDING_ERRORS.paramRange.meta,
   [BINDING_ERRORS.paramInvalidValue.code]:
@@ -306,6 +312,7 @@ const RAW_MESSAGES = {
   [ENV_ERRORS.coopCoepRequired.code]: ENV_ERRORS.coopCoepRequired.message,
 
   // binding.*
+  [BINDING_ERRORS.invalidArgs.code]: BINDING_ERRORS.invalidArgs.message,
   [BINDING_ERRORS.unknownKey.code]: BINDING_ERRORS.unknownKey.message,
   [BINDING_ERRORS.paramRange.code]: BINDING_ERRORS.paramRange.message,
   [BINDING_ERRORS.paramInvalidValue.code]:

@@ -30,6 +30,7 @@ function isScalarParam(paramDef: ParamDef): paramDef is ScalarParamDef {
   return (
     paramDef.kind === "f32" ||
     paramDef.kind === "i32" ||
+    paramDef.kind === "u32" ||
     paramDef.kind === "bool" ||
     paramDef.kind === "enum"
   );
@@ -39,8 +40,10 @@ function isScalarMeter(meterDef: MeterDef): meterDef is ScalarMeterDef {
   return (
     meterDef.kind === "f32" ||
     meterDef.kind === "f64" ||
+    meterDef.kind === "i32" ||
     meterDef.kind === "u32" ||
-    meterDef.kind === "bool"
+    meterDef.kind === "bool" ||
+    meterDef.kind === "enum"
   );
 }
 
@@ -56,6 +59,19 @@ function lenOfMeter(meterDef: MeterDef): number {
 function alignUp(n: number, m: number): number {
   const r = n % m;
   return r === 0 ? n : n + (m - r);
+}
+
+function assertPlaneAlignment(
+  plane: PlaneKey,
+  offset: number,
+  alignment: number,
+): void {
+  if (offset % alignment !== 0) {
+    throw createError("plan.failed", "Plane slot alignment failed", {
+      where: "plan.packSlots",
+      detail: `${plane}@${String(offset)}`,
+    });
+  }
 }
 
 const MAX_ARRAY_LENGTH = 1_000_000; // tune as needed
@@ -148,6 +164,7 @@ export function planeOfParam(def: ParamDef): PlaneKey {
     case "f32":
       return "PF32";
     case "i32":
+    case "u32":
       return "PI32";
     case "bool":
       return "PB";
@@ -157,7 +174,12 @@ export function planeOfParam(def: ParamDef): PlaneKey {
     case "f32.array":
       return "PF32";
     case "i32.array":
+    case "u32.array":
       return "PI32";
+    case "u8.array":
+    case "i8.array":
+    case "i16.array":
+    case "u16.array":
     case "bool.array":
       return "PB";
     case "enum.array":
@@ -174,6 +196,16 @@ export function planeOfParam(def: ParamDef): PlaneKey {
   }
 }
 
+export function bytesPerElementOfParam(def: ParamDef): number {
+  switch (def.kind) {
+    case "i16.array":
+    case "u16.array":
+      return 2;
+    default:
+      return BYTES_PER_ELEM[planeOfParam(def)];
+  }
+}
+
 /**
  * Resolve a METER definition to its storage plane.
  */
@@ -183,9 +215,10 @@ export function planeOfMeter(def: MeterDef): "MF32" | "MF64" | "MU32" {
       return "MF32";
     case "f64":
       return "MF64";
+    case "i32":
     case "u32":
-      return "MU32";
     case "bool":
+    case "enum":
       return "MU32";
 
     case "f32.array":
@@ -206,6 +239,10 @@ export function planeOfMeter(def: MeterDef): "MF32" | "MF64" | "MU32" {
       });
     }
   }
+}
+
+export function bytesPerElementOfMeter(def: MeterDef): number {
+  return BYTES_PER_ELEM[planeOfMeter(def)];
 }
 
 /**
@@ -258,17 +295,20 @@ export function packParamSlots(params: Readonly<Record<string, ParamDef>>): {
     }
 
     const plane = planeOfParam(def);
-    const elemBytes = BYTES_PER_ELEM[plane];
+    const elemBytes = bytesPerElementOfParam(def);
     const length = lenOfParam(def);
 
     let offset: number;
     if (plane === "PF32") {
+      PF32 = alignUp(PF32, elemBytes);
       offset = PF32;
       PF32 += length * elemBytes;
     } else if (plane === "PI32") {
+      PI32 = alignUp(PI32, elemBytes);
       offset = PI32;
       PI32 += length * elemBytes;
     } else if (plane === "PB") {
+      PB = alignUp(PB, elemBytes);
       offset = PB;
       PB += length * elemBytes;
     } else {
@@ -277,7 +317,14 @@ export function packParamSlots(params: Readonly<Record<string, ParamDef>>): {
       });
     }
 
-    slots[key] = { plane, offset, length, bytesPerElement: elemBytes };
+    assertPlaneAlignment(plane, offset, elemBytes);
+    slots[key] = {
+      kind: def.kind,
+      plane,
+      offset,
+      length,
+      bytesPerElement: elemBytes,
+    };
   }
 
   return { slots, bytes: { PF32, PI32, PB } };
@@ -299,18 +346,21 @@ export function packMeterSlots(meters: Readonly<Record<string, MeterDef>>): {
     }
 
     const plane = planeOfMeter(def);
-    const elemBytes = BYTES_PER_ELEM[plane];
+    const elemBytes = bytesPerElementOfMeter(def);
     const length = lenOfMeter(def);
 
     let offset: number;
     if (plane === "MF32") {
+      MF32 = alignUp(MF32, elemBytes);
       offset = MF32;
       MF32 += length * elemBytes;
     } else if (plane === "MF64") {
+      MF64 = alignUp(MF64, elemBytes);
       offset = MF64;
       MF64 += length * elemBytes;
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     } else if (plane === "MU32") {
+      MU32 = alignUp(MU32, elemBytes);
       offset = MU32;
       MU32 += length * elemBytes;
     } else {
@@ -319,7 +369,14 @@ export function packMeterSlots(meters: Readonly<Record<string, MeterDef>>): {
       });
     }
 
-    slots[key] = { plane, offset, length, bytesPerElement: elemBytes };
+    assertPlaneAlignment(plane, offset, elemBytes);
+    slots[key] = {
+      kind: def.kind,
+      plane,
+      offset,
+      length,
+      bytesPerElement: elemBytes,
+    };
   }
 
   return { slots, bytes: { MF32, MF64, MU32 } };

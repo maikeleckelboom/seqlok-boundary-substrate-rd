@@ -31,7 +31,8 @@ function fnv1aHash(input: string): string {
 function canonicalizeParam(def: ParamDef) {
   switch (def.kind) {
     case "f32":
-    case "i32": {
+    case "i32":
+    case "u32": {
       const hasMin = "min" in def;
       const hasMax = "max" in def;
 
@@ -59,6 +60,11 @@ function canonicalizeParam(def: ParamDef) {
 
     case "f32.array":
     case "i32.array":
+    case "u32.array":
+    case "u8.array":
+    case "i8.array":
+    case "i16.array":
+    case "u16.array":
     case "bool.array":
       return { kind: def.kind, length: def.length };
 
@@ -75,9 +81,13 @@ function canonicalizeMeter(def: MeterDef) {
   switch (def.kind) {
     case "f32":
     case "f64":
+    case "i32":
     case "u32":
     case "bool":
       return { kind: def.kind };
+
+    case "enum":
+      return { kind: def.kind, values: [...def.values] };
 
     case "f32.array":
     case "f64.array":

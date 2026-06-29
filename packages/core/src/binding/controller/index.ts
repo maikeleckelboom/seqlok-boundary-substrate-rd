@@ -16,6 +16,7 @@
 
 import { controllerImpl } from "./impl";
 import { isSharedContext } from "../../context/guard";
+import { throwInvalidBindingArgs } from "../common/arg-errors";
 
 export type { SharedContext } from "../../context/types";
 
@@ -36,7 +37,7 @@ import type { ControllerBinding, ControllerOptions } from "../common/types";
  * @returns A typed controller binding for the given spec/plan/backing triple.
  *
  * @remarks
- * - This is the canonical controller API in `@seqlok-internal/prototype-core`.
+ * - This is the canonical controller API in `@seqlok/core`.
  * - The caller is responsible for:
  *   - Computing the plan once via `planLayout(spec)`.
  *   - Allocating a compatible backing via `allocateShared(plan)` (or a
@@ -74,9 +75,14 @@ export function bindController<const S extends SpecInput>(
   }
 
   const spec = arg1;
-  const plan = arg2 as Plan<S>;
-  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-  const backing = arg3!;
+  const plan = arg2 as Plan<S> | undefined;
+  if (plan === undefined) {
+    throwInvalidBindingArgs("bindController", "missingPlan");
+  }
+  if (arg3 === undefined) {
+    throwInvalidBindingArgs("bindController", "missingBacking");
+  }
+  const backing = arg3;
   const options = arg4;
   const params = spec.params ?? {};
 

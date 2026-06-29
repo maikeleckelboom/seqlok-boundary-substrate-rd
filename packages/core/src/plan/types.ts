@@ -59,6 +59,8 @@ export interface PlaneByteLengths {
 
 /** Slot describing one param/meter entry within its plane. */
 export interface EntrySlot {
+  /** Original spec kind for typed-array reconstruction across handoff. */
+  readonly kind: string;
   readonly plane: PlaneKey;
   /** Byte offset within the plane (not the global backing). */
   readonly offset: number;

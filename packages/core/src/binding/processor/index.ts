@@ -1,64 +1,104 @@
-// File: packages/core/src/binding/processor/index.ts
-
-/**
- * @fileoverview
- * Public processor binding factory.
- *
- * @remarks
- * - Bridges `AcceptedHandoff` + Backing into a typed `ProcessorBinding`.
- * - For use in workers/worklets where the full spec is not available.
- * - Delegates to the low-level implementation with the plan from handoff.
- */
-
 import { processorImpl } from "./impl";
+import { isSharedContext } from "../../context/guard";
+import { acceptHandoff } from "../../handoff/handoff";
+import { throwInvalidBindingArgs } from "../common/arg-errors";
+import {
+  backingFromAccepted,
+  isAcceptedHandoff,
+  isHandoff,
+} from "../common/handoff-source";
 
 import type { Backing } from "../../backing/types";
-import type { AcceptedHandoff } from "../../handoff/types";
+import type { SharedContext } from "../../context/types";
+import type { Handoff, AcceptedHandoff } from "../../handoff/types";
+import type { Plan } from "../../plan/types";
 import type { SpecInput } from "../../spec/types";
 import type { ProcessorBinding, ProcessorOptions } from "../common/types";
 
-/**
- * Public processor binding.
- *
- * Use this in workers/worklets or same-thread processors where the spec
- * value is not available. The `accepted.plan` carries all layout information.
- *
- * @template S - Spec type (inferred from AcceptedHandoff<S>)
- * @param accepted - Validated handoff from acceptHandoff()
- * @param options - Optional processor configuration
- * @returns Typed processor binding
- *
- * @example
- * ```ts
- * // Worker side:
- * import { acceptHandoff, bindProcessor } from '@seqlok-internal/prototype-core';
- * import type { MySpec } from './spec';  // type-only import
- *
- * type InitMessage = { handoff: Handoff<MySpec> };
- *
- * self.onmessage = (ev: MessageEvent<InitMessage>) => {
- *   const accepted = acceptHandoff(ev.data.handoff);
- *   //    ^? AcceptedHandoff<MySpec>
- *
- *   const proc = bindProcessor(accepted);
- *   //    ^? ProcessorBinding<MySpec> ✓
- * };
- * ```
- */
-export function bindProcessor<const S extends SpecInput>(
-  accepted: AcceptedHandoff<S>,
-  options: ProcessorOptions = {},
-): ProcessorBinding<S> {
-  const backing: Backing =
-    accepted.packing === "shared"
-      ? {
-          kind: "shared",
-          sab: accepted.sab,
-        }
-      : {
-          kind: "shared-partitioned",
-          planes: accepted.planes,
-        };
+interface NormalizedProcessorSource<S extends SpecInput> {
+  readonly plan: Plan<S>;
+  readonly backing: Backing;
+}
 
-  return processorImpl(accepted.plan, backing, options);
+export function bindProcessor<const S extends SpecInput>(
+  source: Handoff<S> | AcceptedHandoff<S> | SharedContext<S>,
+  options?: ProcessorOptions,
+): ProcessorBinding<S>;
+
+export function bindProcessor<const S extends SpecInput>(
+  spec: S,
+  plan: Plan<S>,
+  backing: Backing,
+  options?: ProcessorOptions,
+): ProcessorBinding<S>;
+
+export function bindProcessor<const S extends SpecInput>(
+  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
+  arg2?: ProcessorOptions | Plan<S>,
+  arg3?: Backing,
+  arg4?: ProcessorOptions,
+): ProcessorBinding<S> {
+  const { plan, backing } = normalizeSource(arg1, arg2, arg3);
+  const options = getOptions(arg1, arg2, arg4) ?? {};
+  return processorImpl(plan, backing, options);
+}
+
+function normalizeSource<const S extends SpecInput>(
+  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
+  arg2?: ProcessorOptions | Plan<S>,
+  arg3?: Backing,
+): NormalizedProcessorSource<S> {
+  if (isHandoff<S>(arg1)) {
+    return normalizeFromAccepted(acceptHandoff(arg1));
+  }
+
+  if (isAcceptedHandoff<S>(arg1)) {
+    return normalizeFromAccepted(arg1);
+  }
+
+  if (isSharedContext<S>(arg1)) {
+    return {
+      plan: arg1.plan,
+      backing: arg1.backing,
+    };
+  }
+
+  const plan = arg2 as Plan<S> | undefined;
+  if (plan === undefined) {
+    throwInvalidBindingArgs("bindProcessor", "missingPlan");
+  }
+
+  if (arg3 === undefined) {
+    throwInvalidBindingArgs("bindProcessor", "missingBacking");
+  }
+
+  return {
+    plan,
+    backing: arg3,
+  };
+}
+
+function normalizeFromAccepted<const S extends SpecInput>(
+  accepted: AcceptedHandoff<S>,
+): NormalizedProcessorSource<S> {
+  return {
+    plan: accepted.plan,
+    backing: backingFromAccepted(accepted),
+  };
+}
+
+function getOptions<const S extends SpecInput>(
+  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
+  arg2?: ProcessorOptions | Plan<S>,
+  arg4?: ProcessorOptions,
+): ProcessorOptions | undefined {
+  if (
+    isHandoff<S>(arg1) ||
+    isAcceptedHandoff<S>(arg1) ||
+    isSharedContext<S>(arg1)
+  ) {
+    return arg2 as ProcessorOptions | undefined;
+  }
+
+  return arg4;
 }

@@ -18,6 +18,7 @@
  */
 
 import { createError } from "../../errors/error";
+import { paramArrayView } from "../common/array-views";
 import { readMeterScalar, readParamScalar } from "../common/snapshot-util";
 import {
   type MeterPlane,
@@ -32,6 +33,7 @@ import type {
   ParamKeys,
   SpecInput,
 } from "../../spec/types";
+import type { ParamArray } from "../common/array-views";
 import type {
   MetersSnapshot,
   ParamsSnapshot,
@@ -40,6 +42,7 @@ import type {
 } from "../common/types";
 
 type SnapshotParamSlot = Readonly<{
+  kind?: string;
   plane: ParamPlane;
   index: number;
   length: number;
@@ -47,6 +50,7 @@ type SnapshotParamSlot = Readonly<{
 }>;
 
 type SnapshotMeterSlot = Readonly<{
+  kind?: string;
   plane: MeterPlane;
   index: number;
   length: number;
@@ -85,10 +89,7 @@ function paramsSnapshotRawObserver(
   views: ParamPlaneViews,
   knownParamKeys: readonly string[],
   keys?: readonly string[],
-): Record<
-  string,
-  number | boolean | string | Float32Array | Int32Array | Uint8Array
-> {
+): Record<string, number | boolean | string | ParamArray> {
   const keysList = keys && keys.length > 0 ? keys : knownParamKeys;
 
   if (keys && keys.length > 0) {
@@ -99,10 +100,7 @@ function paramsSnapshotRawObserver(
     }
   }
 
-  const out: Record<
-    string,
-    number | boolean | string | Float32Array | Int32Array | Uint8Array
-  > = {};
+  const out: Record<string, number | boolean | string | ParamArray> = {};
 
   for (const key of keysList) {
     const slot = slots[key];
@@ -120,15 +118,7 @@ function paramsSnapshotRawObserver(
     const start = slot.index;
 
     if (slot.length > 1) {
-      const end = start + slot.length;
-
-      if (slot.plane === "PF32") {
-        out[key] = views.PF32.subarray(start, end);
-      } else if (slot.plane === "PI32") {
-        out[key] = views.PI32.subarray(start, end);
-      } else {
-        out[key] = views.PB.subarray(start, end);
-      }
+      out[key] = paramArrayView(views, slot);
     } else {
       // Scalar value: number / boolean / enum label.
       out[key] = readParamScalar(slot.plane, views, defs, key, start);
@@ -143,7 +133,10 @@ function metersSnapshotRawObserver(
   views: MeterPlaneViews,
   knownMeterKeys: readonly string[],
   keys?: readonly string[],
-): Record<string, number | Float32Array | Float64Array | Uint32Array> {
+): Record<
+  string,
+  number | boolean | Float32Array | Float64Array | Uint32Array
+> {
   const keysList = keys && keys.length > 0 ? keys : knownMeterKeys;
 
   if (keys && keys.length > 0) {
@@ -156,7 +149,7 @@ function metersSnapshotRawObserver(
 
   const out: Record<
     string,
-    number | Float32Array | Float64Array | Uint32Array
+    number | boolean | Float32Array | Float64Array | Uint32Array
   > = {};
 
   for (const key of keysList) {
@@ -187,8 +180,7 @@ function metersSnapshotRawObserver(
         out[key] = views.MU32.subarray(start, end);
       }
     } else {
-      // Scalar value: numbers only (bool meters use MU32 as 0/1).
-      out[key] = readMeterScalar(slot.plane, views, key, start);
+      out[key] = readMeterScalar(slot.plane, views, key, start, slot.kind);
     }
   }
 

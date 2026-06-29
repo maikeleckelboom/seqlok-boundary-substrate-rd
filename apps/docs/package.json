@@ -1,0 +1,20 @@
+{
+  "name": "@seqlok/docs",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "clean": "rimraf src/.vitepress/cache src/.vitepress/dist",
+    "docs:dev": "vitepress dev src --host 127.0.0.1",
+    "docs:build": "vitepress build src",
+    "docs:preview": "vitepress preview src --host 127.0.0.1",
+    "lint": "markdownlint-cli2 --config ../../.markdownlint-cli2.jsonc \"src/**/*.md\"",
+    "lint:fix": "markdownlint-cli2 --config ../../.markdownlint-cli2.jsonc --fix \"src/**/*.md\""
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "catalog:",
+    "rimraf": "catalog:",
+    "typescript": "catalog:",
+    "vitepress": "catalog:"
+  }
+}

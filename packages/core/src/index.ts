@@ -3,7 +3,7 @@
  * Core module for Seqlok - Shared memory synchronization for real-time applications.
  *
  * @remarks
- * - Re-exports all public APIs for the @seqlok-internal/prototype-core package.
+ * - Re-exports all public APIs for the @seqlok/core package.
  * - Organized into logical sections: SPEC, PLAN, BACKING, BINDING, HANDOFF, and ERRORS.
  * - This is the main entry point for consumers of the library.
  */
@@ -14,7 +14,17 @@ export {
   type ParamBuilders,
   type MeterBuilders,
 } from "./spec/define";
-export type { SpecInput } from "./spec/types";
+export type {
+  CanonicalSpec,
+  CanonicalSpecFromAst,
+  FlattenNamespace,
+  MeterDef,
+  ParamDef,
+  ScalarRange,
+  SpecAstInput,
+  SpecInput,
+  SpecNamespace,
+} from "./spec/types";
 
 // PLAN
 export { planLayout } from "./plan/layout";

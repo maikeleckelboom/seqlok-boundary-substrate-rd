@@ -9,6 +9,7 @@
  */
 
 import { createError } from "../../errors/error";
+import { paramArrayView } from "../common/array-views";
 import {
   copyMeterArray,
   copyParamArray,
@@ -25,9 +26,11 @@ import {
 
 import type { MeterPlaneViews, ParamPlaneViews } from "../../backing/map-views";
 import type { ParamDef, SpecInput } from "../../spec/types";
+import type { ParamArray } from "../common/array-views";
 import type { ControllerMeters, ControllerParams } from "../common/types";
 
 type SnapshotParamSlot = Readonly<{
+  kind?: string;
   plane: ParamPlane;
   index: number;
   length: number;
@@ -35,6 +38,7 @@ type SnapshotParamSlot = Readonly<{
 }>;
 
 type SnapshotMeterSlot = Readonly<{
+  kind?: string;
   plane: MeterPlane;
   index: number;
   length: number;
@@ -48,12 +52,9 @@ function paramsSnapshotRaw(
   knownParamKeys: readonly string[],
   options?: {
     readonly keys: readonly string[];
-    readonly into?: Record<string, Float32Array | Int32Array | Uint8Array>;
+    readonly into?: Record<string, ParamArray>;
   },
-): Record<
-  string,
-  number | boolean | string | Float32Array | Int32Array | Uint8Array
-> {
+): Record<string, number | boolean | string | ParamArray> {
   const keysList = options ? options.keys : knownParamKeys;
 
   if (options) {
@@ -65,10 +66,7 @@ function paramsSnapshotRaw(
   }
 
   const into = options?.into;
-  const out: Record<
-    string,
-    number | boolean | string | Float32Array | Int32Array | Uint8Array
-  > = {};
+  const out: Record<string, number | boolean | string | ParamArray> = {};
 
   for (const key of keysList) {
     const slot = slots[key];
@@ -85,27 +83,15 @@ function paramsSnapshotRaw(
     const start = slot.index;
 
     if (slot.length > 1) {
-      const end = start + slot.length;
       const dst = into?.[key];
+      const src = paramArrayView(views, slot);
 
       if (dst) {
-        assertParamInto(key, slot.plane, dst, slot.length);
-        if (slot.plane === "PF32") {
-          (dst as Float32Array).set(views.PF32.subarray(start, end));
-        } else if (slot.plane === "PI32") {
-          (dst as Int32Array).set(views.PI32.subarray(start, end));
-        } else {
-          (dst as Uint8Array).set(views.PB.subarray(start, end));
-        }
+        assertParamInto(key, slot, dst);
+        dst.set(src as ArrayLike<number>);
         out[key] = dst;
       } else {
-        if (slot.plane === "PF32") {
-          out[key] = copyParamArray(views.PF32.subarray(start, end));
-        } else if (slot.plane === "PI32") {
-          out[key] = copyParamArray(views.PI32.subarray(start, end));
-        } else {
-          out[key] = copyParamArray(views.PB.subarray(start, end));
-        }
+        out[key] = copyParamArray(src);
       }
     } else {
       // Scalar value: number / boolean / enum label.
@@ -125,7 +111,7 @@ export function createParamSnapshot<S extends SpecInput>(
 
   return ((options?: {
     readonly keys?: readonly string[];
-    readonly into?: Record<string, Float32Array | Int32Array | Uint8Array>;
+    readonly into?: Record<string, ParamArray>;
   }) => {
     if (!options) {
       return paramsSnapshotRaw(defs, slots, views, allParamKeys);
@@ -159,7 +145,10 @@ function metersSnapshotRaw(
     readonly keys: readonly string[];
     readonly into?: Record<string, Float32Array | Float64Array | Uint32Array>;
   },
-): Record<string, number | Float32Array | Float64Array | Uint32Array> {
+): Record<
+  string,
+  number | boolean | Float32Array | Float64Array | Uint32Array
+> {
   const keysList = options ? options.keys : knownMeterKeys;
 
   if (options) {
@@ -173,7 +162,7 @@ function metersSnapshotRaw(
   const into = options?.into;
   const out: Record<
     string,
-    number | Float32Array | Float64Array | Uint32Array
+    number | boolean | Float32Array | Float64Array | Uint32Array
   > = {};
 
   for (const key of keysList) {
@@ -214,8 +203,7 @@ function metersSnapshotRaw(
         }
       }
     } else {
-      // Scalar value: numbers only (bool meters use MU32 as 0/1).
-      out[key] = readMeterScalar(slot.plane, views, key, start);
+      out[key] = readMeterScalar(slot.plane, views, key, start, slot.kind);
     }
   }
 

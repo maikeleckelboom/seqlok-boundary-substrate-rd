@@ -18,6 +18,7 @@ import {
 import { invariant } from "../../errors/invariant";
 import { isObject } from "../../internal/is-object";
 import { publish } from "../../primitives/seqlock";
+import { paramArrayCtor, paramArrayView } from "../common/array-views";
 import { isEnumDef } from "../common/enum-utils";
 import { claimBinding, releaseBinding } from "../common/registry";
 import {
@@ -37,6 +38,7 @@ import type {
   ScalarParamKeys,
   SpecInput,
 } from "../../spec/types";
+import type { ParamArray } from "../common/array-views";
 import type {
   ArrayParamView,
   ControllerBinding,
@@ -65,22 +67,10 @@ import type {
  * - Plane is one of the param array planes (PF32, PI32, PB).
  * - `slot.index` represents the starting element offset.
  */
-type ArrayOp =
-  | {
-      readonly plane: "PF32";
-      readonly slot: ValidatedParamSlot;
-      readonly src: Float32Array;
-    }
-  | {
-      readonly plane: "PI32";
-      readonly slot: ValidatedParamSlot;
-      readonly src: Int32Array;
-    }
-  | {
-      readonly plane: "PB";
-      readonly slot: ValidatedParamSlot;
-      readonly src: Uint8Array;
-    };
+type ArrayOp = Readonly<{
+  slot: ValidatedParamSlot;
+  src: ParamArray;
+}>;
 
 /**
  * Range-bearing f32 scalar definition.
@@ -94,6 +84,11 @@ type F32RangeDef = Extract<ParamDef, { kind: "f32" }> & {
  * Range-bearing i32 scalar definition.
  */
 type I32RangeDef = Extract<ParamDef, { kind: "i32" }> & {
+  readonly min: number;
+  readonly max: number;
+};
+
+type U32RangeDef = Extract<ParamDef, { kind: "u32" }> & {
   readonly min: number;
   readonly max: number;
 };
@@ -122,6 +117,16 @@ const isI32RangeDef = (d: unknown): d is I32RangeDef =>
   Number.isInteger(d.min) &&
   Number.isInteger(d.max);
 
+const isU32RangeDef = (d: unknown): d is U32RangeDef =>
+  isObject(d) &&
+  d.kind === "u32" &&
+  typeof d.min === "number" &&
+  typeof d.max === "number" &&
+  Number.isInteger(d.min) &&
+  Number.isInteger(d.max) &&
+  d.min >= 0 &&
+  d.max >= 0;
+
 /**
  * Type guard for boolean param definitions.
  */
@@ -145,7 +150,7 @@ const clamp = (v: number, min: number, max: number): number =>
 function scalarRangeFor(
   def: unknown,
 ): { min: number; max: number } | undefined {
-  if (isF32RangeDef(def) || isI32RangeDef(def)) {
+  if (isF32RangeDef(def) || isI32RangeDef(def) || isU32RangeDef(def)) {
     return { min: def.min, max: def.max };
   }
 
@@ -189,7 +194,7 @@ function assertScalarParamSlot(
  * - Bool:
  *   - Accepts `boolean` or `0 | 1`.
  *   - Returns boolean; converted to 0/1 at write.
- * - f32/i32:
+ * - f32/i32/u32:
  *   - Requires a `number`.
  * - Fallback:
  *   - Accepts `number | boolean`.
@@ -224,7 +229,7 @@ function normalizeScalarValue(
     throwInvalidParamValue(key, "boolean|0|1", value);
   }
 
-  if (isF32RangeDef(def) || isI32RangeDef(def)) {
+  if (isF32RangeDef(def) || isI32RangeDef(def) || isU32RangeDef(def)) {
     if (typeof value !== "number") {
       throwInvalidParamValue(key, "number", value);
     }
@@ -262,9 +267,20 @@ function writeScalarUnchecked(
       return;
 
     case "PI32":
-      views.PI32[i] = Math.trunc(
-        typeof normalized === "boolean" ? (normalized ? 1 : 0) : normalized,
-      );
+      views.PI32[i] =
+        slot.kind === "u32"
+          ? (typeof normalized === "boolean"
+              ? normalized
+                ? 1
+                : 0
+              : normalized) >>> 0
+          : Math.trunc(
+              typeof normalized === "boolean"
+                ? normalized
+                  ? 1
+                  : 0
+                : normalized,
+            );
       return;
 
     case "PB":
@@ -473,60 +489,19 @@ export function controllerImpl<const S extends SpecInput>(
           const expectedLength = slot.length;
           const v = value as unknown;
 
-          switch (slot.plane) {
-            case "PF32": {
-              if (!(v instanceof Float32Array)) {
-                throwInvalidParamValue(key, "Float32Array", v);
-              }
-              const src = v;
-              if (src.length !== expectedLength) {
-                throwInvalidParamValue(
-                  key,
-                  `Float32Array(length ${String(expectedLength)})`,
-                  src.length,
-                );
-              }
-              arrayOps.push({ plane: "PF32", slot, src });
-              break;
-            }
-
-            case "PI32": {
-              if (!(v instanceof Int32Array)) {
-                throwInvalidParamValue(key, "Int32Array", v);
-              }
-              const src = v;
-              if (src.length !== expectedLength) {
-                throwInvalidParamValue(
-                  key,
-                  `Int32Array(length ${String(expectedLength)})`,
-                  src.length,
-                );
-              }
-              arrayOps.push({ plane: "PI32", slot, src });
-              break;
-            }
-
-            case "PB": {
-              if (!(v instanceof Uint8Array)) {
-                throwInvalidParamValue(key, "Uint8Array", v);
-              }
-              const src = v;
-              if (src.length !== expectedLength) {
-                throwInvalidParamValue(
-                  key,
-                  `Uint8Array(length ${String(expectedLength)})`,
-                  src.length,
-                );
-              }
-              arrayOps.push({ plane: "PB", slot, src });
-              break;
-            }
-
-            default: {
-              const _exhaustive: never = slot.plane;
-              void _exhaustive;
-            }
+          const expectedCtor = paramArrayCtor(slot);
+          if (!(v instanceof expectedCtor)) {
+            throwInvalidParamValue(key, expectedCtor.name, v);
           }
+          const src = v as ParamArray;
+          if (src.length !== expectedLength) {
+            throwInvalidParamValue(
+              key,
+              `${expectedCtor.name}(length ${String(expectedLength)})`,
+              src.length,
+            );
+          }
+          arrayOps.push({ slot, src });
         }
 
         // No-op guard: do not bump PU when nothing is written.
@@ -540,34 +515,8 @@ export function controllerImpl<const S extends SpecInput>(
           }
 
           for (const op of arrayOps) {
-            const start = op.slot.index;
-
-            switch (op.plane) {
-              case "PF32": {
-                mapped.params.PF32.set(op.src, start);
-                break;
-              }
-              case "PI32": {
-                mapped.params.PI32.set(op.src, start);
-                break;
-              }
-              case "PB": {
-                mapped.params.PB.set(op.src, start);
-                break;
-              }
-              default: {
-                // Compile-time exhaustiveness: if ArrayOp grows, this is a type error.
-                const _exhaustive: never = op;
-                void _exhaustive;
-
-                invariant(
-                  false,
-                  "internal.assertionFailed",
-                  "Param hydrate() reached unsupported plane",
-                  { detail: "param.hydrate:unknownPlane" },
-                );
-              }
-            }
+            const dst = paramArrayView(mapped.params, op.slot);
+            dst.set(op.src as ArrayLike<number>);
           }
         });
       },
@@ -582,16 +531,7 @@ export function controllerImpl<const S extends SpecInput>(
         }
 
         publish(pu, () => {
-          const start = slot.index;
-          const end = start + slot.length;
-          let view: EphemeralTypedArray;
-          if (slot.plane === "PF32") {
-            view = mapped.params.PF32.subarray(start, end);
-          } else if (slot.plane === "PI32") {
-            view = mapped.params.PI32.subarray(start, end);
-          } else {
-            view = mapped.params.PB.subarray(start, end);
-          }
+          const view: EphemeralTypedArray = paramArrayView(mapped.params, slot);
           cb(view as Ephemeral<ArrayParamView<S, K>>);
         });
       },

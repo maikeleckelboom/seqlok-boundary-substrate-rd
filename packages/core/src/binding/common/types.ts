@@ -45,6 +45,12 @@ type Display<T> = T extends (...args: readonly unknown[]) => unknown
   ? T
   : { [K in keyof T]: T[K] } & {};
 
+type UnionToIntersection<U> = (
+  U extends unknown ? (value: U) => void : never
+) extends (value: infer I) => void
+  ? I
+  : never;
+
 type ParamsOf<S extends SpecInput> = S["params"] extends object
   ? S["params"]
   : object;
@@ -64,24 +70,52 @@ type MeterAt<
 
 type EnumValuesOf<D> = D extends { values: readonly (infer V)[] } ? V : never;
 
+type NestedValue<
+  Path extends string,
+  Value,
+> = Path extends `${infer Head}.${infer Tail}`
+  ? { readonly [K in Head]: NestedValue<Tail, Value> }
+  : { readonly [K in Path]: Value };
+
+type NestedProcessorParamsView<S extends SpecInput> = Display<
+  UnionToIntersection<
+    | {
+        [K in ScalarParamKeys<S>]: NestedValue<
+          K,
+          CoherentValue<ScalarFor<S, K>>
+        >;
+      }[ScalarParamKeys<S>]
+    | {
+        [K in ArrayParamKeys<S>]: NestedValue<K, Ephemeral<ParamShape<S>[K]>>;
+      }[ArrayParamKeys<S>]
+  >
+>;
+
 // Param kind universe (spec-level `kind` field).
 type ParamKind =
   | "f32"
   | "i32"
+  | "u32"
   | "bool"
   | "enum"
   | "f32.array"
   | "i32.array"
+  | "u32.array"
   | "u8.array"
+  | "i8.array"
+  | "i16.array"
+  | "u16.array"
   | "bool.array"
   | "enum.array";
 
 // Meter kind universe (spec-level `kind` field).
 type MeterKind =
   | "f32"
+  | "i32"
   | "u32"
   | "f64"
   | "bool"
+  | "enum"
   | "f32.array"
   | "u32.array"
   | "f64.array"
@@ -98,11 +132,16 @@ type MeterKind =
 interface ParamProcessorMap {
   f32: number;
   i32: number;
+  u32: number;
   bool: boolean;
   enum: number; // enum scalar → numeric index on processor
   "f32.array": Float32Array;
   "i32.array": Int32Array;
+  "u32.array": Uint32Array;
   "u8.array": Uint8Array;
+  "i8.array": Int8Array;
+  "i16.array": Int16Array;
+  "u16.array": Uint16Array;
   "bool.array": Uint8Array;
   "enum.array": Int32Array; // indices
 }
@@ -116,9 +155,11 @@ interface ParamProcessorMap {
  */
 interface MeterProcessorMap {
   f32: number;
+  i32: number;
   u32: number;
   f64: number;
   bool: boolean;
+  enum: number;
   "f32.array": Float32Array;
   "u32.array": Uint32Array;
   "f64.array": Float64Array;
@@ -136,10 +177,15 @@ interface MeterProcessorMap {
 interface ParamControllerMap {
   f32: number;
   i32: number;
+  u32: number;
   bool: boolean;
   "f32.array": Readonly<Float32Array>;
   "i32.array": Readonly<Int32Array>;
+  "u32.array": Readonly<Uint32Array>;
   "u8.array": Readonly<Uint8Array>;
+  "i8.array": Readonly<Int8Array>;
+  "i16.array": Readonly<Int16Array>;
+  "u16.array": Readonly<Uint16Array>;
   "bool.array": Readonly<Uint8Array>;
   "enum.array": Readonly<Int32Array>; // indices
 }
@@ -153,9 +199,11 @@ interface ParamControllerMap {
  */
 interface MeterControllerMap {
   f32: number;
+  i32: number;
   u32: number;
   f64: number;
   bool: boolean;
+  enum: number;
   "f32.array": Readonly<Float32Array>;
   "u32.array": Readonly<Uint32Array>;
   "f64.array": Readonly<Float64Array>;
@@ -288,7 +336,7 @@ export type ProcessorParamsView<S extends SpecInput> = Display<
     readonly [K in ScalarParamKeys<S>]: CoherentValue<ScalarFor<S, K>>;
   } & {
     readonly [K in ArrayParamKeys<S>]: Ephemeral<ParamShape<S>[K]>;
-  }
+  } & NestedProcessorParamsView<S>
 >;
 
 /**
@@ -299,7 +347,10 @@ export type EphemeralTypedArray =
   | Float64Array
   | Int32Array
   | Uint32Array
-  | Uint8Array;
+  | Uint8Array
+  | Int8Array
+  | Int16Array
+  | Uint16Array;
 
 declare const __ephemeralBrand: unique symbol;
 
@@ -492,7 +543,13 @@ type MutableBuffer<T> =
           ? Int32Array
           : T extends Readonly<Uint8Array>
             ? Uint8Array
-            : never;
+            : T extends Readonly<Int8Array>
+              ? Int8Array
+              : T extends Readonly<Int16Array>
+                ? Int16Array
+                : T extends Readonly<Uint16Array>
+                  ? Uint16Array
+                  : never;
 
 /**
  * Mapping from param keys to user-provided destination buffers.

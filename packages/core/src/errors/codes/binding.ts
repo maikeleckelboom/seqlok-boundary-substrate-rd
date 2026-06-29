@@ -20,6 +20,7 @@ import type { ErrorDetails, ErrorMeta } from "../registry";
  * Binding error codes.
  */
 export type BindingErrorCode =
+  | "binding.invalidArgs"
   | "binding.unknownKey"
   | "binding.paramRange"
   | "binding.paramInvalidValue"
@@ -36,6 +37,12 @@ export type BindingErrorCode =
  */
 export interface BindingUnknownKeyDetails extends UnknownKeyDetails {
   readonly known: readonly string[];
+}
+
+export interface BindingInvalidArgsDetails extends ErrorDetails {
+  readonly fn: "bindController" | "bindObserver" | "bindProcessor";
+  readonly reason: "missingPlan" | "missingBacking";
+  readonly signature: string;
 }
 
 /**
@@ -83,6 +90,7 @@ interface BindingErrorDescriptor<C extends BindingErrorCode> {
  * Key space for binding descriptors.
  */
 export type BindingErrorKey =
+  | "invalidArgs"
   | "unknownKey"
   | "paramRange"
   | "paramInvalidValue"
@@ -102,6 +110,7 @@ export type BindingErrorKey =
  *   `--isolatedDeclarations`.
  */
 interface BindingErrorsMap {
+  invalidArgs: BindingErrorDescriptor<"binding.invalidArgs">;
   unknownKey: BindingErrorDescriptor<"binding.unknownKey">;
   paramRange: BindingErrorDescriptor<"binding.paramRange">;
   paramInvalidValue: BindingErrorDescriptor<"binding.paramInvalidValue">;
@@ -113,6 +122,15 @@ interface BindingErrorsMap {
 }
 
 export const BINDING_ERRORS: BindingErrorsMap = {
+  invalidArgs: {
+    code: "binding.invalidArgs",
+    message: "Invalid binding factory arguments",
+    meta: {
+      severity: "error",
+      recoverable: true,
+      boundarySafe: true,
+    },
+  },
   unknownKey: {
     code: "binding.unknownKey",
     message: "Unknown binding key",

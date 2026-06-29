@@ -16,6 +16,7 @@ import {
 } from "../../backing/map-views";
 import { invariant } from "../../errors/invariant";
 import { publish } from "../../primitives/seqlock";
+import { paramArrayView } from "../common/array-views";
 import { makeWithin } from "../common/coherent";
 import { claimBinding, releaseBinding } from "../common/registry";
 import { throwUnknownKey } from "../common/validate";
@@ -23,6 +24,7 @@ import { throwUnknownKey } from "../common/validate";
 import type { Backing } from "../../backing/types";
 import type { Plan } from "../../plan/types";
 import type { SpecInput } from "../../spec/types";
+import type { ParamArray } from "../common/array-views";
 import type {
   Ephemeral,
   MeterWriter,
@@ -46,6 +48,7 @@ type WithinView<S extends SpecInput> =
  * Base layout information for a param/meter slot in a plane.
  */
 interface SlotBase {
+  readonly kind?: string;
   readonly offset: number;
   readonly length: number;
   readonly bytesPerElement: number;
@@ -138,6 +141,42 @@ function readNumberAt(
   return v;
 }
 
+function assignNestedValue(
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): void {
+  const parts = key.split(".");
+  if (parts.length < 2) {
+    return;
+  }
+
+  let cursor = target;
+  for (let index = 0; index < parts.length - 1; index += 1) {
+    const part = parts[index];
+    if (part === undefined) {
+      return;
+    }
+    const existing = cursor[part];
+    if (
+      typeof existing !== "object" ||
+      existing === null ||
+      Array.isArray(existing)
+    ) {
+      const next: Record<string, unknown> = {};
+      cursor[part] = next;
+      cursor = next;
+      continue;
+    }
+    cursor = existing as Record<string, unknown>;
+  }
+
+  const leaf = parts[parts.length - 1];
+  if (leaf !== undefined) {
+    cursor[leaf] = value;
+  }
+}
+
 /**
  * Create an ephemeral view for an array param.
  *
@@ -151,7 +190,7 @@ function paramArrayViewFor(
     plane: ParamPlane;
     length: number;
   },
-): Ephemeral<Float32Array> | Ephemeral<Int32Array> | Ephemeral<Uint8Array> {
+): Ephemeral<ParamArray> {
   invariant(
     slot.length > 1,
     "internal.assertionFailed",
@@ -161,25 +200,13 @@ function paramArrayViewFor(
       detail: slot.plane,
     },
   );
-  const start = (slot.offset / slot.bytesPerElement) | 0;
-  const end = start + slot.length;
-  switch (slot.plane) {
-    case "PF32":
-      return ensurePlane(views.PF32, "param.array", "PF32").subarray(
-        start,
-        end,
-      ) as Ephemeral<Float32Array>;
-    case "PI32":
-      return ensurePlane(views.PI32, "param.array", "PI32").subarray(
-        start,
-        end,
-      ) as Ephemeral<Int32Array>;
-    case "PB":
-      return ensurePlane(views.PB, "param.array", "PB").subarray(
-        start,
-        end,
-      ) as Ephemeral<Uint8Array>;
-  }
+  return paramArrayView(views, {
+    ...(slot.kind !== undefined ? { kind: slot.kind } : {}),
+    plane: slot.plane,
+    index: (slot.offset / slot.bytesPerElement) | 0,
+    length: slot.length,
+    bytesPerElement: slot.bytesPerElement,
+  }) as Ephemeral<ParamArray>;
 }
 
 /**
@@ -205,8 +232,8 @@ function readParamScalar(
     }
     case "PI32": {
       const at = ensurePlane(views.PI32, "param.scalar", "PI32");
-      // Signed 32-bit coercion
-      return readNumberAt(at, i, "param.scalar") | 0;
+      const raw = readNumberAt(at, i, "param.scalar");
+      return slot.kind === "u32" ? raw >>> 0 : raw | 0;
     }
     case "PB": {
       const a = ensurePlane(views.PB, "param.scalar", "PB");
@@ -280,9 +307,9 @@ function makeScalarWriter(
     [n: number]: number;
   },
   index: number,
-  coerce: (v: number) => number,
+  coerce: (v: unknown) => number,
   where: string,
-): (value: number) => void {
+): (value: unknown) => void {
   invariant(
     index >= 0 && index < values.length,
     "internal.assertionFailed",
@@ -292,7 +319,7 @@ function makeScalarWriter(
       detail: `${String(index)}/${String(values.length)}`,
     },
   );
-  return (value: number) => {
+  return (value: unknown) => {
     values[index] = coerce(value);
   };
 }
@@ -368,16 +395,20 @@ export function processorImpl<const S extends SpecInput>(
         );
 
         if (slot0.length > 1) {
-          view[key] = paramArrayViewFor(mapped.params, {
+          const value = paramArrayViewFor(mapped.params, {
             ...slot0,
             plane: slot0.plane,
           });
+          view[key] = value;
+          assignNestedValue(view, key, value);
         } else {
-          view[key] = readParamScalar(mapped.params, {
+          const value = readParamScalar(mapped.params, {
             ...slot0,
             plane: slot0.plane,
             length: 1,
           });
+          view[key] = value;
+          assignNestedValue(view, key, value);
         }
       }
       return view as WithinView<S>;
@@ -415,7 +446,7 @@ export function processorImpl<const S extends SpecInput>(
       },
     };
 
-    const scalarWriters: Record<string, (value: number) => void> = {};
+    const scalarWriters: Record<string, (value: unknown) => void> = {};
     for (const key of Object.keys(meterSlots)) {
       const slot0 = meterSlots[key];
       if (slot0?.length !== 1) {
@@ -429,7 +460,7 @@ export function processorImpl<const S extends SpecInput>(
           scalarWriters[key] = makeScalarWriter(
             a,
             elIndex,
-            (v) => v,
+            (v) => Number(v),
             "meter.scalar",
           );
           break;
@@ -439,17 +470,23 @@ export function processorImpl<const S extends SpecInput>(
           scalarWriters[key] = makeScalarWriter(
             a,
             elIndex,
-            (v) => v,
+            (v) => Number(v),
             "meter.scalar",
           );
           break;
         }
         case "MU32": {
           const a = ensurePlane(mapped.meters.MU32, "meter.scalar", "MU32");
+          const coerce =
+            slot0.kind === "i32"
+              ? (v: unknown) => Number(v) | 0
+              : slot0.kind === "bool"
+                ? (v: unknown) => (v ? 1 : 0)
+                : (v: unknown) => Number(v) >>> 0;
           scalarWriters[key] = makeScalarWriter(
             a,
             elIndex,
-            (v) => v >>> 0,
+            coerce,
             "meter.scalar",
           );
           break;
@@ -519,7 +556,7 @@ export function processorImpl<const S extends SpecInput>(
           cb2(view);
         }
 
-        function set(key: string, value: number): void {
+        function set(key: string, value: unknown): void {
           const scalarWriter = scalarWriters[key];
           if (!scalarWriter) {
             throwUnknownKey("meters", key, Object.keys(scalarWriters));

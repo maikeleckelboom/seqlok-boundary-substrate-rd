@@ -9,9 +9,9 @@
 
 import { isObject } from "../../internal/is-object";
 
-import type { ParamDef } from "../../spec/types";
+import type { MeterDef, ParamDef } from "../../spec/types";
 
-export type EnumDef = Extract<ParamDef, { kind: "enum" }>;
+export type EnumDef = Extract<ParamDef | MeterDef, { kind: "enum" }>;
 
 export function isEnumDef(d: unknown): d is EnumDef {
   return isObject(d) && d.kind === "enum" && Array.isArray(d.values);

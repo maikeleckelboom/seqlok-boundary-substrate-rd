@@ -1,47 +1,16 @@
-# Seqlok Boundary Substrate R&D
+# @seqlok/core
 
-Status: Engineering artifact. R&D prototype. Release held deliberately.
+`@seqlok/core` is the public core package for the Seqlok boundary-substrate R&D repository. It provides authored spec compilation, deterministic memory planning, shared backing allocation, explicit handoff artifacts, controller/processor/observer bindings, diagnostics, and structured errors.
 
-This package is the preserved first Seqlok boundary-substrate implementation. It implements the prototype core behind the repository showcase: authored specs, deterministic layout planning, shared backing allocation, explicit handoff, coherent reads, and role-specific bindings across a runtime boundary.
+The package is ESM-only, typed, MIT licensed, and marked `sideEffects: false`.
 
-The package is private and named `@seqlok-internal/prototype-core`. This repository is public as engineering evidence, not as the final public API or an npm release target. The future Seqlok name remains reserved for a cleaner boundary-substrate extraction.
+## Install
 
-The vocabulary around controller, processor, observer, params, and meters remains in this package as preserved prototype vocabulary. It should not be read as final public Seqlok doctrine.
+```sh
+pnpm add @seqlok/core
+```
 
----
-
-## What This Prototype Explored
-
-The prototype implements typed shared-memory contracts for timing-sensitive systems on the web and beyond. It covers:
-
-- authored contract compilation into runtime specs
-- deterministic layout planning
-- shared backing allocation, including partitioned and WASM-compatible backing
-- coherent reads over seqlock-protected planes
-- role-specific controller, processor, and observer bindings
-- explicit handoff artifacts for runtime or trust-boundary transfer
-- browser environment probes for `SharedArrayBuffer`, atomics, isolation, and related support
-- tests, regression coverage, and benchmarks for the substrate
-
-Audio and DSP were the first clients, but the implementation is about the broader boundary problem: a soft host/runtime side coordinating with timing-sensitive work across explicit shared-memory contracts.
-
----
-
-## Prototype Showcase
-
-The root README contains the compact end-to-end example for the current prototype flow:
-
-- authored spec with transport, EQ, and output meters
-- host/controller layout, backing allocation, handoff, param writes, and meter snapshots
-- processor/runtime handoff receive, coherent param reads, and meter publication
-
-See [Prototype Showcase](../../README.md#prototype-showcase).
-
----
-
-## Prototype Flow
-
-The preserved flow is:
+## Flow
 
 ```text
 defineSpec
@@ -52,69 +21,82 @@ defineSpec
   -> bindController / bindProcessor / bindObserver
 ```
 
-Example imports should use the private prototype package:
+## Example
 
 ```ts
 import {
+  acceptHandoff,
   allocateShared,
   bindController,
   bindProcessor,
   buildHandoff,
   defineSpec,
   planLayout,
-  acceptHandoff,
-} from "@seqlok-internal/prototype-core";
+} from "@seqlok/core";
+
+const spec = defineSpec(({ param, meter }) => ({
+  params: {
+    runtime: {
+      enabled: param.bool(),
+      count: param.u32({ min: 0, max: 1000 }),
+    },
+  },
+  meters: {
+    runtime: {
+      state: meter.enum(["idle", "busy"]),
+      delta: meter.i32(),
+    },
+  },
+}));
+
+const plan = planLayout(spec);
+const backing = allocateShared(plan);
+const controller = bindController(spec, plan, backing);
+const processor = bindProcessor(acceptHandoff(buildHandoff(plan, backing)));
+
+controller.params.set("runtime.enabled", true);
+controller.params.set("runtime.count", 7);
+
+processor.params.within((params) => {
+  if (params.runtime.enabled) {
+    processor.meters.publish((meters) => {
+      meters.state(1);
+      meters.delta(-1);
+    });
+  }
+});
 ```
 
----
+## Spec Contract
 
-## Boundaries
+`defineSpec()` accepts an authored AST or a plain canonical object. Authored specs may use nested namespaces. Write APIs use explicit canonical string keys, and processor read views expose nested aliases:
 
-The package keeps the technical substance needed to inspect and validate the first implementation:
-
-- `defineSpec` compiles authored structure into the runtime contract consumed by planning.
-- `planLayout` is called once at the spec-to-plan boundary.
-- backing and bindings consume `Plan`; they do not recompute it.
-- readers use coherent snapshots guarded by seqlock state.
-- diagnostics remain available through the preserved diagnostics entry point.
-
-The prototype does not claim production readiness. It remains useful as evidence for which layout, backing, browser, and coherence decisions held up under tests, and for which API vocabulary should be avoided in the future public surface.
-
----
-
-## Benchmarks
-
-Run the raw suite:
-
-```bash
-pnpm -F @seqlok-internal/prototype-core run bench
+```ts
+params.runtime.enabled;
+params.runtime.count;
 ```
 
-Run and format the benchmark report:
+Anonymous specs receive deterministic `anon_<hash>` ids derived from canonical contents.
 
-```bash
-pnpm -F @seqlok-internal/prototype-core run bench:report
+## Package Boundary
+
+This pass publishes one package: `@seqlok/core`. Internal base, schema, and primitive layers are implementation details unless exported from the root package or `@seqlok/core/diagnostics`.
+
+The packed package must not contain `workspace:*` runtime dependencies. Run:
+
+```sh
+pnpm -F @seqlok/core run test:pack
 ```
 
-Treat these numbers as regression guardrails, not marketing claims.
+## Development
 
----
-
-## Future Seqlok Direction
-
-The future public Seqlok name remains reserved for a cleaner boundary-substrate extraction around:
-
-- layout
-- core publications
-- commands
-- lineage
-- invalidation
-- host/runtime integration
-
-Browser support and future Electron compatibility remain proof constraints for that extraction.
-
----
+```sh
+pnpm -F @seqlok/core run build
+pnpm -F @seqlok/core run test
+pnpm -F @seqlok/core run test:types
+pnpm -F @seqlok/core run bench
+```
 
 ## Documentation
 
-Additional design docs live under `packages/core/docs`. They describe the preserved prototype implementation and should be read as engineering history, not current public release guidance.
+The VitePress docs site lives in `apps/docs`. Historical design notes remain under `packages/core/docs`; treat them as architecture history when they go beyond the current public package boundary.

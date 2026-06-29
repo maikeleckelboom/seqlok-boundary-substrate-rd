@@ -10,6 +10,7 @@
  * @internal
  */
 
+import { paramArrayCtor } from "./array-views";
 import {
   type BindingInvalidValueDetails,
   type BindingParamRangeDetails,
@@ -20,6 +21,7 @@ import {
 import { createError } from "../../errors/error";
 import { invariant } from "../../errors/invariant";
 
+import type { ParamArray } from "./array-views";
 import type { MeterPlaneViews, ParamPlaneViews } from "../../backing/map-views";
 
 export function throwUnknownKey(
@@ -111,7 +113,7 @@ export type ParamPlane = "PF32" | "PI32" | "PB";
 /** @internal Meter planes (data) — binding-local union. */
 export type MeterPlane = "MF32" | "MF64" | "MU32";
 
-type ParamDst = Float32Array | Int32Array | Uint8Array;
+type ParamDst = ParamArray;
 type MeterDst = Float32Array | Float64Array | Uint32Array;
 
 /** Constructor shape for typed arrays (length → instance). */
@@ -153,20 +155,22 @@ export function validateIntoBuffer<
 /** into validation (params). */
 export function assertParamInto(
   key: string,
-  plane: ParamPlane,
+  slot: Pick<
+    ValidatedParamSlot,
+    "kind" | "plane" | "length" | "bytesPerElement" | "index"
+  >,
   dst: ParamDst,
-  expectedLength: number,
 ): void {
-  switch (plane) {
-    case "PF32":
-      validateIntoBuffer(key, Float32Array, expectedLength, dst);
-      return;
-    case "PI32":
-      validateIntoBuffer(key, Int32Array, expectedLength, dst);
-      return;
-    case "PB":
-      validateIntoBuffer(key, Uint8Array, expectedLength, dst);
-      return;
+  const expectedCtor = paramArrayCtor(slot);
+  const expectedName = expectedCtor.name;
+  const receivedName = (dst.constructor as { name?: string }).name ?? "Unknown";
+
+  if (!(dst instanceof expectedCtor)) {
+    throwIntoType(key, expectedName, receivedName, slot.length, dst.length);
+  }
+
+  if (dst.length !== slot.length) {
+    throwIntoLength(key, expectedName, slot.length, dst.length);
   }
 }
 
@@ -191,6 +195,7 @@ export function assertMeterInto(
 }
 
 interface SlotBase {
+  readonly kind?: string;
   readonly offset: number;
   readonly length: number;
   readonly bytesPerElement: number;
@@ -238,6 +243,23 @@ export interface ValidatedMeterSlot extends SlotBase {
   readonly index: number;
 }
 
+function assertSlotWithinPlane(
+  kind: "param" | "meter",
+  key: string,
+  slot: SlotBase,
+  planeByteLength: number,
+): void {
+  const byteEnd = slot.offset + slot.length * slot.bytesPerElement;
+  invariant(
+    slot.offset >= 0 && byteEnd <= planeByteLength,
+    "internal.assertionFailed",
+    `${kind} "${key}" range out of bounds`,
+    {
+      detail: `${kind}:${key}`,
+    },
+  );
+}
+
 /**
  * Validate param slots against the mapped planes and compute element indices.
  *
@@ -261,44 +283,16 @@ export function validateParamSlots(
     }
 
     const index = (slot.offset / slot.bytesPerElement) | 0;
-    const length = slot.length;
-
-    if (length === 1) {
-      let ok = false;
-      if (slot.plane === "PF32") {
-        ok = index >= 0 && index < views.PF32.length;
-      } else if (slot.plane === "PI32") {
-        ok = index >= 0 && index < views.PI32.length;
-      } else {
-        ok = index >= 0 && index < views.PB.length;
-      }
-
-      invariant(
-        ok,
-        "internal.assertionFailed",
-        `Param scalar "${key}" offset out of bounds`,
-        { detail: `param.scalar:${key}` },
-      );
+    if (slot.plane === "PF32") {
+      assertSlotWithinPlane("param", key, slot, views.PF32.byteLength);
+    } else if (slot.plane === "PI32") {
+      assertSlotWithinPlane("param", key, slot, views.PI32.byteLength);
     } else {
-      const end = index + length;
-      let ok = false;
-      if (slot.plane === "PF32") {
-        ok = index >= 0 && end <= views.PF32.length;
-      } else if (slot.plane === "PI32") {
-        ok = index >= 0 && end <= views.PI32.length;
-      } else {
-        ok = index >= 0 && end <= views.PB.length;
-      }
-
-      invariant(
-        ok,
-        "internal.assertionFailed",
-        `Param array "${key}" range out of bounds`,
-        { detail: `param.array:${key}` },
-      );
+      assertSlotWithinPlane("param", key, slot, views.PB.byteLength);
     }
 
     validated[key] = {
+      ...(slot.kind !== undefined ? { kind: slot.kind } : {}),
       plane: slot.plane,
       offset: slot.offset,
       length: slot.length,
@@ -337,44 +331,16 @@ export function validateMeterSlots(
     }
 
     const index = (slot.offset / slot.bytesPerElement) | 0;
-    const length = slot.length;
-
-    if (length === 1) {
-      let ok = false;
-      if (slot.plane === "MF32") {
-        ok = index >= 0 && index < views.MF32.length;
-      } else if (slot.plane === "MF64") {
-        ok = index >= 0 && index < views.MF64.length;
-      } else {
-        ok = index >= 0 && index < views.MU32.length;
-      }
-
-      invariant(
-        ok,
-        "internal.assertionFailed",
-        `Meter scalar "${key}" offset out of bounds`,
-        { detail: `meter.scalar:${key}` },
-      );
+    if (slot.plane === "MF32") {
+      assertSlotWithinPlane("meter", key, slot, views.MF32.byteLength);
+    } else if (slot.plane === "MF64") {
+      assertSlotWithinPlane("meter", key, slot, views.MF64.byteLength);
     } else {
-      const end = index + length;
-      let ok = false;
-      if (slot.plane === "MF32") {
-        ok = index >= 0 && end <= views.MF32.length;
-      } else if (slot.plane === "MF64") {
-        ok = index >= 0 && end <= views.MF64.length;
-      } else {
-        ok = index >= 0 && end <= views.MU32.length;
-      }
-
-      invariant(
-        ok,
-        "internal.assertionFailed",
-        `Meter array "${key}" range out of bounds`,
-        { detail: `meter.array:${key}` },
-      );
+      assertSlotWithinPlane("meter", key, slot, views.MU32.byteLength);
     }
 
     validated[key] = {
+      ...(slot.kind !== undefined ? { kind: slot.kind } : {}),
       plane: slot.plane,
       offset: slot.offset,
       length: slot.length,

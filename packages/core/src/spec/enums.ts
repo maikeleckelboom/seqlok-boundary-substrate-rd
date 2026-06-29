@@ -10,7 +10,7 @@
 
 import { createError } from "../errors/error";
 
-import type { SpecInput } from "./types";
+import type { MeterDef, ParamDef, SpecInput } from "./types";
 import type { SpecEnumDetails } from "../errors/codes/spec";
 
 /**
@@ -65,8 +65,8 @@ interface EnumDefLike {
  *   and controller-side ergonomics.
  */
 function getEnumDef(spec: SpecInput, key: string): EnumDefLike {
-  const fromParams = spec.params as Record<string, unknown>;
-  const fromMeters = spec.meters as Record<string, unknown>;
+  const fromParams = (spec.params ?? {}) as Record<string, ParamDef>;
+  const fromMeters = (spec.meters ?? {}) as Record<string, MeterDef>;
 
   const def = (fromParams[key] ?? fromMeters[key]) as EnumDefLike | undefined;
 

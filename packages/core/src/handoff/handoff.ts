@@ -328,6 +328,21 @@ export function acceptHandoff<S extends SpecInput>( // eslint-disable-next-line 
       );
     }
 
+    const requiredBytes = plan.bytesTotal >>> 0;
+    const actualBytes = hx.sab.byteLength >>> 0;
+    if (actualBytes < requiredBytes) {
+      throw createError(
+        "handoff.invalidArtifact",
+        "Handoff buffer is undersized for plan",
+        {
+          where: "handoff.acceptHandoff",
+          detail: "sab.byteLength",
+          expectedBytes: requiredBytes,
+          receivedBytes: actualBytes,
+        },
+      );
+    }
+
     return {
       packing: "shared",
       sab: hx.sab,
@@ -349,20 +364,37 @@ export function acceptHandoff<S extends SpecInput>( // eslint-disable-next-line 
 
     const planesObject = hx.planes;
     const planeSabMap: Record<string, SharedArrayBuffer> = {};
+    const planeLengths = plan.planes as Record<PlaneKey, number>;
 
-    for (const [key, value] of Object.entries(planesObject)) {
+    for (const plane of ALL_PLANES) {
+      const value = planesObject[plane];
       if (!isSharedArrayBuffer(value)) {
         throw createError(
           "handoff.invalidArtifact",
           "Plane backing is not a SharedArrayBuffer",
           {
             where: "handoff.acceptHandoff",
-            detail: `plane=${key}`,
+            detail: `plane=${plane}`,
           },
         );
       }
 
-      planeSabMap[key] = value;
+      const requiredBytes = planeLengths[plane] >>> 0;
+      const actualBytes = value.byteLength >>> 0;
+      if (actualBytes < requiredBytes) {
+        throw createError(
+          "handoff.invalidArtifact",
+          "Plane backing undersized for plan",
+          {
+            where: "handoff.acceptHandoff",
+            detail: `plane=${plane}`,
+            expectedBytes: requiredBytes,
+            receivedBytes: actualBytes,
+          },
+        );
+      }
+
+      planeSabMap[plane] = value;
     }
 
     return {
