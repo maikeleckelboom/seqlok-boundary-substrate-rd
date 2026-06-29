@@ -2,6 +2,7 @@ import type { ChunkedWavSource, PlanarFrameChunk } from "./chunked-wav-source";
 import type { SimulatedSource } from "../types";
 
 export type WaveformPeakMode =
+  | "empty"
   | "synthetic"
   | "actual-coarse"
   | "actual-complete";
@@ -26,6 +27,12 @@ const DEFAULT_COARSE_FRAMES_PER_BIN = 2_048;
 const DEFAULT_MAX_FRAMES_PER_READ = 16_384;
 const DEFAULT_YIELD_EVERY_READS = 8;
 
+export function createEmptyWaveformPeaks(
+  binCount = DEFAULT_BIN_COUNT,
+): WaveformPeaksState {
+  return { mode: "empty", peaks: new Float32Array(binCount) };
+}
+
 export function createSyntheticWaveformPeaks(
   source: SimulatedSource,
   binCount = DEFAULT_BIN_COUNT,
@@ -45,6 +52,35 @@ export function createSyntheticWaveformPeaks(
   }
 
   return { mode: "synthetic", peaks };
+}
+
+export function computePlanarWaveformPeaks(
+  channels: readonly Float32Array[],
+  frameCount: number,
+  binCount = DEFAULT_BIN_COUNT,
+): WaveformPeaksState {
+  const peaks = new Float32Array(Math.max(1, Math.floor(binCount)));
+  const totalFrames = Math.max(0, Math.floor(frameCount));
+
+  if (totalFrames === 0 || channels.length === 0) {
+    return { mode: "actual-complete", peaks };
+  }
+
+  for (let bin = 0; bin < peaks.length; bin += 1) {
+    const range = binRange(totalFrames, bin, peaks.length);
+    const endFrame = range.startFrame + range.frameCount;
+    let peak = 0;
+
+    for (const channel of channels) {
+      for (let frame = range.startFrame; frame < endFrame; frame += 1) {
+        peak = Math.max(peak, Math.abs(channel[frame] ?? 0));
+      }
+    }
+
+    peaks[bin] = peak;
+  }
+
+  return { mode: "actual-complete", peaks };
 }
 
 export async function computeChunkedWaveformPeaks(

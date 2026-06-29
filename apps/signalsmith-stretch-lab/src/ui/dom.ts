@@ -2,12 +2,15 @@ export interface AppElements {
   readonly alignedSourceMode: HTMLInputElement;
   readonly appliedSequence: HTMLElement;
   readonly adapterAvailability: HTMLElement;
+  readonly controlGrid: HTMLElement;
+  readonly controlsHint: HTMLElement;
   readonly clearClipButton: HTMLButtonElement;
   readonly clearLoopButton: HTMLButtonElement;
   readonly blockMs: HTMLInputElement;
   readonly blockMsNumber: HTMLInputElement;
   readonly commandDrops: HTMLElement;
   readonly configPreset: HTMLSelectElement;
+  readonly engineConfigFields: HTMLElement;
   readonly faultButton: HTMLButtonElement;
   readonly fileInput: HTMLInputElement;
   readonly formantBase: HTMLInputElement;
@@ -17,6 +20,7 @@ export interface AppElements {
   readonly formantShift: HTMLInputElement;
   readonly formantShiftValue: HTMLElement;
   readonly inspector: HTMLElement;
+  readonly levelsPanel: HTMLElement;
   readonly listeningPreset: HTMLSelectElement;
   readonly levelsSummary: HTMLElement;
   readonly loopApplied: HTMLElement;
@@ -41,6 +45,8 @@ export interface AppElements {
   readonly playLoopButton: HTMLButtonElement;
   readonly playhead: HTMLElement;
   readonly processedMode: HTMLInputElement;
+  readonly rangeMode: HTMLSelectElement;
+  readonly rangeModeWarning: HTMLElement;
   readonly rate: HTMLInputElement;
   readonly rateValue: HTMLElement;
   readonly resetControlsButton: HTMLButtonElement;
@@ -51,7 +57,12 @@ export interface AppElements {
   readonly setLoopButton: HTMLButtonElement;
   readonly splitCompareMode: HTMLInputElement;
   readonly splitComputation: HTMLInputElement;
+  readonly shell: HTMLElement;
   readonly sourceDrop: HTMLElement;
+  readonly sourcePrimary: HTMLElement;
+  readonly sourceSecondary: HTMLElement;
+  readonly sourceState: HTMLElement;
+  readonly sourceStatusBadge: HTMLElement;
   readonly staleButton: HTMLButtonElement;
   readonly status: HTMLElement;
   readonly stopButton: HTMLButtonElement;
@@ -62,21 +73,23 @@ export interface AppElements {
   readonly transitionFramesValue: HTMLElement;
   readonly transportState: HTMLElement;
   readonly waveform: HTMLCanvasElement;
+  readonly waveformPanel: HTMLElement;
 }
 
 type ElementConstructor<T extends Element> = new () => T;
 
 export function renderAppShell(root: HTMLElement): AppElements {
   root.innerHTML = `
-    <div class="lab-shell">
+    <div id="labShell" class="lab-shell is-unloaded">
       <header class="lab-header">
         <div>
           <p class="eyebrow">Exclave Boundary</p>
           <h1>Signalsmith Stretch Lab</h1>
         </div>
         <div class="header-facts" aria-label="Runtime facts">
-          <span id="runtimeModeBadge" class="mode-badge">Simulator fallback</span>
-          <span id="adapterAvailability">Real adapter unavailable</span>
+          <span id="runtimeModeBadge" class="mode-badge">Checking Worklet</span>
+          <span id="adapterAvailability">Real adapter readiness unknown</span>
+          <span id="sourceStatusBadge" class="source-status-badge">No source loaded</span>
         </div>
       </header>
 
@@ -89,8 +102,10 @@ export function renderAppShell(root: HTMLElement): AppElements {
         >
           <div>
             <p class="section-label" id="source-title">Local source</p>
-            <strong>Drop audio file</strong>
-            <p id="source-truth">WAV files use chunked decoding; other formats use browser decoding when available.</p>
+            <strong id="sourcePrimary">Drop a WAV file to begin</strong>
+            <p id="sourceSecondary">Chunked WAV playback, real-time pitch and time stretch.</p>
+            <p id="sourceState" class="source-state">No source loaded</p>
+            <p id="source-truth">WAV recommended; PCM and float WAV files use the most direct path.</p>
           </div>
           <label class="file-picker">
             <span>Choose file</span>
@@ -100,11 +115,11 @@ export function renderAppShell(root: HTMLElement): AppElements {
         <div id="metadata" class="metadata-grid" aria-live="polite"></div>
       </section>
 
-      <section class="waveform-panel" aria-labelledby="waveform-title">
+      <section id="waveformPanel" class="waveform-panel" aria-labelledby="waveform-title" hidden>
         <div class="section-heading">
           <div>
             <p class="section-label" id="waveform-title">Waveform overview</p>
-            <h2>Applied playhead and requested seek</h2>
+            <h2>Waveform</h2>
           </div>
           <div id="playhead" class="readout"></div>
         </div>
@@ -156,34 +171,44 @@ export function renderAppShell(root: HTMLElement): AppElements {
           <button id="playLoopButton" type="button">Play loop</button>
           <button id="clearLoopButton" type="button">Clear loop</button>
         </div>
+        <p id="controlsHint" class="control-hint">Load a source to enable processing</p>
         <fieldset class="source-mode">
           <legend>Monitor</legend>
           <label>
             <input id="processedMode" type="radio" name="sourceMode" value="processed" checked />
-            <span>Processed Worklet</span>
+            <span>Processed</span>
           </label>
           <label>
             <input id="alignedSourceMode" type="radio" name="sourceMode" value="aligned" />
-            <span>Aligned reference preview</span>
+            <span>Original preview</span>
           </label>
           <label>
             <input id="splitCompareMode" type="radio" name="sourceMode" value="split" />
-            <span>Split compare</span>
+            <span>Compare</span>
           </label>
         </fieldset>
       </section>
 
-      <section class="control-grid" aria-label="Stretch controls">
+      <section id="controlGrid" class="control-grid" aria-label="Stretch controls">
         <div class="control-panel">
           <p class="section-label">Timing and pitch</p>
           <label>
+            <span>Range mode</span>
+            <select id="rangeMode">
+              <option value="musical">Musical</option>
+              <option value="extended">Extended</option>
+              <option value="extreme">Extreme</option>
+            </select>
+          </label>
+          <p id="rangeModeWarning" class="range-warning" hidden>Extreme settings are for stress testing and are not expected to sound musical.</p>
+          <label>
             <span>Rate</span>
-            <input id="rate" type="range" min="0.05" max="8" step="0.001" value="1" />
+            <input id="rate" type="range" min="0.5" max="2" step="0.001" value="1" />
             <output id="rateValue">1.000x</output>
           </label>
           <label>
             <span>Pitch</span>
-            <input id="pitch" type="range" min="-48" max="48" step="0.1" value="0" />
+            <input id="pitch" type="range" min="-7" max="7" step="0.1" value="0" />
             <output id="pitchValue">0.0 st</output>
           </label>
           <label>
@@ -235,40 +260,44 @@ export function renderAppShell(root: HTMLElement): AppElements {
         </div>
 
         <div class="control-panel config-panel">
-          <p class="section-label">Stretch engine config</p>
+          <p class="section-label">Quality</p>
           <label>
-            <span>Preset</span>
+            <span>Quality</span>
             <select id="configPreset">
-              <option value="default">default</option>
-              <option value="custom">custom</option>
-              <option value="cheaper">cheaper</option>
+              <option value="responsive">Responsive</option>
+              <option value="balanced" selected>Balanced</option>
+              <option value="smooth">Smooth</option>
+              <option value="low-cpu">Low CPU</option>
+              <option value="custom">Custom</option>
             </select>
           </label>
-          <label>
-            <span>Block (ms)</span>
-            <div class="dual-input">
-              <input id="blockMs" type="range" min="50" max="240" step="1" value="120" />
-              <input id="blockMsNumber" type="number" min="50" max="240" step="1" value="120" />
-            </div>
-          </label>
-          <label>
-            <span>Overlap</span>
-            <div class="dual-input">
-              <input id="overlap" type="range" min="2" max="8" step="0.1" value="4" />
-              <input id="overlapNumber" type="number" min="2" max="8" step="0.1" value="4" />
-            </div>
-          </label>
-          <label>
-            <span>Interval (ms)</span>
-            <input id="intervalMs" type="number" min="6.25" max="120" step="0.1" value="30" />
-          </label>
-          <label class="toggle-row">
-            <input id="splitComputation" type="checkbox" />
-            <span>Split computation</span>
-          </label>
+          <div id="engineConfigFields" class="engine-config-fields" hidden>
+            <label>
+              <span>Block (ms)</span>
+              <div class="dual-input">
+                <input id="blockMs" type="range" min="50" max="240" step="1" value="120" />
+                <input id="blockMsNumber" type="number" min="50" max="240" step="1" value="120" />
+              </div>
+            </label>
+            <label>
+              <span>Overlap</span>
+              <div class="dual-input">
+                <input id="overlap" type="range" min="2" max="8" step="0.1" value="4" />
+                <input id="overlapNumber" type="number" min="2" max="8" step="0.1" value="4" />
+              </div>
+            </label>
+            <label>
+              <span>Interval (ms)</span>
+              <input id="intervalMs" type="number" min="6.25" max="120" step="0.1" value="30" />
+            </label>
+            <label class="toggle-row">
+              <input id="splitComputation" type="checkbox" checked />
+              <span>Split computation</span>
+            </label>
+          </div>
         </div>
 
-        <div class="control-panel levels-panel">
+        <div id="levelsPanel" class="control-panel levels-panel" hidden>
           <p class="section-label">Processed output</p>
           <div id="levelsSummary" class="levels-summary"></div>
           <button id="clearClipButton" type="button">Clear clip latch</button>
@@ -322,6 +351,9 @@ export function renderAppShell(root: HTMLElement): AppElements {
     clearLoopButton: must(root, "#clearLoopButton", HTMLButtonElement),
     commandDrops: must(root, "#commandDrops", HTMLElement),
     configPreset: must(root, "#configPreset", HTMLSelectElement),
+    controlGrid: must(root, "#controlGrid", HTMLElement),
+    controlsHint: must(root, "#controlsHint", HTMLElement),
+    engineConfigFields: must(root, "#engineConfigFields", HTMLElement),
     faultButton: must(root, "#faultButton", HTMLButtonElement),
     fileInput: must(root, "#fileInput", HTMLInputElement),
     formantBase: must(root, "#formantBase", HTMLInputElement),
@@ -331,6 +363,7 @@ export function renderAppShell(root: HTMLElement): AppElements {
     formantShift: must(root, "#formantShift", HTMLInputElement),
     formantShiftValue: must(root, "#formantShiftValue", HTMLElement),
     inspector: must(root, "#inspector", HTMLElement),
+    levelsPanel: must(root, "#levelsPanel", HTMLElement),
     listeningPreset: must(root, "#listeningPreset", HTMLSelectElement),
     levelsSummary: must(root, "#levelsSummary", HTMLElement),
     loopApplied: must(root, "#loopApplied", HTMLElement),
@@ -355,6 +388,8 @@ export function renderAppShell(root: HTMLElement): AppElements {
     playLoopButton: must(root, "#playLoopButton", HTMLButtonElement),
     playhead: must(root, "#playhead", HTMLElement),
     processedMode: must(root, "#processedMode", HTMLInputElement),
+    rangeMode: must(root, "#rangeMode", HTMLSelectElement),
+    rangeModeWarning: must(root, "#rangeModeWarning", HTMLElement),
     rate: must(root, "#rate", HTMLInputElement),
     rateValue: must(root, "#rateValue", HTMLElement),
     resetControlsButton: must(root, "#resetControlsButton", HTMLButtonElement),
@@ -365,7 +400,12 @@ export function renderAppShell(root: HTMLElement): AppElements {
     setLoopButton: must(root, "#setLoopButton", HTMLButtonElement),
     splitCompareMode: must(root, "#splitCompareMode", HTMLInputElement),
     splitComputation: must(root, "#splitComputation", HTMLInputElement),
+    shell: must(root, "#labShell", HTMLElement),
     sourceDrop: must(root, "#sourceDrop", HTMLElement),
+    sourcePrimary: must(root, "#sourcePrimary", HTMLElement),
+    sourceSecondary: must(root, "#sourceSecondary", HTMLElement),
+    sourceState: must(root, "#sourceState", HTMLElement),
+    sourceStatusBadge: must(root, "#sourceStatusBadge", HTMLElement),
     staleButton: must(root, "#staleButton", HTMLButtonElement),
     status: must(root, "#status", HTMLElement),
     stopButton: must(root, "#stopButton", HTMLButtonElement),
@@ -376,6 +416,7 @@ export function renderAppShell(root: HTMLElement): AppElements {
     transitionFramesValue: must(root, "#transitionFramesValue", HTMLElement),
     transportState: must(root, "#transportState", HTMLElement),
     waveform: must(root, "#waveform", HTMLCanvasElement),
+    waveformPanel: must(root, "#waveformPanel", HTMLElement),
   };
 }
 

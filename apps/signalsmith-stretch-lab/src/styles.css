@@ -17,6 +17,10 @@
   box-sizing: border-box;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background:
@@ -36,6 +40,12 @@ select {
   color: #f8faf9;
   background: #11191d;
   font: inherit;
+}
+
+input:disabled,
+select:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
 }
 
 button,
@@ -166,6 +176,18 @@ input[type="number"] {
   font-weight: 800;
 }
 
+.source-status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border: 1px solid rgba(232, 237, 240, 0.16);
+  border-radius: 999px;
+  padding: 0 12px;
+  color: #dce7ea;
+  background: #11191d;
+  font-weight: 800;
+}
+
 .source-panel {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.65fr);
@@ -173,16 +195,24 @@ input[type="number"] {
   padding: 16px;
 }
 
+.lab-shell.is-unloaded .source-panel {
+  grid-template-columns: 1fr;
+}
+
 .drop-surface {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 132px;
+  min-height: 190px;
   border: 1px dashed rgba(156, 246, 246, 0.42);
   border-radius: 8px;
-  padding: 18px;
+  padding: 24px;
   gap: 16px;
   background: #11191d;
+}
+
+.lab-shell.is-unloaded .drop-surface {
+  min-height: 280px;
 }
 
 .drop-surface.is-dragging {
@@ -199,6 +229,11 @@ input[type="number"] {
   max-width: 54ch;
   margin: 6px 0 0;
   color: #b7c4c8;
+}
+
+.source-state {
+  color: #f4d35e;
+  font-weight: 800;
 }
 
 .file-picker {
@@ -221,6 +256,40 @@ input[type="number"] {
 .levels-summary,
 .inspector {
   min-width: 0;
+}
+
+.metadata-chips {
+  display: flex;
+  align-content: start;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.metadata-chip {
+  display: grid;
+  gap: 4px;
+  min-width: min(100%, 142px);
+  border: 1px solid rgba(232, 237, 240, 0.13);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: rgba(17, 25, 29, 0.88);
+}
+
+.metadata-chip span {
+  color: #9fb1b7;
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.metadata-chip strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #eef4f6;
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .waveform-panel {
@@ -312,6 +381,14 @@ output {
   padding: 14px 16px;
 }
 
+.control-hint {
+  min-width: min(100%, 280px);
+  margin: 0;
+  color: #f4d35e;
+  font-size: 0.88rem;
+  font-weight: 800;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
@@ -347,6 +424,10 @@ output {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
+}
+
+.lab-shell.is-unloaded .control-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .inspector-grid {
@@ -415,9 +496,30 @@ output {
   padding: 18px;
 }
 
+.control-panel.is-inactive {
+  border-color: rgba(232, 237, 240, 0.09);
+  background: rgba(16, 22, 26, 0.62);
+}
+
+.engine-config-fields {
+  display: grid;
+  gap: 14px;
+}
+
 .control-note {
   margin: 0;
   color: #aebcc1;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.range-warning {
+  margin: 0;
+  border: 1px solid rgba(255, 140, 66, 0.42);
+  border-radius: 6px;
+  padding: 10px 12px;
+  color: #ffe1cd;
+  background: rgba(255, 140, 66, 0.1);
   font-size: 0.84rem;
   line-height: 1.45;
 }

@@ -20,7 +20,8 @@ import { selectStretchRuntimeMode } from "./audio/stretch-runtime";
 import { probeWavFile, type WavProbe } from "./audio/wav-probe";
 import {
   computeChunkedWaveformPeaks,
-  createSyntheticWaveformPeaks,
+  computePlanarWaveformPeaks,
+  createEmptyWaveformPeaks,
   type WaveformPeakMode,
 } from "./audio/waveform-peaks";
 import {
@@ -58,7 +59,6 @@ import {
 } from "./signalsmith/worklet-assets";
 import {
   applyListeningPreset,
-  clampFormantShiftSemitones,
   clampManualFormantBaseHz,
   clampTonalityLimitHz,
   defaultDesiredControls,
@@ -84,9 +84,87 @@ const root = document.querySelector("#app");
 type WavLoadMode =
   | "browser decoded"
   | "chunked"
+  | "none"
   | "probing"
-  | "synthetic"
   | "unsupported";
+
+type RangeMode = "musical" | "extended" | "extreme";
+type QualityPreset =
+  | "responsive"
+  | "balanced"
+  | "smooth"
+  | "low-cpu"
+  | "custom";
+
+interface ControlRanges {
+  readonly formant: {
+    readonly max: number;
+    readonly min: number;
+  };
+  readonly pitch: {
+    readonly max: number;
+    readonly min: number;
+  };
+  readonly rate: {
+    readonly max: number;
+    readonly min: number;
+  };
+}
+
+interface QualityConfig {
+  readonly blockMs: number;
+  readonly intervalMs: number;
+  readonly preset: DesiredStretchControls["preset"];
+  readonly splitComputation: boolean;
+}
+
+const RANGE_MODE_LIMITS: Record<RangeMode, ControlRanges> = {
+  extended: {
+    formant: { max: 12, min: -12 },
+    pitch: { max: 12, min: -12 },
+    rate: { max: 4, min: 0.25 },
+  },
+  extreme: {
+    formant: { max: 12, min: -12 },
+    pitch: { max: 48, min: -48 },
+    rate: { max: 8, min: 0.05 },
+  },
+  musical: {
+    formant: { max: 7, min: -7 },
+    pitch: { max: 7, min: -7 },
+    rate: { max: 2, min: 0.5 },
+  },
+};
+
+const QUALITY_CONFIGS: Record<
+  Exclude<QualityPreset, "custom">,
+  QualityConfig
+> = {
+  balanced: {
+    blockMs: 120,
+    intervalMs: 30,
+    preset: "custom",
+    splitComputation: true,
+  },
+  "low-cpu": {
+    blockMs: 240,
+    intervalMs: 60,
+    preset: "custom",
+    splitComputation: true,
+  },
+  responsive: {
+    blockMs: 80,
+    intervalMs: 80 / 3,
+    preset: "custom",
+    splitComputation: false,
+  },
+  smooth: {
+    blockMs: 180,
+    intervalMs: 30,
+    preset: "custom",
+    splitComputation: true,
+  },
+};
 
 interface LoopDraft {
   readonly endFrame: number;
@@ -130,14 +208,16 @@ function startLab(appRoot: HTMLElement): void {
     const prefetchGate = new LatestPrefetchGate<PlanarFrameChunk>();
     let realRuntime: StretchWorkletRuntime | null = null;
     let referenceMonitor: SourceReferenceMonitor | null = null;
+    let qualityPreset: QualityPreset = "balanced";
+    let rangeMode: RangeMode = "musical";
     let source = defaultSimulatedSource();
     let sourceFacts: PcmSourceFacts | null = null;
     let sourceRevision = 1;
     let selectedFileName: string | null = null;
     let lastWavProbe: WavProbe | null = null;
-    let wavMode: WavLoadMode = "synthetic";
-    let sourceStatusText = "deterministic simulator source";
-    let waveform = createSyntheticWaveformPeaks(source);
+    let wavMode: WavLoadMode = "none";
+    let sourceStatusText = "No source loaded.";
+    let waveform = createEmptyWaveformPeaks();
     let waveformMode: WaveformPeakMode = waveform.mode;
     let waveformAbort: AbortController | null = null;
     let requestedSeekFrame: number | null = null;
@@ -147,9 +227,13 @@ function startLab(appRoot: HTMLElement): void {
     let clipBaselineRight = 0;
 
     initializeDesiredControls(session, desired);
-    applyControlsToInputs(desired, elements);
+    applyRangeModeToInputs(rangeMode, elements);
+    applyControlsToInputs(desired, elements, rangeMode);
 
-    renderAdapterHeader(elements, signalsmithAssets, "simulator");
+    renderAdapterHeader(elements, signalsmithAssets, runtimeSupport, {
+      hasLoadedSource: false,
+      runtimeMode: "simulator",
+    });
 
     const engine = new FakeStretchEngine(session, commands, { source });
     engine.tick({ renderQuantum: 128 });
@@ -182,12 +266,15 @@ function startLab(appRoot: HTMLElement): void {
       enqueueCommand("resetFault");
     });
     elements.resetControlsButton.addEventListener("click", () => {
+      qualityPreset = "balanced";
+      rangeMode = "musical";
       desired = {
         ...defaultDesiredControls(),
         configSequence: nextSequence(desired.configSequence),
         desiredSequence: nextSequence(desired.desiredSequence),
       };
-      applyControlsToInputs(desired, elements);
+      applyRangeModeToInputs(rangeMode, elements);
+      applyControlsToInputs(desired, elements, rangeMode);
       writeDesiredControls(session, desired);
       updateControlOutputs();
       render();
@@ -215,12 +302,29 @@ function startLab(appRoot: HTMLElement): void {
           elements,
           nextSequence(desired.desiredSequence),
           desired,
+          rangeMode,
         );
         writeDesiredControls(session, desired);
         updateControlOutputs();
         render();
       });
     }
+
+    elements.rangeMode.addEventListener("change", () => {
+      rangeMode = coerceRangeMode(elements.rangeMode.value);
+      applyRangeModeToInputs(rangeMode, elements);
+      desired = clampDesiredControlsToRangeMode(
+        {
+          ...desired,
+          desiredSequence: nextSequence(desired.desiredSequence),
+        },
+        rangeMode,
+      );
+      applyControlsToInputs(desired, elements, rangeMode);
+      writeDesiredControls(session, desired);
+      updateControlOutputs();
+      render();
+    });
 
     elements.listeningPreset.addEventListener("change", () => {
       const preset = coerceListeningPreset(elements.listeningPreset.value);
@@ -234,13 +338,15 @@ function startLab(appRoot: HTMLElement): void {
         ...applyListeningPreset(desired, preset),
         desiredSequence: nextSequence(desired.desiredSequence),
       };
-      applyControlsToInputs(desired, elements);
+      desired = clampDesiredControlsToRangeMode(desired, rangeMode);
+      applyControlsToInputs(desired, elements, rangeMode);
       writeDesiredControls(session, desired);
       updateControlOutputs();
       render();
     });
 
     elements.configPreset.addEventListener("change", () => {
+      qualityPreset = coerceQualityPreset(elements.configPreset.value);
       desired = collectConfigFromInputs(
         elements,
         nextSequence(desired.configSequence),
@@ -261,6 +367,7 @@ function startLab(appRoot: HTMLElement): void {
       elements.splitComputation,
     ]) {
       input.addEventListener("input", () => {
+        qualityPreset = "custom";
         desired = collectConfigFromInputs(
           elements,
           nextSequence(desired.configSequence),
@@ -543,7 +650,7 @@ function startLab(appRoot: HTMLElement): void {
         source = simulatedSourceFromPcm(loaded);
         sourceStatusText = loaded.formatSummary;
         wavMode = loaded.kind === "chunked-wav" ? "chunked" : "browser decoded";
-        resetWaveformToSynthetic();
+        resetWaveformForLoadedSource(loaded);
         loopDraft = createLoopDraft(source.frames, nextLoopRevision());
         requestedSeekFrame = null;
         engine.loadSource(source);
@@ -830,7 +937,7 @@ function startLab(appRoot: HTMLElement): void {
         ? "Auto (0)"
         : `${Math.round(Number(elements.formantBase.value)).toString()} Hz`;
       elements.listeningPreset.value = matchingListeningPreset(desired);
-      elements.configPreset.value = desired.preset;
+      elements.configPreset.value = qualityPreset;
       elements.blockMs.value = desired.blockMs.toFixed(0);
       elements.blockMsNumber.value = desired.blockMs.toFixed(0);
       elements.intervalMs.min = (desired.blockMs / 8).toFixed(1);
@@ -839,12 +946,18 @@ function startLab(appRoot: HTMLElement): void {
       elements.overlap.value = overlapFromConfig(desired).toFixed(1);
       elements.overlapNumber.value = overlapFromConfig(desired).toFixed(1);
       elements.splitComputation.checked = desired.splitComputation;
+      elements.engineConfigFields.hidden = qualityPreset !== "custom";
+      elements.rangeMode.value = rangeMode;
+      elements.rangeModeWarning.hidden = rangeMode !== "extreme";
     }
 
-    function resetWaveformToSynthetic(): void {
+    function resetWaveformForLoadedSource(loaded: LabPcmSource): void {
       waveformAbort?.abort();
       waveformAbort = null;
-      waveform = createSyntheticWaveformPeaks(source);
+      waveform =
+        loaded.kind === "decoded-pcm"
+          ? computePlanarWaveformPeaks(loaded.planar, loaded.durationFrames)
+          : createEmptyWaveformPeaks();
       waveformMode = waveform.mode;
     }
 
@@ -883,24 +996,22 @@ function startLab(appRoot: HTMLElement): void {
       return elements.alignedSourceMode.checked ? "reference" : "processed";
     }
 
-    function monitorLabel(runtimeMode: "real-worklet" | "simulator"): string {
+    function monitorLabel(): string {
       const mode = selectedMonitorMode();
 
       if (mode === "reference") {
         return acceptedSource?.kind === "chunked-wav"
-          ? "aligned reference preview"
-          : "source reference unavailable";
+          ? "Original preview"
+          : "Original preview unavailable";
       }
 
       if (mode === "split") {
         return acceptedSource?.kind === "chunked-wav"
-          ? "split compare preview"
-          : "split compare unavailable";
+          ? "Compare"
+          : "Compare unavailable";
       }
 
-      return runtimeMode === "real-worklet"
-        ? "processed real Worklet"
-        : "processed simulator fallback";
+      return "Processed";
     }
 
     function syncMonitorGains(): void {
@@ -964,7 +1075,8 @@ function startLab(appRoot: HTMLElement): void {
           (realStatus?.workletReady ?? false) ||
           runtime.adapterMode === "real-worklet",
       });
-      const monitor = monitorLabel(runtimeSelection.mode);
+      const hasLoadedSource = acceptedSource !== null;
+      const monitor = monitorLabel();
       const pending =
         desiredSnapshot.desiredSequence !==
           runtime.lastAppliedDesiredSequence ||
@@ -977,8 +1089,12 @@ function startLab(appRoot: HTMLElement): void {
         ? `${formatFrame(runtime.loopStartFrame)} to ${formatFrame(runtime.loopEndFrame)} rev ${runtime.loopRevision.toString()}`
         : "inactive";
 
-      renderAdapterHeader(elements, signalsmithAssets, runtimeSelection.mode);
+      renderAdapterHeader(elements, signalsmithAssets, runtimeSupport, {
+        hasLoadedSource,
+        runtimeMode: runtimeSelection.mode,
+      });
       syncMonitorGains();
+      syncProductState(hasLoadedSource);
       elements.transportState.textContent = runtime.state;
       elements.appliedSequence.textContent = `${runtime.lastAppliedDesiredSequence.toString()} desired, ${runtime.lastAppliedConfigSequence.toString()} config, ${runtime.lastAppliedCommandSequence.toString()} command`;
       elements.pendingState.textContent = pending
@@ -995,15 +1111,18 @@ function startLab(appRoot: HTMLElement): void {
         "is-invalid",
         loopStatus.complete && !loopStatus.validation.valid,
       );
-      elements.setLoopButton.disabled = !loopReady;
-      elements.playLoopButton.disabled = !loopReady;
-      elements.playhead.textContent = `${formatTime(runtime.sourceFrame, source.sampleRate)} / ${formatTime(source.frames, source.sampleRate)}`;
+      elements.setLoopButton.disabled = !hasLoadedSource || !loopReady;
+      elements.playLoopButton.disabled = !hasLoadedSource || !loopReady;
+      elements.playhead.textContent = hasLoadedSource
+        ? `${formatTime(runtime.sourceFrame, source.sampleRate)} / ${formatTime(source.frames, source.sampleRate)}`
+        : "";
       elements.seekRange.value = String(Math.floor(runtime.sourceFrame));
       if (requestedSeekFrame === null) {
         elements.seekFrame.value = String(Math.floor(runtime.sourceFrame));
       }
 
-      renderMetadata(source, runtimeSelection);
+      renderSourceWell(hasLoadedSource);
+      renderMetadata(source, runtimeSelection, hasLoadedSource);
       renderLevels(levels, clipLeft, clipRight, monitor);
       renderInspector(
         plans,
@@ -1012,66 +1131,64 @@ function startLab(appRoot: HTMLElement): void {
         sourceStatus,
         levels,
         runtimeSelection,
+        hasLoadedSource,
       );
 
       elements.status.classList.toggle("is-error", runtime.lastErrorCode !== 0);
-      elements.status.textContent = [
-        runtime.lastErrorCode === 0
-          ? `Runtime ${runtimeSelection.mode}; ${runtimeSelection.reason}.`
-          : `Recoverable runtime fault ${runtime.lastErrorCode.toString()}.`,
-        sourceStatusText,
-        `Waveform ${waveformModeLabel(waveformMode)}.`,
-        realStatus?.lastError ? `Worklet error ${realStatus.lastError}.` : "",
-        pending
-          ? "Desired controls are pending runtime acknowledgement."
-          : "Desired controls match applied acknowledgement.",
-        `Monitor ${monitor}.`,
-      ]
-        .filter(Boolean)
-        .join(" ");
-
-      drawWaveform(elements.waveform, waveform.peaks, {
-        appliedLoop: {
-          enabled: runtime.loopEnabled,
-          endFrame: runtime.loopEndFrame,
-          revision: runtime.loopRevision,
-          startFrame: runtime.loopStartFrame,
-        },
-        draftLoop: {
-          enabled:
-            loopDraft.hasStart &&
-            loopDraft.hasEnd &&
-            loopDraft.endFrame > loopDraft.startFrame,
-          endFrame: loopDraft.endFrame,
-          revision: loopDraft.revision,
-          startFrame: loopDraft.startFrame,
-        },
-        levels: levels.historyPeak,
-        requestedSeekFrame,
+      elements.status.textContent = renderStatusText({
+        hasLoadedSource,
+        monitor,
+        pending,
+        realStatusError: realStatus?.lastError ?? null,
         runtime,
-        source,
+        runtimeSelection,
       });
+
+      if (hasLoadedSource) {
+        drawWaveform(elements.waveform, waveform.peaks, {
+          appliedLoop: {
+            enabled: runtime.loopEnabled,
+            endFrame: runtime.loopEndFrame,
+            revision: runtime.loopRevision,
+            startFrame: runtime.loopStartFrame,
+          },
+          draftLoop: {
+            enabled:
+              loopDraft.hasStart &&
+              loopDraft.hasEnd &&
+              loopDraft.endFrame > loopDraft.startFrame,
+            endFrame: loopDraft.endFrame,
+            revision: loopDraft.revision,
+            startFrame: loopDraft.startFrame,
+          },
+          levels: levels.historyPeak,
+          requestedSeekFrame,
+          runtime,
+          source,
+        });
+      }
     }
 
     function renderMetadata(
       currentSource: SimulatedSource,
       runtimeSelection: ReturnType<typeof selectStretchRuntimeMode>,
+      hasLoadedSource: boolean,
     ): void {
-      renderKeyValues(elements.metadata, [
-        ["Name", selectedFileName ?? currentSource.name],
-        ["Load status", sourceStatusText],
+      if (!hasLoadedSource) {
+        elements.metadata.replaceChildren();
+        return;
+      }
+
+      renderChips(elements.metadata, [
         [
-          "Source format",
+          "Format",
           sourceFormatFact(sourceFacts, lastWavProbe, sourceStatusText),
         ],
-        ["Duration", sourceDurationFact(currentSource, lastWavProbe)],
-        ["Channel count", sourceChannelCountFact(currentSource, lastWavProbe)],
         ["Sample rate", sourceSampleRateFact(currentSource, lastWavProbe)],
-        ["WAV mode", wavMode],
-        ["Waveform mode", waveformModeLabel(waveformMode)],
-        ["Cache status", cacheStatusFact(prefetch)],
+        ["Channels", sourceChannelCountFact(currentSource, lastWavProbe)],
+        ["Duration", sourceDurationFact(currentSource, lastWavProbe)],
         ["Worklet mode", workletModeFact(runtimeSelection.mode)],
-        ["PCM memory", formatBytes(currentSource.memoryBytes)],
+        ["Waveform mode", waveformModeLabel(waveformMode)],
       ]);
     }
 
@@ -1096,6 +1213,80 @@ function startLab(appRoot: HTMLElement): void {
       ]);
     }
 
+    function renderSourceWell(hasLoadedSource: boolean): void {
+      if (!hasLoadedSource) {
+        elements.sourcePrimary.textContent = "Drop a WAV file to begin";
+        elements.sourceSecondary.textContent =
+          "Chunked WAV playback, real-time pitch and time stretch.";
+        elements.sourceState.textContent =
+          sourceStatusText === "No source loaded."
+            ? "No source loaded"
+            : sourceStatusText;
+        return;
+      }
+
+      elements.sourcePrimary.textContent = selectedFileName ?? source.name;
+      elements.sourceSecondary.textContent =
+        "Source loaded for real-time pitch and time stretch.";
+      elements.sourceState.textContent = sourceStatusText;
+    }
+
+    function syncProductState(hasLoadedSource: boolean): void {
+      elements.shell.classList.toggle("is-unloaded", !hasLoadedSource);
+      elements.shell.classList.toggle("is-loaded", hasLoadedSource);
+      elements.waveformPanel.hidden = !hasLoadedSource;
+      elements.waveform.hidden = !hasLoadedSource;
+      elements.levelsPanel.hidden = !hasLoadedSource;
+      elements.controlsHint.hidden = hasLoadedSource;
+      elements.controlGrid.classList.toggle("is-unloaded", !hasLoadedSource);
+
+      for (const panel of elements.controlGrid.querySelectorAll(
+        ".control-panel",
+      )) {
+        panel.classList.toggle("is-inactive", !hasLoadedSource);
+      }
+
+      for (const input of processingInputs(elements)) {
+        input.disabled = !hasLoadedSource;
+      }
+
+      elements.rangeMode.disabled = false;
+      elements.formantBase.disabled =
+        !hasLoadedSource || elements.formantBaseAuto.checked;
+    }
+
+    function renderStatusText(options: {
+      readonly hasLoadedSource: boolean;
+      readonly monitor: string;
+      readonly pending: boolean;
+      readonly realStatusError: string | null;
+      readonly runtime: RuntimeStatusSnapshot;
+      readonly runtimeSelection: ReturnType<typeof selectStretchRuntimeMode>;
+    }): string {
+      if (!options.hasLoadedSource) {
+        return sourceStatusText === "No source loaded."
+          ? "No source loaded. Drop a WAV file to enable processing."
+          : `No source loaded. ${sourceStatusText}`;
+      }
+
+      return [
+        options.runtime.lastErrorCode === 0
+          ? runtimeStatusLabel(options.runtimeSelection.mode)
+          : `Recoverable runtime fault ${options.runtime.lastErrorCode.toString()}.`,
+        sourceStatusText,
+        `Waveform ${waveformModeLabel(waveformMode)}.`,
+        options.realStatusError
+          ? `Worklet error ${options.realStatusError}.`
+          : "",
+        options.pending
+          ? "Desired controls are pending runtime acknowledgement."
+          : "Desired controls match applied acknowledgement.",
+        `Monitor ${options.monitor}.`,
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+
     function renderInspector(
       plans: ReturnType<typeof readPlanSummaries>,
       desiredSnapshot: DesiredStretchControls,
@@ -1103,6 +1294,7 @@ function startLab(appRoot: HTMLElement): void {
       sourceStatus: SourceStatusSnapshot,
       levels: ProcessedLevelsSnapshot,
       runtimeSelection: ReturnType<typeof selectStretchRuntimeMode>,
+      hasLoadedSource: boolean,
     ): void {
       renderKeyValues(elements.inspector, [
         ["Signalsmith Stretch branch", SIGNALSMITH_STRETCH_SOURCE_BRANCH],
@@ -1122,10 +1314,32 @@ function startLab(appRoot: HTMLElement): void {
             ? "real-worklet"
             : "simulator fallback",
         ],
+        ["Worklet mode", workletModeFact(runtimeSelection.mode)],
         ["Runtime selection", runtimeSelection.reason],
         ["Adapter mode", runtime.adapterMode],
-        ["Source mode", sourceModeFact(acceptedSource, source)],
-        ["Source format", sourceFacts?.formatSummary ?? sourceStatusText],
+        [
+          "Source mode",
+          sourceModeFact(acceptedSource, source, hasLoadedSource),
+        ],
+        [
+          "Source format",
+          hasLoadedSource
+            ? (sourceFacts?.formatSummary ?? sourceStatusText)
+            : "No source loaded",
+        ],
+        [
+          "Sample rate",
+          hasLoadedSource
+            ? sourceSampleRateFact(source, lastWavProbe)
+            : "No source loaded",
+        ],
+        [
+          "Channel count",
+          hasLoadedSource
+            ? sourceChannelCountFact(source, lastWavProbe)
+            : "No source loaded",
+        ],
+        ["WAV mode", wavMode],
         ["Waveform mode", waveformModeLabel(waveformMode)],
         ["Exclave spec hash", plans.lab.hash],
         ["Nested spec plan", planFact(plans.lab)],
@@ -1167,7 +1381,12 @@ function startLab(appRoot: HTMLElement): void {
         ["Processing center frame", formatFrame(runtime.processingCenterFrame)],
         ["Audible source frame", formatFrame(runtime.sourceFrame)],
         ["Output frame", formatFrame(runtime.outputFrame)],
-        ["Duration", formatTime(runtime.durationFrames, source.sampleRate)],
+        [
+          "Duration",
+          hasLoadedSource
+            ? formatTime(runtime.durationFrames, source.sampleRate)
+            : "No source loaded",
+        ],
         ["Source state", sourceStatus.state],
         ["Source revision", sourceStatus.sourceRevision.toString()],
         [
@@ -1180,9 +1399,12 @@ function startLab(appRoot: HTMLElement): void {
             ? `${prefetch.facts.ready ? "ready" : "pending"}; ${formatBytes(prefetch.facts.cachedBytes)} host cache; ${formatFrame(prefetch.facts.cachedFrameCount)} frames cached; read ${formatFrame(prefetch.facts.lastReadStartFrame)}-${formatFrame(prefetch.facts.lastReadEndFrame)}; underruns ${prefetch.facts.underrunTotal.toString()}`
             : "inactive",
         ],
+        ["Cache status", cacheStatusFact(prefetch)],
         [
           "Worklet source cache",
-          `${formatBytes(sourceStatus.memoryBytes)}; dropped ${sourceStatus.droppedBufferTotal.toString()}`,
+          hasLoadedSource
+            ? `${formatBytes(sourceStatus.memoryBytes)}; dropped ${sourceStatus.droppedBufferTotal.toString()}`
+            : "inactive",
         ],
         [
           "Command ring",
@@ -1230,11 +1452,31 @@ function startLab(appRoot: HTMLElement): void {
 function renderAdapterHeader(
   elements: ReturnType<typeof renderAppShell>,
   assets: SignalsmithWorkletAssetFacts,
-  runtimeMode: "real-worklet" | "simulator",
+  runtimeSupport: ReturnType<typeof detectAudioRuntimeSupport>,
+  options: {
+    readonly hasLoadedSource: boolean;
+    readonly runtimeMode: "real-worklet" | "simulator";
+  },
 ): void {
+  const realWorkletReady =
+    assets.realAdapterAvailable &&
+    runtimeSupport.audioContext &&
+    runtimeSupport.audioWorklet &&
+    runtimeSupport.crossOriginIsolated &&
+    runtimeSupport.sharedArrayBuffer;
+
   elements.runtimeModeBadge.textContent =
-    runtimeMode === "real-worklet" ? "Real Worklet" : "Simulator fallback";
-  elements.adapterAvailability.textContent = assets.realAdapterStatus;
+    options.hasLoadedSource && options.runtimeMode === "real-worklet"
+      ? "Real Worklet active"
+      : realWorkletReady
+        ? "Real Worklet ready"
+        : "Worklet unavailable";
+  elements.adapterAvailability.textContent = realWorkletReady
+    ? "Ready for a decoded source."
+    : assets.realAdapterStatus;
+  elements.sourceStatusBadge.textContent = options.hasLoadedSource
+    ? "Source loaded"
+    : "No source loaded";
 }
 
 function createLoopDraft(durationFrames: number, revision: number): LoopDraft {
@@ -1286,14 +1528,30 @@ function collectDesiredFromInputs(
   elements: ReturnType<typeof renderAppShell>,
   desiredSequence: number,
   previousControls: DesiredStretchControls,
+  rangeMode: RangeMode,
 ): DesiredStretchControls {
+  const ranges = RANGE_MODE_LIMITS[rangeMode];
   const formantBaseHz = readFormantBaseHz(elements);
-  const formantSemitones = clampFormantShiftSemitones(
+  const formantSemitones = clampFloat(
     Number(elements.formantShift.value),
+    ranges.formant.min,
+    ranges.formant.max,
+  );
+  const pitchSemitones = clampFloat(
+    Number(elements.pitch.value),
+    ranges.pitch.min,
+    ranges.pitch.max,
+  );
+  const rate = clampFloat(
+    Number(elements.rate.value),
+    ranges.rate.min,
+    ranges.rate.max,
   );
   const tonalityHz = clampTonalityLimitHz(Number(elements.tonalityHz.value));
 
   elements.formantShift.value = String(formantSemitones);
+  elements.pitch.value = String(pitchSemitones);
+  elements.rate.value = String(rate);
   elements.tonalityHz.value = String(tonalityHz);
 
   return {
@@ -1302,8 +1560,8 @@ function collectDesiredFromInputs(
     formantBaseHz,
     formantCompensation: elements.formantCompensation.checked,
     formantSemitones,
-    pitchSemitones: Number(elements.pitch.value),
-    rate: Number(elements.rate.value),
+    pitchSemitones,
+    rate,
     tonalityEnabled: elements.tonalityEnabled.checked,
     tonalityHz,
     transitionFrames: Math.round(Number(elements.transitionFrames.value)),
@@ -1325,6 +1583,18 @@ function collectConfigFromInputs(
       | "preset";
   },
 ): DesiredStretchControls {
+  if (options.source === "preset") {
+    const quality = coerceQualityPreset(elements.configPreset.value);
+
+    if (quality !== "custom") {
+      return {
+        ...previousControls,
+        ...QUALITY_CONFIGS[quality],
+        configSequence,
+      };
+    }
+  }
+
   const blockMs = clampFloat(
     Number(
       options.source === "block-number"
@@ -1347,18 +1617,15 @@ function collectConfigFromInputs(
     options.source === "interval"
       ? clampFloat(Number(elements.intervalMs.value), blockMs / 8, blockMs / 2)
       : blockMs / overlap;
-  const preset = (
-    options.forceCustom ? "custom" : elements.configPreset.value
-  ) as DesiredStretchControls["preset"];
 
-  elements.configPreset.value = preset;
+  elements.configPreset.value = "custom";
 
   return {
     ...previousControls,
     blockMs,
     configSequence,
     intervalMs,
-    preset,
+    preset: "custom",
     splitComputation: elements.splitComputation.checked,
   };
 }
@@ -1366,14 +1633,25 @@ function collectConfigFromInputs(
 function applyControlsToInputs(
   controls: DesiredStretchControls,
   elements: ReturnType<typeof renderAppShell>,
+  rangeMode: RangeMode,
 ): void {
-  elements.rate.value = String(controls.rate);
-  elements.pitch.value = String(controls.pitchSemitones);
+  applyRangeModeToInputs(rangeMode, elements);
+  const ranges = RANGE_MODE_LIMITS[rangeMode];
+  elements.rate.value = String(
+    clampFloat(controls.rate, ranges.rate.min, ranges.rate.max),
+  );
+  elements.pitch.value = String(
+    clampFloat(controls.pitchSemitones, ranges.pitch.min, ranges.pitch.max),
+  );
   elements.transitionFrames.value = String(controls.transitionFrames);
   elements.tonalityEnabled.checked = controls.tonalityEnabled;
   elements.tonalityHz.value = String(clampTonalityLimitHz(controls.tonalityHz));
   elements.formantShift.value = String(
-    clampFormantShiftSemitones(controls.formantSemitones),
+    clampFloat(
+      controls.formantSemitones,
+      ranges.formant.min,
+      ranges.formant.max,
+    ),
   );
   elements.formantCompensation.checked = controls.formantCompensation;
   elements.formantBaseAuto.checked =
@@ -1384,7 +1662,7 @@ function applyControlsToInputs(
       : clampManualFormantBaseHz(controls.formantBaseHz),
   );
   elements.listeningPreset.value = matchingListeningPreset(controls);
-  elements.configPreset.value = controls.preset;
+  elements.configPreset.value = matchingQualityPreset(controls);
   elements.blockMs.value = String(controls.blockMs);
   elements.blockMsNumber.value = String(controls.blockMs);
   elements.intervalMs.min = (controls.blockMs / 8).toFixed(1);
@@ -1410,6 +1688,155 @@ function coerceListeningPreset(value: string): ListeningPreset | null {
   return LISTENING_PRESETS.includes(value as ListeningPreset)
     ? (value as ListeningPreset)
     : null;
+}
+
+function coerceRangeMode(value: string): RangeMode {
+  return value === "extended" || value === "extreme" ? value : "musical";
+}
+
+function applyRangeModeToInputs(
+  rangeMode: RangeMode,
+  elements: ReturnType<typeof renderAppShell>,
+): void {
+  const ranges = RANGE_MODE_LIMITS[rangeMode];
+  elements.rangeMode.value = rangeMode;
+  elements.rate.min = String(ranges.rate.min);
+  elements.rate.max = String(ranges.rate.max);
+  elements.pitch.min = String(ranges.pitch.min);
+  elements.pitch.max = String(ranges.pitch.max);
+  elements.formantShift.min = String(ranges.formant.min);
+  elements.formantShift.max = String(ranges.formant.max);
+}
+
+function clampDesiredControlsToRangeMode(
+  controls: DesiredStretchControls,
+  rangeMode: RangeMode,
+): DesiredStretchControls {
+  const ranges = RANGE_MODE_LIMITS[rangeMode];
+
+  return {
+    ...controls,
+    formantSemitones: clampFloat(
+      controls.formantSemitones,
+      ranges.formant.min,
+      ranges.formant.max,
+    ),
+    pitchSemitones: clampFloat(
+      controls.pitchSemitones,
+      ranges.pitch.min,
+      ranges.pitch.max,
+    ),
+    rate: clampFloat(controls.rate, ranges.rate.min, ranges.rate.max),
+  };
+}
+
+function coerceQualityPreset(value: string): QualityPreset {
+  return value === "responsive" ||
+    value === "smooth" ||
+    value === "low-cpu" ||
+    value === "custom"
+    ? value
+    : "balanced";
+}
+
+function matchingQualityPreset(
+  controls: DesiredStretchControls,
+): QualityPreset {
+  for (const [preset, config] of Object.entries(QUALITY_CONFIGS) as readonly [
+    Exclude<QualityPreset, "custom">,
+    QualityConfig,
+  ][]) {
+    if (qualityMatches(controls, config)) {
+      return preset;
+    }
+  }
+
+  return "custom";
+}
+
+function qualityMatches(
+  controls: DesiredStretchControls,
+  config: QualityConfig,
+): boolean {
+  return (
+    controls.preset === config.preset &&
+    nearlyEqual(controls.blockMs, config.blockMs) &&
+    nearlyEqual(controls.intervalMs, config.intervalMs) &&
+    controls.splitComputation === config.splitComputation
+  );
+}
+
+function processingInputs(
+  elements: ReturnType<typeof renderAppShell>,
+): readonly (HTMLButtonElement | HTMLInputElement | HTMLSelectElement)[] {
+  return [
+    elements.alignedSourceMode,
+    elements.blockMs,
+    elements.blockMsNumber,
+    elements.clearClipButton,
+    elements.clearLoopButton,
+    elements.configPreset,
+    elements.faultButton,
+    elements.formantBase,
+    elements.formantBaseAuto,
+    elements.formantCompensation,
+    elements.formantShift,
+    elements.intervalMs,
+    elements.listeningPreset,
+    elements.loopEnd,
+    elements.loopStart,
+    elements.markLoopEndButton,
+    elements.markLoopStartButton,
+    elements.overlap,
+    elements.overlapNumber,
+    elements.pauseButton,
+    elements.pitch,
+    elements.playButton,
+    elements.playLoopButton,
+    elements.processedMode,
+    elements.rate,
+    elements.resetControlsButton,
+    elements.resetFaultButton,
+    elements.seekFrame,
+    elements.seekRange,
+    elements.setLoopButton,
+    elements.splitCompareMode,
+    elements.splitComputation,
+    elements.staleButton,
+    elements.stopButton,
+    elements.tonalityEnabled,
+    elements.tonalityHz,
+    elements.transitionFrames,
+  ];
+}
+
+function renderChips(
+  container: HTMLElement,
+  rows: readonly (readonly [string, string])[],
+): void {
+  const chips = document.createElement("div");
+  chips.className = "metadata-chips";
+
+  for (const [label, value] of rows) {
+    const chip = document.createElement("span");
+    chip.className = "metadata-chip";
+    chip.dataset.label = label;
+
+    const term = document.createElement("span");
+    const detail = document.createElement("strong");
+    term.textContent = label;
+    detail.textContent = value;
+    chip.append(term, detail);
+    chips.append(chip);
+  }
+
+  container.replaceChildren(chips);
+}
+
+function runtimeStatusLabel(mode: "real-worklet" | "simulator"): string {
+  return mode === "real-worklet"
+    ? "Real Worklet active."
+    : "Simulator fallback active.";
 }
 
 function renderKeyValues(
@@ -1465,7 +1892,12 @@ function vendorFact(assets: SignalsmithWorkletAssetFacts): string {
 function sourceModeFact(
   acceptedSource: LabPcmSource | null,
   source: SimulatedSource,
+  hasLoadedSource: boolean,
 ): string {
+  if (!hasLoadedSource) {
+    return "none";
+  }
+
   if (acceptedSource?.kind === "chunked-wav") {
     return "chunked WAV";
   }
@@ -1563,6 +1995,8 @@ function waveformModeLabel(mode: WaveformPeakMode): string {
       return "actual coarse";
     case "actual-complete":
       return "actual complete";
+    case "empty":
+      return "not loaded";
     case "synthetic":
       return "synthetic";
   }
@@ -1595,6 +2029,10 @@ function clampFloat(value: number, min: number, max: number): number {
   }
 
   return Math.min(max, Math.max(min, value));
+}
+
+function nearlyEqual(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.001;
 }
 
 function formatFrame(frame: number): string {

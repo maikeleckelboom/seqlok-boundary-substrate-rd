@@ -5,31 +5,118 @@ import { expect, test, type Page } from "@playwright/test";
 const SAMPLE_RATE = 48_000;
 const SMOKE_WAV_SECONDS = 2;
 
-test("primary demo keeps proof inspector collapsed until expanded", async ({
+test("primary demo starts empty and keeps lab diagnostics collapsed", async ({
   page,
 }) => {
   await page.goto("/");
 
   await expect(page.locator("#sourceDrop")).toBeVisible();
-  await expect(page.locator("#waveform")).toBeVisible();
+  await expect(page.getByText("Drop a WAV file to begin")).toBeVisible();
+  await expect(page.locator("#sourceState")).toHaveText("No source loaded");
+  await expect(page.locator("#sourceStatusBadge")).toHaveText(
+    "No source loaded",
+  );
+  await expect(page.locator("#status")).toContainText("No source loaded.");
+  await expect(page.locator("#waveformPanel")).toBeHidden();
+  await expect(page.locator("#waveform")).toBeHidden();
+  await expect(page.getByText("Deterministic simulator source")).toHaveCount(0);
+  await expect(page.getByText("1:34.0")).toBeHidden();
+  await expect(page.getByText("34.4 MiB")).toBeHidden();
+  await expect(
+    page.getByText("Applied playhead and requested seek"),
+  ).toHaveCount(0);
+  await expect.poll(() => canvasHasPaint(page, "#waveform")).toBe(false);
+
+  await expect(page.locator("#playButton")).toBeDisabled();
+  await expect(page.locator("#pauseButton")).toBeDisabled();
+  await expect(page.locator("#seekRange")).toBeDisabled();
+  await expect(page.locator("#loopStart")).toBeDisabled();
+  await expect(page.locator("#processedMode")).toBeDisabled();
+  await expect(page.locator("#rate")).toBeDisabled();
+  await expect(page.locator("#pitch")).toBeDisabled();
+  await expect(page.locator("#configPreset")).toBeDisabled();
+  await expect(page.locator("#controlsHint")).toHaveText(
+    "Load a source to enable processing",
+  );
+
   await expect(
     page.locator("label").filter({ hasText: "Tonality limit" }),
   ).toBeVisible();
   await expect(page.locator("#listeningPreset")).toHaveValue("music-default");
+  await expect(page.locator("#rangeMode")).toHaveValue("musical");
+  await expect(page.locator("#rate")).toHaveAttribute("min", "0.5");
+  await expect(page.locator("#rate")).toHaveAttribute("max", "2");
+  await expect(page.locator("#pitch")).toHaveAttribute("min", "-7");
+  await expect(page.locator("#pitch")).toHaveAttribute("max", "7");
+  await expect(page.locator("#formantShift")).toHaveAttribute("min", "-7");
+  await expect(page.locator("#formantShift")).toHaveAttribute("max", "7");
+  await expect(page.locator("#configPreset")).toHaveValue("balanced");
   await expect(page.locator("#tonalityHz")).toHaveValue("8000");
   await expect(page.locator("#tonalityHzValue")).toHaveText("8000 Hz");
   await expect(page.locator("#formantCompensation")).not.toBeChecked();
   await expect(page.locator("#formantBaseAuto")).toBeChecked();
   await expect(page.locator("#formantBaseValue")).toHaveText("Auto (0)");
-  await expect
-    .poll(() => runtimeFact(page, "Voice/formant base"))
-    .toBe("Auto (0)");
   await expect(page.locator("#advancedInspector")).not.toHaveAttribute("open");
   await expect(page.getByText("Exclave spec hash")).not.toBeVisible();
 
   await page.locator("#advancedInspector > summary").click();
   await expect(page.getByText("Exclave spec hash")).toBeVisible();
   await expect(page.getByText("Nested spec plan")).toBeVisible();
+  await expect.poll(() => runtimeFact(page, "Source mode")).toBe("none");
+  await expect
+    .poll(() => runtimeFact(page, "Source format"))
+    .toBe("No source loaded");
+  await expect
+    .poll(() => runtimeFact(page, "Voice/formant base"))
+    .toBe("Auto (0)");
+
+  await page.locator("#rangeMode").selectOption("extended");
+  await expect(page.locator("#rate")).toHaveAttribute("max", "4");
+  await expect(page.locator("#pitch")).toHaveAttribute("min", "-12");
+  await expect(page.locator("#pitch")).toHaveAttribute("max", "12");
+
+  await page.locator("#rangeMode").selectOption("extreme");
+  await expect(page.locator("#rate")).toHaveAttribute("min", "0.05");
+  await expect(page.locator("#rate")).toHaveAttribute("max", "8");
+  await expect(page.locator("#pitch")).toHaveAttribute("max", "48");
+  await expect(page.locator("#rangeModeWarning")).toBeVisible();
+
+  await setRange(page, "#rate", "8");
+  await setRange(page, "#pitch", "24");
+  await setRange(page, "#formantShift", "12");
+  await page.locator("#rangeMode").selectOption("musical");
+  await expect(page.locator("#rate")).toHaveValue("2");
+  await expect(page.locator("#pitch")).toHaveValue("7");
+  await expect(page.locator("#formantShift")).toHaveValue("7");
+  await expect(page.locator("#rangeModeWarning")).toBeHidden();
+});
+
+test("primary controls enable after a real source loads", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/");
+
+  const wavPath = testInfo.outputPath("controls-enable.wav");
+  writeFileSync(wavPath, createSmokeWav());
+
+  await page.locator("#fileInput").setInputFiles(wavPath);
+  await expect(page.locator("#sourcePrimary")).toHaveText(
+    "controls-enable.wav",
+  );
+  await expect(page.locator("#waveformPanel")).toBeVisible();
+  await expect(page.locator("#waveform")).toBeVisible();
+  await expect(page.locator("#playButton")).toBeEnabled();
+  await expect(page.locator("#seekRange")).toBeEnabled();
+  await expect(page.locator("#processedMode")).toBeEnabled();
+  await expect(page.locator("#rate")).toBeEnabled();
+  await expect(page.locator("#pitch")).toBeEnabled();
+  await expect(page.locator("#configPreset")).toBeEnabled();
+  await expect(page.locator("#configPreset")).toHaveValue("balanced");
+  await expect(page.locator("#controlsHint")).toBeHidden();
+  await expect.poll(() => runtimeFact(page, "Source format")).toContain("WAV");
+  await expect
+    .poll(() => runtimeFact(page, "Waveform mode"))
+    .toContain("actual");
 
   await page.locator("#formantBaseAuto").uncheck();
   await setRange(page, "#formantBase", "10");
@@ -220,7 +307,10 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
   writeFileSync(wavPath, createSmokeWav());
 
   await page.locator("#fileInput").setInputFiles(wavPath);
-  await expect(page.getByText("Runtime real-worklet")).toBeVisible();
+  await expect(page.locator("#status")).toContainText("Real Worklet active.");
+  await expect(page.locator("#runtimeModeBadge")).toHaveText(
+    "Real Worklet active",
+  );
   await expect(page.getByText("signalsmith-smoke.wav")).toBeVisible();
   await expect.poll(() => runtimeFact(page, "Source format")).toContain("WAV");
   await expect.poll(() => runtimeFact(page, "WAV mode")).toBe("chunked");
@@ -281,6 +371,8 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
     .poll(() => runtimeFact(page, "Block / interval / split"))
     .toBe(blockIntervalBefore);
 
+  await page.locator("#configPreset").selectOption("custom");
+  await expect(page.locator("#engineConfigFields")).toBeVisible();
   await setRange(page, "#blockMs", "150");
   await expect
     .poll(() => page.locator("#blockMsNumber").inputValue())
@@ -322,11 +414,9 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
   await page.locator("#alignedSourceMode").check();
   await expect
     .poll(() => runtimeFact(page, "Monitor"))
-    .toContain("aligned reference preview");
+    .toContain("Original preview");
   await page.locator("#splitCompareMode").check();
-  await expect
-    .poll(() => runtimeFact(page, "Monitor"))
-    .toContain("split compare preview");
+  await expect.poll(() => runtimeFact(page, "Monitor")).toContain("Compare");
   await page.locator("#processedMode").check();
   await page.locator("#pauseButton").click();
   await expect.poll(() => runtimeFact(page, "State")).toBe("ready-paused");
@@ -406,6 +496,29 @@ async function smokeFact(
 
     return smoke[factName];
   }, name);
+}
+
+async function canvasHasPaint(page: Page, selector: string): Promise<boolean> {
+  return page.locator(selector).evaluate((element) => {
+    if (!(element instanceof HTMLCanvasElement)) {
+      throw new Error("Expected canvas.");
+    }
+
+    const context = element.getContext("2d");
+    if (!context) {
+      return false;
+    }
+
+    const data = context.getImageData(0, 0, element.width, element.height).data;
+
+    for (let index = 3; index < data.length; index += 4) {
+      if ((data[index] ?? 0) !== 0) {
+        return true;
+      }
+    }
+
+    return false;
+  });
 }
 
 async function numericRuntimeFact(page: Page, name: string): Promise<number> {
