@@ -13,218 +13,211 @@ import {
   initializeDesiredControls,
   writeDesiredControls,
 } from "../src/boundary/session";
-import {
-  desiredStretchSpec,
-  processedOutputLevelsSpec,
-  runtimeStatusSpec,
-  sourceStatusSpec,
-} from "../src/boundary/specs";
+import { signalsmithStretchLabSpec } from "../src/boundary/specs";
 import { defaultDesiredControls } from "../src/types";
 
-const APP_SPECS = [
-  desiredStretchSpec,
-  runtimeStatusSpec,
-  sourceStatusSpec,
-  processedOutputLevelsSpec,
+const PARAM_KEYS = [
+  "config.blockMs",
+  "config.configSequence",
+  "config.intervalMs",
+  "config.preset",
+  "config.splitComputation",
+  "control.active",
+  "control.desiredSequence",
+  "control.formantBaseHz",
+  "control.formantCompensation",
+  "control.formantSemitones",
+  "control.pitchSemitones",
+  "control.rate",
+  "control.tonalityEnabled",
+  "control.tonalityHz",
+  "control.transitionFrames",
 ] as const;
 
-const APP_PRIVATE_PREFIXES = [
-  "control.",
-  "config.",
-  "runtime.",
-  "source.",
-  "levels.",
+const RUNTIME_METER_KEYS = [
+  "runtime.adapterMode",
+  "runtime.audioWorkletFrameHi",
+  "runtime.audioWorkletFrameLo",
+  "runtime.audioWorkletTimeSeconds",
+  "runtime.blockSamples",
+  "runtime.bufferLengthFrames",
+  "runtime.bufferReadyFrames",
+  "runtime.commandDroppedTotal",
+  "runtime.durationFrames",
+  "runtime.durationSeconds",
+  "runtime.effectiveRate",
+  "runtime.heapGeneration",
+  "runtime.inputLatencyFrames",
+  "runtime.inputLatencySeconds",
+  "runtime.intervalSamples",
+  "runtime.invalidSampleTotal",
+  "runtime.invalidTransitionTotal",
+  "runtime.lastAppliedCommandSequence",
+  "runtime.lastAppliedConfigSequence",
+  "runtime.lastAppliedDesiredSequence",
+  "runtime.lastErrorCode",
+  "runtime.loopEnabled",
+  "runtime.loopEndFrame",
+  "runtime.loopRevision",
+  "runtime.loopStartFrame",
+  "runtime.maxObservedRenderQuantum",
+  "runtime.outputFrame",
+  "runtime.outputLatencyFrames",
+  "runtime.outputLatencySeconds",
+  "runtime.processingCenterFrame",
+  "runtime.scheduledCommandDroppedTotal",
+  "runtime.scheduledCommandQueueSize",
+  "runtime.sessionId",
+  "runtime.sourceFrame",
+  "runtime.staleReadTotal",
+  "runtime.state",
+  "runtime.underrunTotal",
+  "runtime.workletGeneration",
 ] as const;
 
-describe("Stage B boundary specs", () => {
-  it("defines exact app-private spec ids", () => {
-    expect(desiredStretchSpec.id).toBe(
-      "signalsmith-stretch-lab/desired-stretch",
-    );
-    expect(runtimeStatusSpec.id).toBe("signalsmith-stretch-lab/runtime-status");
-    expect(sourceStatusSpec.id).toBe("signalsmith-stretch-lab/source-status");
-    expect(processedOutputLevelsSpec.id).toBe(
-      "signalsmith-stretch-lab/processed-output-levels",
+const SOURCE_METER_KEYS = [
+  "source.appliedLoadSequence",
+  "source.bufferEndFrame",
+  "source.bufferStartFrame",
+  "source.channelCount",
+  "source.decodeErrorCode",
+  "source.droppedBufferTotal",
+  "source.durationFrames",
+  "source.durationSeconds",
+  "source.loadSequence",
+  "source.memoryBytes",
+  "source.sampleRate",
+  "source.sourceRevision",
+  "source.state",
+] as const;
+
+const LEVEL_METER_KEYS = [
+  "levels.channelCount",
+  "levels.clipLatched",
+  "levels.fullScaleLeftTotal",
+  "levels.fullScaleRightTotal",
+  "levels.historyPeak",
+  "levels.historyRms",
+  "levels.invalidSampleTotal",
+  "levels.lastErrorCode",
+  "levels.maxAbsWindow",
+  "levels.outputBranchActive",
+  "levels.peakLeft",
+  "levels.peakRight",
+  "levels.probeState",
+  "levels.referenceBranchActive",
+  "levels.rmsLeft",
+  "levels.rmsRight",
+  "levels.silent",
+  "levels.unsupportedChannelBlockTotal",
+  "levels.windowEndOutputFrame",
+  "levels.windowFrames",
+] as const;
+
+describe("Signalsmith Stretch Lab boundary spec", () => {
+  it("defines one exact app-private lab spec id", () => {
+    expect(signalsmithStretchLabSpec.id).toBe(
+      "signalsmith-stretch-lab/runtime",
     );
   });
 
-  it("defines the required canonical keys", () => {
-    expect(Object.keys(desiredStretchSpec.params).sort()).toEqual([
-      "active",
-      "blockMs",
-      "configSequence",
-      "desiredSequence",
-      "formantBaseHz",
-      "formantCompensation",
-      "formantSemitones",
-      "intervalMs",
-      "pitchSemitones",
-      "preset",
-      "rate",
-      "splitComputation",
-      "tonalityEnabled",
-      "tonalityHz",
-      "transitionFrames",
+  it("defines the required canonical dot keys", () => {
+    expect(Object.keys(signalsmithStretchLabSpec.params).sort()).toEqual([
+      ...PARAM_KEYS,
     ]);
-
-    expect(Object.keys(runtimeStatusSpec.meters).sort()).toEqual([
-      "adapterMode",
-      "audioWorkletFrameHi",
-      "audioWorkletFrameLo",
-      "audioWorkletTimeSeconds",
-      "blockSamples",
-      "bufferLengthFrames",
-      "bufferReadyFrames",
-      "commandDroppedTotal",
-      "durationFrames",
-      "durationSeconds",
-      "effectiveRate",
-      "heapGeneration",
-      "inputLatencyFrames",
-      "inputLatencySeconds",
-      "intervalSamples",
-      "invalidSampleTotal",
-      "invalidTransitionTotal",
-      "lastAppliedCommandSequence",
-      "lastAppliedConfigSequence",
-      "lastAppliedDesiredSequence",
-      "lastErrorCode",
-      "loopEnabled",
-      "loopEndFrame",
-      "loopRevision",
-      "loopStartFrame",
-      "maxObservedRenderQuantum",
-      "outputFrame",
-      "outputLatencyFrames",
-      "outputLatencySeconds",
-      "processingCenterFrame",
-      "sessionId",
-      "sourceFrame",
-      "staleReadTotal",
-      "state",
-      "underrunTotal",
-      "workletGeneration",
-    ]);
-
-    expect(Object.keys(sourceStatusSpec.meters).sort()).toEqual([
-      "appliedLoadSequence",
-      "bufferEndFrame",
-      "bufferStartFrame",
-      "channelCount",
-      "decodeErrorCode",
-      "droppedBufferTotal",
-      "durationFrames",
-      "durationSeconds",
-      "loadSequence",
-      "memoryBytes",
-      "sampleRate",
-      "sourceRevision",
-      "state",
-    ]);
-
-    expect(Object.keys(processedOutputLevelsSpec.meters).sort()).toEqual([
-      "channelCount",
-      "clipLatched",
-      "fullScaleLeftTotal",
-      "fullScaleRightTotal",
-      "historyPeak",
-      "historyRms",
-      "invalidSampleTotal",
-      "lastErrorCode",
-      "maxAbsWindow",
-      "outputBranchActive",
-      "peakLeft",
-      "peakRight",
-      "probeState",
-      "referenceBranchActive",
-      "rmsLeft",
-      "rmsRight",
-      "silent",
-      "unsupportedChannelBlockTotal",
-      "windowEndOutputFrame",
-      "windowFrames",
-    ]);
+    expect(Object.keys(signalsmithStretchLabSpec.meters).sort()).toEqual(
+      [...LEVEL_METER_KEYS, ...RUNTIME_METER_KEYS, ...SOURCE_METER_KEYS].sort(),
+    );
   });
 
-  it("does not keep the old nested key prefixes inside app-private specs", () => {
-    const appPrivateKeys = [
-      ...Object.keys(desiredStretchSpec.params),
-      ...Object.keys(runtimeStatusSpec.meters),
-      ...Object.keys(sourceStatusSpec.meters),
-      ...Object.keys(processedOutputLevelsSpec.meters),
-    ];
+  it("keeps control/config/runtime/source/levels as app-private namespaces", () => {
+    const paramKeys = Object.keys(signalsmithStretchLabSpec.params);
+    const meterKeys = Object.keys(signalsmithStretchLabSpec.meters);
 
+    expect(paramKeys.every((key) => /^(control|config)\./u.test(key))).toBe(
+      true,
+    );
     expect(
-      appPrivateKeys.filter((key) =>
-        APP_PRIVATE_PREFIXES.some((prefix) => key.startsWith(prefix)),
-      ),
-    ).toEqual([]);
+      meterKeys.every((key) => /^(runtime|source|levels)\./u.test(key)),
+    ).toBe(true);
   });
 
   it("maps the official web demo controls without f64 params", () => {
-    expect(desiredStretchSpec.params.rate).toMatchObject({
+    expect(signalsmithStretchLabSpec.params["control.rate"]).toMatchObject({
       kind: "f32",
       max: 8,
       min: 0.05,
     });
-    expect(desiredStretchSpec.params.pitchSemitones).toMatchObject({
+    expect(
+      signalsmithStretchLabSpec.params["control.pitchSemitones"],
+    ).toMatchObject({
       kind: "f32",
       max: 48,
       min: -48,
     });
-    expect(desiredStretchSpec.params.tonalityHz).toMatchObject({
+    expect(
+      signalsmithStretchLabSpec.params["control.tonalityHz"],
+    ).toMatchObject({
       kind: "f32",
       max: 24_000,
       min: 0,
     });
-    expect(desiredStretchSpec.params.formantBaseHz).toMatchObject({
+    expect(
+      signalsmithStretchLabSpec.params["control.formantBaseHz"],
+    ).toMatchObject({
       kind: "f32",
       max: 24_000,
       min: 0,
     });
-    expect(desiredStretchSpec.params.preset).toMatchObject({
+    expect(signalsmithStretchLabSpec.params["config.preset"]).toMatchObject({
       kind: "enum",
       values: ["custom", "default", "cheaper"],
     });
 
-    expect(Object.keys(desiredStretchSpec.params)).not.toEqual(
+    expect(Object.keys(signalsmithStretchLabSpec.params)).not.toEqual(
       expect.arrayContaining(["input", "output", "loopStart", "loopEnd"]),
     );
 
-    for (const def of Object.values(desiredStretchSpec.params)) {
+    for (const def of Object.values(signalsmithStretchLabSpec.params)) {
       expect(def.kind).not.toBe("f64");
     }
   });
 
-  it("plans non-zero backing and plane metadata for all specs", () => {
-    for (const spec of APP_SPECS) {
-      const plan = planLayout(spec);
+  it("plans one non-zero backing and plane metadata block", () => {
+    const plan = planLayout(signalsmithStretchLabSpec);
 
-      expect(plan.bytesTotal).toBeGreaterThan(0);
-      expect(plan.lockStrideBytes).toBeGreaterThan(0);
-      expect(plan.planes.PU).toBeGreaterThan(0);
-      expect(plan.planes.MU).toBeGreaterThan(0);
-      expect(Object.values(plan.planes).some((bytes) => bytes > 0)).toBe(true);
+    expect(plan.bytesTotal).toBeGreaterThan(0);
+    expect(plan.lockStrideBytes).toBeGreaterThan(0);
+    expect(plan.planes.PU).toBeGreaterThan(0);
+    expect(plan.planes.MU).toBeGreaterThan(0);
+    expect(Object.values(plan.planes).some((bytes) => bytes > 0)).toBe(true);
+  });
+
+  it("builds, verifies, and accepts one handoff metadata path", () => {
+    const plan = planLayout(signalsmithStretchLabSpec);
+    const backing = allocateShared(plan);
+    const handoff = buildHandoff(plan, backing);
+    const accepted = acceptHandoff(handoff);
+
+    expect(handoff.version).toBe(1);
+    expect(handoff.packing).toBe("shared");
+    expect(accepted.plan.id).toBe(signalsmithStretchLabSpec.id);
+    expect(() => {
+      verifyHandoff(plan, accepted.plan);
+    }).not.toThrow();
+  });
+
+  it("creates one lab session surface", () => {
+    const session = createStretchBoundarySession();
+
+    try {
+      expect(Object.keys(session)).toEqual(["lab"]);
+    } finally {
+      disposeStretchBoundarySession(session);
     }
   });
 
-  it("builds, verifies, and accepts handoff metadata", () => {
-    for (const spec of APP_SPECS) {
-      const plan = planLayout(spec);
-      const backing = allocateShared(plan);
-      const handoff = buildHandoff(plan, backing);
-      const accepted = acceptHandoff(handoff);
-
-      expect(handoff.version).toBe(1);
-      expect(handoff.packing).toBe("shared");
-      expect(accepted.plan.id).toBe(spec.id);
-      expect(() => {
-        verifyHandoff(plan, accepted.plan);
-      }).not.toThrow();
-    }
-  });
-
-  it("lets the controller write desired params and the processor read them", () => {
+  it("lets the controller write params and the processor read nested aliases", () => {
     const session = createStretchBoundarySession();
 
     try {
@@ -233,8 +226,8 @@ describe("Stage B boundary specs", () => {
         ...defaultDesiredControls(),
         active: true,
         configSequence: 2,
-        intervalMs: 15,
         desiredSequence: 2,
+        intervalMs: 15,
         pitchSemitones: -3,
         preset: "cheaper",
         rate: 1.5,
@@ -248,14 +241,14 @@ describe("Stage B boundary specs", () => {
       let observedPitch = 0;
       let observedSequence = 0;
 
-      session.desired.processor.params.within((params) => {
-        observedActive = params.active;
-        observedConfigSequence = params.configSequence;
-        observedIntervalMs = params.intervalMs;
-        observedPreset = params.preset;
-        observedRate = params.rate;
-        observedPitch = params.pitchSemitones;
-        observedSequence = params.desiredSequence;
+      session.lab.processor.params.within((params) => {
+        observedActive = params.control.active;
+        observedConfigSequence = params.config.configSequence;
+        observedIntervalMs = params.config.intervalMs;
+        observedPreset = params.config.preset;
+        observedRate = params.control.rate;
+        observedPitch = params.control.pitchSemitones;
+        observedSequence = params.control.desiredSequence;
       });
 
       expect(observedActive).toBe(true);

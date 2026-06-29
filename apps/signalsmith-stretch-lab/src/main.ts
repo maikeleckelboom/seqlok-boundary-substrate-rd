@@ -14,8 +14,14 @@ import {
   type PcmSourceFacts,
 } from "./audio/pcm-source";
 import { SourcePrefetch } from "./audio/source-prefetch";
+import { SourceReferenceMonitor } from "./audio/source-reference-monitor";
 import { StretchWorkletRuntime } from "./audio/stretch-node";
 import { selectStretchRuntimeMode } from "./audio/stretch-runtime";
+import {
+  computeChunkedWaveformPeaks,
+  createSyntheticWaveformPeaks,
+  type WaveformPeakMode,
+} from "./audio/waveform-peaks";
 import {
   createStretchCommandTransport,
   type StretchCommandName,
@@ -54,7 +60,7 @@ import {
   type SourceStatusSnapshot,
 } from "./types";
 import { renderAppShell, renderUnsupported } from "./ui/dom";
-import { createWaveformPeaks, drawWaveform } from "./ui/waveform";
+import { drawWaveform } from "./ui/waveform";
 
 import type { PlanarFrameChunk } from "./audio/chunked-wav-source";
 
@@ -87,11 +93,14 @@ function startLab(appRoot: HTMLElement): void {
     let prefetch: SourcePrefetch | null = null;
     const prefetchGate = new LatestPrefetchGate<PlanarFrameChunk>();
     let realRuntime: StretchWorkletRuntime | null = null;
+    let referenceMonitor: SourceReferenceMonitor | null = null;
     let source = defaultSimulatedSource();
     let sourceFacts: PcmSourceFacts | null = null;
     let sourceRevision = 1;
     let sourceStatusText = "deterministic simulator source";
-    let peaks = createWaveformPeaks(source);
+    let waveform = createSyntheticWaveformPeaks(source);
+    let waveformMode: WaveformPeakMode = waveform.mode;
+    let waveformAbort: AbortController | null = null;
     let requestedSeekFrame: number | null = null;
     let loopRevision = 1;
     let loopPreview: LoopPreview = {
@@ -140,6 +149,7 @@ function startLab(appRoot: HTMLElement): void {
     elements.resetControlsButton.addEventListener("click", () => {
       desired = {
         ...defaultDesiredControls(),
+        configSequence: nextSequence(desired.configSequence),
         desiredSequence: nextSequence(desired.desiredSequence),
       };
       applyControlsToInputs(desired, elements);
@@ -169,6 +179,51 @@ function startLab(appRoot: HTMLElement): void {
           elements,
           nextSequence(desired.desiredSequence),
           desired,
+        );
+        writeDesiredControls(session, desired);
+        updateControlOutputs();
+        render();
+      });
+    }
+
+    elements.configPreset.addEventListener("change", () => {
+      desired = collectConfigFromInputs(
+        elements,
+        nextSequence(desired.configSequence),
+        desired,
+        { forceCustom: false, source: "preset" },
+      );
+      writeDesiredControls(session, desired);
+      updateControlOutputs();
+      render();
+    });
+
+    for (const input of [
+      elements.blockMs,
+      elements.blockMsNumber,
+      elements.overlap,
+      elements.overlapNumber,
+      elements.intervalMs,
+      elements.splitComputation,
+    ]) {
+      input.addEventListener("input", () => {
+        desired = collectConfigFromInputs(
+          elements,
+          nextSequence(desired.configSequence),
+          desired,
+          {
+            forceCustom: input !== elements.splitComputation,
+            source:
+              input === elements.intervalMs
+                ? "interval"
+                : input === elements.blockMs
+                  ? "block-range"
+                  : input === elements.blockMsNumber
+                    ? "block-number"
+                    : input === elements.overlapNumber
+                      ? "overlap-number"
+                      : "overlap-range",
+          },
         );
         writeDesiredControls(session, desired);
         updateControlOutputs();
@@ -239,8 +294,16 @@ function startLab(appRoot: HTMLElement): void {
         void loadFileSource(file);
       }
     });
-    elements.processedMode.addEventListener("change", render);
-    elements.alignedSourceMode.addEventListener("change", render);
+    for (const mode of [
+      elements.processedMode,
+      elements.alignedSourceMode,
+      elements.splitCompareMode,
+    ]) {
+      mode.addEventListener("change", () => {
+        syncMonitorGains();
+        render();
+      });
+    }
 
     let lastTickAt = 0;
     const animate = (time: number): void => {
@@ -251,6 +314,8 @@ function startLab(appRoot: HTMLElement): void {
         } else {
           engine.tick({ renderQuantum: 256 });
         }
+        syncMonitorGains();
+        updateReferencePreview();
         clearAppliedSeekGhost();
         render();
       }
@@ -258,6 +323,7 @@ function startLab(appRoot: HTMLElement): void {
     };
     window.requestAnimationFrame(animate);
     window.addEventListener("beforeunload", () => {
+      referenceMonitor?.dispose();
       realRuntime?.dispose();
       disposeStretchBoundarySession(session);
     });
@@ -341,7 +407,7 @@ function startLab(appRoot: HTMLElement): void {
         sourceFacts = loaded;
         source = simulatedSourceFromPcm(loaded);
         sourceStatusText = loaded.formatSummary;
-        peaks = createWaveformPeaks(source);
+        resetWaveformToSynthetic();
         loopRevision += 1;
         loopPreview = {
           enabled: false,
@@ -354,6 +420,7 @@ function startLab(appRoot: HTMLElement): void {
         updateSourceLimits();
 
         if (loaded.kind === "chunked-wav") {
+          startActualWaveformPeaks(loaded);
           await prepareRealRuntime(loaded);
           commands.enqueue("loadSource", {
             sourceRevision: loaded.sourceRevision,
@@ -361,6 +428,7 @@ function startLab(appRoot: HTMLElement): void {
         } else {
           realRuntime?.dispose();
           realRuntime = null;
+          referenceMonitor?.stop();
           prefetch = null;
         }
       } catch (error) {
@@ -390,6 +458,8 @@ function startLab(appRoot: HTMLElement): void {
       loaded: ChunkedWavPcmSource,
     ): Promise<void> {
       const context = await ensureAudioContext();
+      referenceMonitor ??= new SourceReferenceMonitor(context);
+      syncMonitorGains();
       prefetch = new SourcePrefetch(loaded.source, {
         windowFrames: Math.max(4_096, Math.floor(loaded.sampleRate * 2)),
       });
@@ -485,6 +555,114 @@ function startLab(appRoot: HTMLElement): void {
         Number(elements.formantBase.value) === 0
           ? "Auto"
           : `${Math.round(Number(elements.formantBase.value)).toString()} Hz`;
+      elements.configPreset.value = desired.preset;
+      elements.blockMs.value = desired.blockMs.toFixed(0);
+      elements.blockMsNumber.value = desired.blockMs.toFixed(0);
+      elements.intervalMs.min = (desired.blockMs / 8).toFixed(1);
+      elements.intervalMs.max = (desired.blockMs / 2).toFixed(1);
+      elements.intervalMs.value = desired.intervalMs.toFixed(1);
+      elements.overlap.value = overlapFromConfig(desired).toFixed(1);
+      elements.overlapNumber.value = overlapFromConfig(desired).toFixed(1);
+      elements.splitComputation.checked = desired.splitComputation;
+    }
+
+    function resetWaveformToSynthetic(): void {
+      waveformAbort?.abort();
+      waveformAbort = null;
+      waveform = createSyntheticWaveformPeaks(source);
+      waveformMode = waveform.mode;
+    }
+
+    function startActualWaveformPeaks(loaded: ChunkedWavPcmSource): void {
+      waveformAbort?.abort();
+      const abort = new AbortController();
+      waveformAbort = abort;
+
+      void computeChunkedWaveformPeaks(loaded.source, {
+        onProgress: (state) => {
+          if (abort.signal.aborted || acceptedSource !== loaded) {
+            return;
+          }
+
+          waveform = state;
+          waveformMode = state.mode;
+          render();
+        },
+        signal: abort.signal,
+      }).catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+
+        sourceStatusText =
+          error instanceof Error ? error.message : String(error);
+        render();
+      });
+    }
+
+    function selectedMonitorMode(): "processed" | "reference" | "split" {
+      if (elements.splitCompareMode.checked) {
+        return "split";
+      }
+
+      return elements.alignedSourceMode.checked ? "reference" : "processed";
+    }
+
+    function monitorLabel(runtimeMode: "real-worklet" | "simulator"): string {
+      const mode = selectedMonitorMode();
+
+      if (mode === "reference") {
+        return acceptedSource?.kind === "chunked-wav"
+          ? "aligned reference preview"
+          : "source reference unavailable";
+      }
+
+      if (mode === "split") {
+        return acceptedSource?.kind === "chunked-wav"
+          ? "split compare preview"
+          : "split compare unavailable";
+      }
+
+      return runtimeMode === "real-worklet"
+        ? "processed real Worklet"
+        : "processed simulator fallback";
+    }
+
+    function syncMonitorGains(): void {
+      const mode = selectedMonitorMode();
+      const processedGain =
+        mode === "reference" ? 0 : mode === "split" ? 0.62 : 1;
+      const referenceGain =
+        mode === "processed" ? 0 : mode === "split" ? 0.62 : 1;
+
+      realRuntime?.setOutputGain(processedGain);
+      referenceMonitor?.setGain(referenceGain);
+
+      if (mode === "processed") {
+        referenceMonitor?.stop();
+      }
+    }
+
+    function updateReferencePreview(): void {
+      const mode = selectedMonitorMode();
+      const runtime = readRuntimeStatus(session);
+
+      if (
+        mode === "processed" ||
+        acceptedSource?.kind !== "chunked-wav" ||
+        runtime.state !== "playing"
+      ) {
+        if (mode === "processed") {
+          referenceMonitor?.stop();
+        }
+        return;
+      }
+
+      if (!referenceMonitor) {
+        return;
+      }
+
+      void referenceMonitor.previewAt(acceptedSource, runtime.sourceFrame);
     }
 
     function render(): void {
@@ -511,11 +689,7 @@ function startLab(appRoot: HTMLElement): void {
           (realStatus?.workletReady ?? false) ||
           runtime.adapterMode === "real-worklet",
       });
-      const monitor = elements.alignedSourceMode.checked
-        ? "Aligned source mock"
-        : runtimeSelection.mode === "real-worklet"
-          ? "Processed real Worklet"
-          : "Processed simulation";
+      const monitor = monitorLabel(runtimeSelection.mode);
       const pending =
         desiredSnapshot.desiredSequence !==
           runtime.lastAppliedDesiredSequence ||
@@ -524,6 +698,7 @@ function startLab(appRoot: HTMLElement): void {
       const clipRight = levels.fullScaleRightTotal - clipBaselineRight;
 
       renderAdapterHeader(elements, signalsmithAssets, runtimeSelection.mode);
+      syncMonitorGains();
       elements.transportState.textContent = runtime.state;
       elements.appliedSequence.textContent = `${runtime.lastAppliedDesiredSequence.toString()} desired, ${runtime.lastAppliedConfigSequence.toString()} config, ${runtime.lastAppliedCommandSequence.toString()} command`;
       elements.pendingState.textContent = pending
@@ -541,7 +716,7 @@ function startLab(appRoot: HTMLElement): void {
       }
 
       renderMetadata(source);
-      renderLevels(levels, clipLeft, clipRight);
+      renderLevels(levels, clipLeft, clipRight, monitor);
       renderInspector(
         plans,
         desiredSnapshot,
@@ -557,16 +732,17 @@ function startLab(appRoot: HTMLElement): void {
           ? `Runtime ${runtimeSelection.mode}; ${runtimeSelection.reason}.`
           : `Recoverable runtime fault ${runtime.lastErrorCode.toString()}.`,
         sourceStatusText,
+        `Waveform ${waveformModeLabel(waveformMode)}.`,
         realStatus?.lastError ? `Worklet error ${realStatus.lastError}.` : "",
         pending
           ? "Desired controls are pending runtime acknowledgement."
           : "Desired controls match applied acknowledgement.",
-        monitor,
+        `Monitor ${monitor}.`,
       ]
         .filter(Boolean)
         .join(" ");
 
-      drawWaveform(elements.waveform, peaks, {
+      drawWaveform(elements.waveform, waveform.peaks, {
         appliedLoop: {
           enabled: runtime.loopEnabled || loopPreview.enabled,
           endFrame: runtime.loopEnabled
@@ -605,8 +781,10 @@ function startLab(appRoot: HTMLElement): void {
       levels: ProcessedLevelsSnapshot,
       clipLeft: number,
       clipRight: number,
+      monitor: string,
     ): void {
       renderKeyValues(elements.levelsSummary, [
+        ["Monitor", monitor],
         ["Probe", levels.probeState],
         ["RMS L/R", `${dbfs(levels.rmsLeft)} / ${dbfs(levels.rmsRight)}`],
         ["Peak L/R", `${dbfs(levels.peakLeft)} / ${dbfs(levels.peakRight)}`],
@@ -640,10 +818,19 @@ function startLab(appRoot: HTMLElement): void {
           "Generated module",
           signalsmithAssets.generatedModuleExists ? "present" : "missing",
         ],
-        ["Runtime", runtimeSelection.mode],
+        [
+          "Runtime",
+          runtimeSelection.mode === "real-worklet"
+            ? "real-worklet"
+            : "simulator fallback",
+        ],
         ["Runtime selection", runtimeSelection.reason],
         ["Adapter mode", runtime.adapterMode],
+        ["Source mode", sourceModeFact(acceptedSource, source)],
         ["Source format", sourceFacts?.formatSummary ?? sourceStatusText],
+        ["Waveform mode", waveformModeLabel(waveformMode)],
+        ["Exclave spec hash", plans.lab.hash],
+        ["Nested spec plan", planFact(plans.lab)],
         ["Desired active", desiredSnapshot.active ? "true" : "false"],
         [
           "Applied sequence",
@@ -651,13 +838,16 @@ function startLab(appRoot: HTMLElement): void {
         ],
         ["Effective rate", `${runtime.effectiveRate.toFixed(3)}x`],
         [
-          "Block / interval",
-          `${runtime.blockSamples.toString()} / ${runtime.intervalSamples.toString()} samples`,
+          "Block / interval / split",
+          `${desiredSnapshot.blockMs.toFixed(0)} ms / ${desiredSnapshot.intervalMs.toFixed(1)} ms / ${desiredSnapshot.splitComputation ? "split" : "single"}; runtime ${runtime.blockSamples.toString()} / ${runtime.intervalSamples.toString()} samples`,
         ],
         [
           "Input / output latency",
           `${formatFrame(runtime.inputLatencyFrames)} / ${formatFrame(runtime.outputLatencyFrames)} frames`,
         ],
+        ["Processing center frame", formatFrame(runtime.processingCenterFrame)],
+        ["Audible source frame", formatFrame(runtime.sourceFrame)],
+        ["Output frame", formatFrame(runtime.outputFrame)],
         ["Duration", formatTime(runtime.durationFrames, source.sampleRate)],
         ["Source state", sourceStatus.state],
         ["Source revision", sourceStatus.sourceRevision.toString()],
@@ -668,13 +858,27 @@ function startLab(appRoot: HTMLElement): void {
         [
           "Source prefetch",
           prefetch
-            ? `${prefetch.facts.ready ? "ready" : "pending"}; ${formatFrame(prefetch.facts.cachedFrameCount)} frames cached; underruns ${prefetch.facts.underrunTotal.toString()}`
+            ? `${prefetch.facts.ready ? "ready" : "pending"}; ${formatBytes(prefetch.facts.cachedBytes)} host cache; ${formatFrame(prefetch.facts.cachedFrameCount)} frames cached; read ${formatFrame(prefetch.facts.lastReadStartFrame)}-${formatFrame(prefetch.facts.lastReadEndFrame)}; underruns ${prefetch.facts.underrunTotal.toString()}`
             : "inactive",
         ],
-        ["Desired plan", planFact(plans.desired)],
-        ["Runtime plan", planFact(plans.runtime)],
-        ["Source plan", planFact(plans.source)],
-        ["Levels plan", planFact(plans.levels)],
+        [
+          "Worklet source cache",
+          `${formatBytes(sourceStatus.memoryBytes)}; dropped ${sourceStatus.droppedBufferTotal.toString()}`,
+        ],
+        [
+          "Command ring",
+          `${commands.capacity.toString()} slots; dropped ${runtime.commandDroppedTotal.toString()}`,
+        ],
+        [
+          "Scheduled command queue",
+          `${runtime.scheduledCommandQueueSize.toString()} queued; dropped ${runtime.scheduledCommandDroppedTotal.toString()}`,
+        ],
+        [
+          "Reference preview",
+          referenceMonitor
+            ? `${referenceMonitor.status.active ? "active" : "idle"}; frame ${formatFrame(referenceMonitor.status.lastFrame)}; pending ${referenceMonitor.status.pending ? "true" : "false"}`
+            : "inactive",
+        ],
         ["PU/MU versions", versionFact(plans)],
         [
           "Runtime frames",
@@ -733,6 +937,59 @@ function collectDesiredFromInputs(
   };
 }
 
+function collectConfigFromInputs(
+  elements: ReturnType<typeof renderAppShell>,
+  configSequence: number,
+  previousControls: DesiredStretchControls,
+  options: {
+    readonly forceCustom: boolean;
+    readonly source:
+      | "block-number"
+      | "block-range"
+      | "interval"
+      | "overlap-number"
+      | "overlap-range"
+      | "preset";
+  },
+): DesiredStretchControls {
+  const blockMs = clampFloat(
+    Number(
+      options.source === "block-number"
+        ? elements.blockMsNumber.value
+        : elements.blockMs.value,
+    ),
+    50,
+    240,
+  );
+  const overlap = clampFloat(
+    Number(
+      options.source === "overlap-number"
+        ? elements.overlapNumber.value
+        : elements.overlap.value,
+    ),
+    2,
+    8,
+  );
+  const intervalMs =
+    options.source === "interval"
+      ? clampFloat(Number(elements.intervalMs.value), blockMs / 8, blockMs / 2)
+      : blockMs / overlap;
+  const preset = (
+    options.forceCustom ? "custom" : elements.configPreset.value
+  ) as DesiredStretchControls["preset"];
+
+  elements.configPreset.value = preset;
+
+  return {
+    ...previousControls,
+    blockMs,
+    configSequence,
+    intervalMs,
+    preset,
+    splitComputation: elements.splitComputation.checked,
+  };
+}
+
 function applyControlsToInputs(
   controls: DesiredStretchControls,
   elements: ReturnType<typeof renderAppShell>,
@@ -745,6 +1002,15 @@ function applyControlsToInputs(
   elements.formantShift.value = String(controls.formantSemitones);
   elements.formantCompensation.checked = controls.formantCompensation;
   elements.formantBase.value = String(controls.formantBaseHz);
+  elements.configPreset.value = controls.preset;
+  elements.blockMs.value = String(controls.blockMs);
+  elements.blockMsNumber.value = String(controls.blockMs);
+  elements.intervalMs.min = (controls.blockMs / 8).toFixed(1);
+  elements.intervalMs.max = (controls.blockMs / 2).toFixed(1);
+  elements.intervalMs.value = String(controls.intervalMs);
+  elements.overlap.value = overlapFromConfig(controls).toFixed(1);
+  elements.overlapNumber.value = overlapFromConfig(controls).toFixed(1);
+  elements.splitComputation.checked = controls.splitComputation;
 }
 
 function renderKeyValues(
@@ -767,9 +1033,7 @@ function renderKeyValues(
   container.replaceChildren(list);
 }
 
-function planFact(
-  plan: ReturnType<typeof readPlanSummaries>["desired"],
-): string {
+function planFact(plan: ReturnType<typeof readPlanSummaries>["lab"]): string {
   const planes = [
     `PF32 ${plan.planes.PF32.toString()}`,
     `PI32 ${plan.planes.PI32.toString()}`,
@@ -786,10 +1050,7 @@ function planFact(
 
 function versionFact(plans: ReturnType<typeof readPlanSummaries>): string {
   return [
-    `desired ${plans.desired.paramVersion.toString()}/${plans.desired.meterVersion.toString()}`,
-    `runtime ${plans.runtime.paramVersion.toString()}/${plans.runtime.meterVersion.toString()}`,
-    `source ${plans.source.paramVersion.toString()}/${plans.source.meterVersion.toString()}`,
-    `levels ${plans.levels.paramVersion.toString()}/${plans.levels.meterVersion.toString()}`,
+    `lab ${plans.lab.paramVersion.toString()}/${plans.lab.meterVersion.toString()}`,
   ].join("; ");
 }
 
@@ -802,9 +1063,43 @@ function vendorFact(assets: SignalsmithWorkletAssetFacts): string {
   return `${stretch}; ${linear}`;
 }
 
+function sourceModeFact(
+  acceptedSource: LabPcmSource | null,
+  source: SimulatedSource,
+): string {
+  if (acceptedSource?.kind === "chunked-wav") {
+    return "chunked WAV";
+  }
+
+  if (acceptedSource?.kind === "decoded-pcm") {
+    return "browser decoded";
+  }
+
+  return source.status === "deterministic" ? "simulator" : "browser decoded";
+}
+
+function waveformModeLabel(mode: WaveformPeakMode): string {
+  switch (mode) {
+    case "actual-coarse":
+      return "actual coarse";
+    case "actual-complete":
+      return "actual complete";
+    case "synthetic":
+      return "synthetic";
+  }
+}
+
 function nextSequence(current: number): number {
   const next = (current + 1) >>> 0;
   return next === 0 ? 1 : next;
+}
+
+function overlapFromConfig(controls: DesiredStretchControls): number {
+  if (controls.intervalMs <= 0) {
+    return 4;
+  }
+
+  return clampFloat(controls.blockMs / controls.intervalMs, 2, 8);
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -813,6 +1108,14 @@ function clamp(value: number, min: number, max: number): number {
   }
 
   return Math.min(max, Math.max(min, Math.floor(value)));
+}
+
+function clampFloat(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+
+  return Math.min(max, Math.max(min, value));
 }
 
 function formatFrame(frame: number): string {

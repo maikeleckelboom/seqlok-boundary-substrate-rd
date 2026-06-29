@@ -12,27 +12,6 @@ export interface WaveformState {
   readonly source: SimulatedSource;
 }
 
-export function createWaveformPeaks(
-  source: SimulatedSource,
-  binCount = 320,
-): Float32Array {
-  const peaks = new Float32Array(binCount);
-  const seed = hashSource(source.name, source.frames);
-
-  for (let index = 0; index < peaks.length; index += 1) {
-    const t = index / Math.max(1, peaks.length - 1);
-    const carrier = Math.sin(index * 0.17 + seed * 0.013);
-    const overtone = Math.sin(index * 0.047 + seed * 0.031);
-    const envelope = 0.48 + 0.38 * Math.sin(Math.PI * t);
-    peaks[index] = Math.max(
-      0.08,
-      Math.abs(carrier * 0.7 + overtone * 0.3) * envelope,
-    );
-  }
-
-  return peaks;
-}
-
 export function drawWaveform(
   canvas: HTMLCanvasElement,
   peaks: Readonly<Float32Array>,
@@ -205,12 +184,4 @@ function drawMarker(
 function frameToX(frame: number, totalFrames: number, width: number): number {
   const progress = Math.min(1, Math.max(0, frame / Math.max(1, totalFrames)));
   return progress * width;
-}
-
-function hashSource(name: string, frames: number): number {
-  let hash = frames >>> 0;
-  for (let index = 0; index < name.length; index += 1) {
-    hash = Math.imul(hash ^ name.charCodeAt(index), 16_777_619);
-  }
-  return hash >>> 0;
 }

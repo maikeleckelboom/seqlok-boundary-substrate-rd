@@ -1,6 +1,6 @@
 import { enumIndex, PROBE_STATES } from "../types";
 
-import type { processedOutputLevelsSpec } from "../boundary/specs";
+import type { signalsmithStretchLabSpec } from "../boundary/specs";
 import type { ProcessorBinding } from "@exclave/boundary";
 
 export class LevelProbe {
@@ -12,7 +12,7 @@ export class LevelProbe {
   private invalidSampleTotal = 0;
 
   publish(
-    levels: ProcessorBinding<typeof processedOutputLevelsSpec>,
+    levels: ProcessorBinding<typeof signalsmithStretchLabSpec>,
     output: readonly Float32Array[],
     options: {
       readonly active: boolean;
@@ -45,37 +45,40 @@ export class LevelProbe {
     this.cursor = (this.cursor + 1) % this.historyRms.length;
 
     levels.meters.publish((writer) => {
-      writer.set("channelCount", options.channelCount);
-      writer.set("clipLatched", this.fullScaleLeftTotal > 0);
-      writer.set("fullScaleLeftTotal", this.fullScaleLeftTotal);
-      writer.set("fullScaleRightTotal", this.fullScaleRightTotal);
-      writer.set("invalidSampleTotal", this.invalidSampleTotal);
-      writer.set("lastErrorCode", options.failed ? options.lastErrorCode : 0);
-      writer.set("maxAbsWindow", maxAbs);
-      writer.set("outputBranchActive", options.active);
-      writer.set("peakLeft", leftFacts.peak);
-      writer.set("peakRight", rightFacts.peak);
+      writer.set("levels.channelCount", options.channelCount);
+      writer.set("levels.clipLatched", this.fullScaleLeftTotal > 0);
+      writer.set("levels.fullScaleLeftTotal", this.fullScaleLeftTotal);
+      writer.set("levels.fullScaleRightTotal", this.fullScaleRightTotal);
+      writer.set("levels.invalidSampleTotal", this.invalidSampleTotal);
       writer.set(
-        "probeState",
+        "levels.lastErrorCode",
+        options.failed ? options.lastErrorCode : 0,
+      );
+      writer.set("levels.maxAbsWindow", maxAbs);
+      writer.set("levels.outputBranchActive", options.active);
+      writer.set("levels.peakLeft", leftFacts.peak);
+      writer.set("levels.peakRight", rightFacts.peak);
+      writer.set(
+        "levels.probeState",
         enumIndex(
           PROBE_STATES,
           options.failed ? "failed" : options.active ? "active" : "ready",
         ),
       );
-      writer.set("rmsLeft", leftFacts.rms);
-      writer.set("rmsRight", rightFacts.rms);
-      writer.set("referenceBranchActive", options.active);
-      writer.set("silent", options.silent || maxAbs < 0.000_001);
+      writer.set("levels.rmsLeft", leftFacts.rms);
+      writer.set("levels.rmsRight", rightFacts.rms);
+      writer.set("levels.referenceBranchActive", options.active);
+      writer.set("levels.silent", options.silent || maxAbs < 0.000_001);
       writer.set(
-        "unsupportedChannelBlockTotal",
+        "levels.unsupportedChannelBlockTotal",
         options.unsupportedChannelBlockTotal,
       );
-      writer.set("windowEndOutputFrame", options.outputFrame);
-      writer.set("windowFrames", options.windowFrames);
-      writer.stage("historyPeak", (history) => {
+      writer.set("levels.windowEndOutputFrame", options.outputFrame);
+      writer.set("levels.windowFrames", options.windowFrames);
+      writer.stage("levels.historyPeak", (history) => {
         history.set(this.historyPeak);
       });
-      writer.stage("historyRms", (history) => {
+      writer.stage("levels.historyRms", (history) => {
         history.set(this.historyRms);
       });
     });

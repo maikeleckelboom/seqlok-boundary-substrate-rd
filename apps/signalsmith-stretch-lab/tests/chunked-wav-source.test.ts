@@ -4,6 +4,8 @@ import {
   ChunkedWavSource,
   ChunkedWavSourceError,
 } from "../src/audio/chunked-wav-source";
+import { SourcePrefetch } from "../src/audio/source-prefetch";
+import { computeChunkedWaveformPeaks } from "../src/audio/waveform-peaks";
 
 interface RangeRead {
   readonly end: number | undefined;
@@ -234,6 +236,73 @@ describe("ChunkedWavSource", () => {
 
     expect(chunk.channels[0]?.[0]).toBeCloseTo(12_000 / 32_768);
     expect(file.ranges).toHaveLength(1);
+    expect(file.ranges[0]?.start).toBe(
+      file.expectedDataOffset + 12_000 * file.blockAlign,
+    );
+  });
+
+  it("keeps host prefetch cache below the configured byte ceiling", async () => {
+    const source = await ChunkedWavSource.open(
+      new VirtualWavFile({ frameCount: 100_000 }) as unknown as File,
+    );
+    const prefetch = new SourcePrefetch(source, {
+      maxCachedBytes: 32,
+      windowFrames: 8,
+    });
+
+    await prefetch.prefetchAround(1_000);
+    await prefetch.prefetchAround(20_000);
+    await prefetch.prefetchAround(40_000);
+
+    expect(prefetch.facts.cachedBytes).toBeLessThanOrEqual(32);
+    expect(prefetch.facts.cachedFrameCount).toBeLessThanOrEqual(8);
+  });
+
+  it("generates waveform peaks from actual bounded WAV chunks", async () => {
+    const file = new VirtualWavFile({ frameCount: 128 });
+    const source = await ChunkedWavSource.open(file as unknown as File);
+    file.ranges.length = 0;
+
+    const waveform = await computeChunkedWaveformPeaks(source, {
+      binCount: 4,
+      coarseFramesPerBin: 16,
+      maxFramesPerRead: 16,
+      yieldEveryReads: 64,
+    });
+
+    expect(waveform.mode).toBe("actual-complete");
+    expect(Math.max(...waveform.peaks)).toBeCloseTo(127 / 32_768);
+    expect(
+      file.ranges.every(
+        (range) =>
+          (range.end ?? 0) - (range.start ?? 0) <= 16 * file.blockAlign,
+      ),
+    ).toBe(true);
+  });
+
+  it("generates large-file coarse waveform peaks without whole-file reads", async () => {
+    const file = new VirtualWavFile({ frameCount: 60 * 60 * 48_000 });
+    const source = await ChunkedWavSource.open(file as unknown as File);
+    file.ranges.length = 0;
+
+    const waveform = await computeChunkedWaveformPeaks(source, {
+      binCount: 16,
+      coarseFramesPerBin: 512,
+      complete: false,
+      maxFramesPerRead: 1_024,
+      yieldEveryReads: 64,
+    });
+
+    expect(waveform.mode).toBe("actual-coarse");
+    expect(
+      file.ranges.some((range) => range.start === 0 && range.end === file.size),
+    ).toBe(false);
+    expect(
+      file.ranges.every(
+        (range) =>
+          (range.end ?? 0) - (range.start ?? 0) <= 512 * file.blockAlign,
+      ),
+    ).toBe(true);
   });
 
   it("skips unknown chunks", async () => {

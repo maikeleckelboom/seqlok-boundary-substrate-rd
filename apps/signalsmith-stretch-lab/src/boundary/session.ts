@@ -28,12 +28,7 @@ import {
   type RuntimeStatusSnapshot,
   type SourceStatusSnapshot,
 } from "../types";
-import {
-  desiredStretchSpec,
-  processedOutputLevelsSpec,
-  runtimeStatusSpec,
-  sourceStatusSpec,
-} from "./specs";
+import { signalsmithStretchLabSpec } from "./specs";
 
 export interface BoundaryPlanSummary {
   readonly bytesTotal: number;
@@ -67,10 +62,7 @@ interface AppBoundarySession<S extends SpecInput> {
 }
 
 export interface StretchBoundarySession {
-  readonly desired: AppBoundarySession<typeof desiredStretchSpec>;
-  readonly levels: AppBoundarySession<typeof processedOutputLevelsSpec>;
-  readonly runtime: AppBoundarySession<typeof runtimeStatusSpec>;
-  readonly source: AppBoundarySession<typeof sourceStatusSpec>;
+  readonly lab: AppBoundarySession<typeof signalsmithStretchLabSpec>;
 }
 
 function createAppBoundarySession<const S extends SpecInput>(
@@ -94,28 +86,16 @@ function createAppBoundarySession<const S extends SpecInput>(
 
 export function createStretchBoundarySession(): StretchBoundarySession {
   return {
-    desired: createAppBoundarySession(desiredStretchSpec),
-    levels: createAppBoundarySession(processedOutputLevelsSpec),
-    runtime: createAppBoundarySession(runtimeStatusSpec),
-    source: createAppBoundarySession(sourceStatusSpec),
+    lab: createAppBoundarySession(signalsmithStretchLabSpec),
   };
 }
 
 export function disposeStretchBoundarySession(
   session: StretchBoundarySession,
 ): void {
-  session.desired.controller.dispose();
-  session.desired.processor.dispose();
-  session.desired.observer.dispose();
-  session.runtime.controller.dispose();
-  session.runtime.processor.dispose();
-  session.runtime.observer.dispose();
-  session.source.controller.dispose();
-  session.source.processor.dispose();
-  session.source.observer.dispose();
-  session.levels.controller.dispose();
-  session.levels.processor.dispose();
-  session.levels.observer.dispose();
+  session.lab.controller.dispose();
+  session.lab.processor.dispose();
+  session.lab.observer.dispose();
 }
 
 export function initializeDesiredControls(
@@ -129,117 +109,120 @@ export function writeDesiredControls(
   session: StretchBoundarySession,
   controls: DesiredStretchControls,
 ): void {
-  session.desired.controller.params.update({
-    active: controls.active,
-    blockMs: controls.blockMs,
-    configSequence: controls.configSequence,
-    desiredSequence: controls.desiredSequence,
-    formantBaseHz: controls.formantBaseHz,
-    formantCompensation: controls.formantCompensation,
-    formantSemitones: controls.formantSemitones,
-    intervalMs: controls.intervalMs,
-    pitchSemitones: controls.pitchSemitones,
-    preset: controls.preset,
-    rate: controls.rate,
-    splitComputation: controls.splitComputation,
-    tonalityEnabled: controls.tonalityEnabled,
-    tonalityHz: controls.tonalityHz,
-    transitionFrames: controls.transitionFrames,
+  session.lab.controller.params.update({
+    "config.blockMs": controls.blockMs,
+    "config.configSequence": controls.configSequence,
+    "config.intervalMs": controls.intervalMs,
+    "config.preset": controls.preset,
+    "config.splitComputation": controls.splitComputation,
+    "control.active": controls.active,
+    "control.desiredSequence": controls.desiredSequence,
+    "control.formantBaseHz": controls.formantBaseHz,
+    "control.formantCompensation": controls.formantCompensation,
+    "control.formantSemitones": controls.formantSemitones,
+    "control.pitchSemitones": controls.pitchSemitones,
+    "control.rate": controls.rate,
+    "control.tonalityEnabled": controls.tonalityEnabled,
+    "control.tonalityHz": controls.tonalityHz,
+    "control.transitionFrames": controls.transitionFrames,
   });
 }
 
 export function readDesiredControls(
   session: StretchBoundarySession,
 ): DesiredStretchControls {
-  const snapshot = session.desired.observer.params.snapshot();
+  const snapshot = session.lab.observer.params.snapshot();
 
   return {
-    active: snapshot.active,
-    blockMs: snapshot.blockMs,
-    configSequence: snapshot.configSequence,
-    desiredSequence: snapshot.desiredSequence,
-    formantBaseHz: snapshot.formantBaseHz,
-    formantCompensation: snapshot.formantCompensation,
-    formantSemitones: snapshot.formantSemitones,
-    intervalMs: snapshot.intervalMs,
-    pitchSemitones: snapshot.pitchSemitones,
-    preset: snapshot.preset,
-    rate: snapshot.rate,
-    splitComputation: snapshot.splitComputation,
-    tonalityEnabled: snapshot.tonalityEnabled,
-    tonalityHz: snapshot.tonalityHz,
-    transitionFrames: snapshot.transitionFrames,
+    active: snapshot["control.active"],
+    blockMs: snapshot["config.blockMs"],
+    configSequence: snapshot["config.configSequence"],
+    desiredSequence: snapshot["control.desiredSequence"],
+    formantBaseHz: snapshot["control.formantBaseHz"],
+    formantCompensation: snapshot["control.formantCompensation"],
+    formantSemitones: snapshot["control.formantSemitones"],
+    intervalMs: snapshot["config.intervalMs"],
+    pitchSemitones: snapshot["control.pitchSemitones"],
+    preset: snapshot["config.preset"],
+    rate: snapshot["control.rate"],
+    splitComputation: snapshot["config.splitComputation"],
+    tonalityEnabled: snapshot["control.tonalityEnabled"],
+    tonalityHz: snapshot["control.tonalityHz"],
+    transitionFrames: snapshot["control.transitionFrames"],
   };
 }
 
 export function readRuntimeStatus(
   session: StretchBoundarySession,
 ): RuntimeStatusSnapshot {
-  const snapshot = session.runtime.observer.meters.snapshot();
-  const stateIndex = snapshot.state;
-  const adapterModeIndex = snapshot.adapterMode;
+  const snapshot = session.lab.observer.meters.snapshot();
+  const stateIndex = snapshot["runtime.state"];
+  const adapterModeIndex = snapshot["runtime.adapterMode"];
 
   return {
     adapterMode: enumLabel(ADAPTER_MODES, adapterModeIndex, "fallback"),
     adapterModeIndex,
-    audioWorkletFrameHi: snapshot.audioWorkletFrameHi,
-    audioWorkletFrameLo: snapshot.audioWorkletFrameLo,
-    audioWorkletTimeSeconds: snapshot.audioWorkletTimeSeconds,
-    blockSamples: snapshot.blockSamples,
-    bufferReadyFrames: snapshot.bufferReadyFrames,
-    bufferLengthFrames: snapshot.bufferLengthFrames,
-    commandDroppedTotal: snapshot.commandDroppedTotal,
-    durationFrames: snapshot.durationFrames,
-    durationSeconds: snapshot.durationSeconds,
-    effectiveRate: snapshot.effectiveRate,
-    heapGeneration: snapshot.heapGeneration,
-    inputLatencyFrames: snapshot.inputLatencyFrames,
-    inputLatencySeconds: snapshot.inputLatencySeconds,
-    intervalSamples: snapshot.intervalSamples,
-    invalidSampleTotal: snapshot.invalidSampleTotal,
-    invalidTransitionTotal: snapshot.invalidTransitionTotal,
-    lastAppliedConfigSequence: snapshot.lastAppliedConfigSequence,
-    lastAppliedCommandSequence: snapshot.lastAppliedCommandSequence,
-    lastAppliedDesiredSequence: snapshot.lastAppliedDesiredSequence,
-    lastErrorCode: snapshot.lastErrorCode,
-    loopEnabled: snapshot.loopEnabled,
-    loopEndFrame: snapshot.loopEndFrame,
-    loopRevision: snapshot.loopRevision,
-    loopStartFrame: snapshot.loopStartFrame,
-    maxObservedRenderQuantum: snapshot.maxObservedRenderQuantum,
-    outputLatencyFrames: snapshot.outputLatencyFrames,
-    outputLatencySeconds: snapshot.outputLatencySeconds,
-    outputFrame: snapshot.outputFrame,
-    processingCenterFrame: snapshot.processingCenterFrame,
-    sessionId: snapshot.sessionId,
-    sourceFrame: snapshot.sourceFrame,
-    staleReadTotal: snapshot.staleReadTotal,
+    audioWorkletFrameHi: snapshot["runtime.audioWorkletFrameHi"],
+    audioWorkletFrameLo: snapshot["runtime.audioWorkletFrameLo"],
+    audioWorkletTimeSeconds: snapshot["runtime.audioWorkletTimeSeconds"],
+    blockSamples: snapshot["runtime.blockSamples"],
+    bufferReadyFrames: snapshot["runtime.bufferReadyFrames"],
+    bufferLengthFrames: snapshot["runtime.bufferLengthFrames"],
+    commandDroppedTotal: snapshot["runtime.commandDroppedTotal"],
+    durationFrames: snapshot["runtime.durationFrames"],
+    durationSeconds: snapshot["runtime.durationSeconds"],
+    effectiveRate: snapshot["runtime.effectiveRate"],
+    heapGeneration: snapshot["runtime.heapGeneration"],
+    inputLatencyFrames: snapshot["runtime.inputLatencyFrames"],
+    inputLatencySeconds: snapshot["runtime.inputLatencySeconds"],
+    intervalSamples: snapshot["runtime.intervalSamples"],
+    invalidSampleTotal: snapshot["runtime.invalidSampleTotal"],
+    invalidTransitionTotal: snapshot["runtime.invalidTransitionTotal"],
+    lastAppliedConfigSequence: snapshot["runtime.lastAppliedConfigSequence"],
+    lastAppliedCommandSequence: snapshot["runtime.lastAppliedCommandSequence"],
+    lastAppliedDesiredSequence: snapshot["runtime.lastAppliedDesiredSequence"],
+    lastErrorCode: snapshot["runtime.lastErrorCode"],
+    loopEnabled: snapshot["runtime.loopEnabled"],
+    loopEndFrame: snapshot["runtime.loopEndFrame"],
+    loopRevision: snapshot["runtime.loopRevision"],
+    loopStartFrame: snapshot["runtime.loopStartFrame"],
+    maxObservedRenderQuantum: snapshot["runtime.maxObservedRenderQuantum"],
+    outputLatencyFrames: snapshot["runtime.outputLatencyFrames"],
+    outputLatencySeconds: snapshot["runtime.outputLatencySeconds"],
+    outputFrame: snapshot["runtime.outputFrame"],
+    processingCenterFrame: snapshot["runtime.processingCenterFrame"],
+    sessionId: snapshot["runtime.sessionId"],
+    sourceFrame: snapshot["runtime.sourceFrame"],
+    staleReadTotal: snapshot["runtime.staleReadTotal"],
     state: enumLabel(RUNTIME_STATES, stateIndex, "idle"),
     stateIndex,
-    underrunTotal: snapshot.underrunTotal,
-    workletGeneration: snapshot.workletGeneration,
+    scheduledCommandDroppedTotal:
+      snapshot["runtime.scheduledCommandDroppedTotal"],
+    scheduledCommandQueueSize: snapshot["runtime.scheduledCommandQueueSize"],
+    underrunTotal: snapshot["runtime.underrunTotal"],
+    workletGeneration: snapshot["runtime.workletGeneration"],
   };
 }
 
 export function readSourceStatus(
   session: StretchBoundarySession,
 ): SourceStatusSnapshot {
-  const snapshot = session.source.observer.meters.snapshot();
-  const stateIndex = snapshot.state;
+  const snapshot = session.lab.observer.meters.snapshot();
+  const stateIndex = snapshot["source.state"];
 
   return {
-    appliedLoadSequence: snapshot.appliedLoadSequence,
-    bufferEndFrame: snapshot.bufferEndFrame,
-    bufferStartFrame: snapshot.bufferStartFrame,
-    channelCount: snapshot.channelCount,
-    decodeErrorCode: snapshot.decodeErrorCode,
-    droppedBufferTotal: snapshot.droppedBufferTotal,
-    durationFrames: snapshot.durationFrames,
-    durationSeconds: snapshot.durationSeconds,
-    loadSequence: snapshot.loadSequence,
-    memoryBytes: snapshot.memoryBytes,
-    sampleRate: snapshot.sampleRate,
-    sourceRevision: snapshot.sourceRevision,
+    appliedLoadSequence: snapshot["source.appliedLoadSequence"],
+    bufferEndFrame: snapshot["source.bufferEndFrame"],
+    bufferStartFrame: snapshot["source.bufferStartFrame"],
+    channelCount: snapshot["source.channelCount"],
+    decodeErrorCode: snapshot["source.decodeErrorCode"],
+    droppedBufferTotal: snapshot["source.droppedBufferTotal"],
+    durationFrames: snapshot["source.durationFrames"],
+    durationSeconds: snapshot["source.durationSeconds"],
+    loadSequence: snapshot["source.loadSequence"],
+    memoryBytes: snapshot["source.memoryBytes"],
+    sampleRate: snapshot["source.sampleRate"],
+    sourceRevision: snapshot["source.sourceRevision"],
     state: enumLabel(SOURCE_STATES, stateIndex, "none"),
     stateIndex,
   };
@@ -248,31 +231,32 @@ export function readSourceStatus(
 export function readProcessedLevels(
   session: StretchBoundarySession,
 ): ProcessedLevelsSnapshot {
-  const snapshot = session.levels.observer.meters.snapshot();
-  const probeStateIndex = snapshot.probeState;
+  const snapshot = session.lab.observer.meters.snapshot();
+  const probeStateIndex = snapshot["levels.probeState"];
 
   return {
-    channelCount: snapshot.channelCount,
-    clipLatched: snapshot.clipLatched,
-    fullScaleLeftTotal: snapshot.fullScaleLeftTotal,
-    fullScaleRightTotal: snapshot.fullScaleRightTotal,
-    historyPeak: snapshot.historyPeak,
-    historyRms: snapshot.historyRms,
-    invalidSampleTotal: snapshot.invalidSampleTotal,
-    lastErrorCode: snapshot.lastErrorCode,
-    maxAbsWindow: snapshot.maxAbsWindow,
-    outputBranchActive: snapshot.outputBranchActive,
-    peakLeft: snapshot.peakLeft,
-    peakRight: snapshot.peakRight,
+    channelCount: snapshot["levels.channelCount"],
+    clipLatched: snapshot["levels.clipLatched"],
+    fullScaleLeftTotal: snapshot["levels.fullScaleLeftTotal"],
+    fullScaleRightTotal: snapshot["levels.fullScaleRightTotal"],
+    historyPeak: snapshot["levels.historyPeak"],
+    historyRms: snapshot["levels.historyRms"],
+    invalidSampleTotal: snapshot["levels.invalidSampleTotal"],
+    lastErrorCode: snapshot["levels.lastErrorCode"],
+    maxAbsWindow: snapshot["levels.maxAbsWindow"],
+    outputBranchActive: snapshot["levels.outputBranchActive"],
+    peakLeft: snapshot["levels.peakLeft"],
+    peakRight: snapshot["levels.peakRight"],
     probeState: enumLabel(PROBE_STATES, probeStateIndex, "uninitialized"),
     probeStateIndex,
-    referenceBranchActive: snapshot.referenceBranchActive,
-    rmsLeft: snapshot.rmsLeft,
-    rmsRight: snapshot.rmsRight,
-    silent: snapshot.silent,
-    unsupportedChannelBlockTotal: snapshot.unsupportedChannelBlockTotal,
-    windowEndOutputFrame: snapshot.windowEndOutputFrame,
-    windowFrames: snapshot.windowFrames,
+    referenceBranchActive: snapshot["levels.referenceBranchActive"],
+    rmsLeft: snapshot["levels.rmsLeft"],
+    rmsRight: snapshot["levels.rmsRight"],
+    silent: snapshot["levels.silent"],
+    unsupportedChannelBlockTotal:
+      snapshot["levels.unsupportedChannelBlockTotal"],
+    windowEndOutputFrame: snapshot["levels.windowEndOutputFrame"],
+    windowFrames: snapshot["levels.windowFrames"],
   };
 }
 
@@ -303,14 +287,9 @@ function summarizePlan<S extends SpecInput>(
 
 export function readPlanSummaries(
   session: StretchBoundarySession,
-): Readonly<
-  Record<"desired" | "levels" | "runtime" | "source", BoundaryPlanSummary>
-> {
+): Readonly<Record<"lab", BoundaryPlanSummary>> {
   return {
-    desired: summarizePlan(session.desired),
-    levels: summarizePlan(session.levels),
-    runtime: summarizePlan(session.runtime),
-    source: summarizePlan(session.source),
+    lab: summarizePlan(session.lab),
   };
 }
 

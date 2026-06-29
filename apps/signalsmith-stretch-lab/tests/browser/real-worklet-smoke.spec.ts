@@ -97,6 +97,9 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
     .poll(() => runtimeFact(page, "Source prefetch"))
     .toContain("ready");
   await expect
+    .poll(() => runtimeFact(page, "Waveform mode"))
+    .toContain("actual");
+  await expect
     .poll(() => smokeFact(page, "sourceAcceptedMessages"))
     .toBeGreaterThanOrEqual(0);
   await expect
@@ -111,18 +114,65 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
     )
     .toBeGreaterThan(0);
 
-  const blockIntervalBefore = await runtimeFact(page, "Block / interval");
+  const blockIntervalBefore = await runtimeFact(
+    page,
+    "Block / interval / split",
+  );
   await setRange(page, "#rate", "1.25");
   await setRange(page, "#pitch", "3");
   await expect
     .poll(() => page.locator("#rateValue").textContent())
     .toBe("1.250x");
   await expect
-    .poll(() => runtimeFact(page, "Block / interval"))
+    .poll(() => runtimeFact(page, "Block / interval / split"))
     .toBe(blockIntervalBefore);
   await expect
     .poll(() => smokeFact(page, "sourceAcceptedMessages"))
     .toBeLessThanOrEqual(1);
+
+  await setRange(page, "#blockMs", "150");
+  await expect
+    .poll(() => page.locator("#blockMsNumber").inputValue())
+    .toBe("150");
+  await expect
+    .poll(() => page.locator("#configPreset").inputValue())
+    .toBe("custom");
+  await expect
+    .poll(() => runtimeFact(page, "Block / interval / split"))
+    .toContain("150 ms");
+  await expect
+    .poll(() => runtimeFact(page, "Block / interval / split"))
+    .toContain("7200");
+  await expect
+    .poll(() => runtimeFact(page, "Block / interval / split"))
+    .not.toBe(blockIntervalBefore);
+
+  await setRange(page, "#overlap", "5");
+  await expect
+    .poll(() => page.locator("#overlapNumber").inputValue())
+    .toBe("5.0");
+  await expect
+    .poll(() => runtimeFact(page, "Block / interval / split"))
+    .toContain("30.0 ms");
+  await expect
+    .poll(() => runtimeFact(page, "Block / interval / split"))
+    .toContain("1440");
+
+  const blockIntervalAfterConfig = await runtimeFact(
+    page,
+    "Block / interval / split",
+  );
+  await setRange(page, "#rate", "0.75");
+  await setRange(page, "#pitch", "-4");
+  await expect
+    .poll(() => runtimeFact(page, "Block / interval / split"))
+    .toBe(blockIntervalAfterConfig);
+
+  await page.locator("#alignedSourceMode").check();
+  await expect
+    .poll(() => runtimeFact(page, "Monitor"))
+    .toContain("aligned reference preview");
+  await page.locator("#processedMode").check();
 
   await setRange(page, "#seekRange", "24000");
   await expect
@@ -138,6 +188,9 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
   await expect
     .poll(() => runtimeFact(page, "Source prefetch"))
     .toContain("ready");
+  await expect
+    .poll(() => runtimeFact(page, "Worklet source cache"))
+    .toContain("MiB");
 
   await page.locator("#pauseButton").click();
   await expect.poll(() => runtimeFact(page, "State")).toBe("ready-paused");

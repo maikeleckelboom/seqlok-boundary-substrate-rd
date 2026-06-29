@@ -98,6 +98,8 @@ export interface RuntimeStatusSnapshot {
   readonly outputLatencySeconds: number;
   readonly outputFrame: number;
   readonly processingCenterFrame: number;
+  readonly scheduledCommandDroppedTotal: number;
+  readonly scheduledCommandQueueSize: number;
   readonly sessionId: number;
   readonly sourceFrame: number;
   readonly staleReadTotal: number;

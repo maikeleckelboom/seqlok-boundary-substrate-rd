@@ -189,23 +189,23 @@ export class FakeStretchEngine {
 
     let nextControls = this.appliedControls;
 
-    this.session.desired.processor.params.within((params) => {
+    this.session.lab.processor.params.within((params) => {
       nextControls = {
-        active: params.active,
-        blockMs: params.blockMs,
-        configSequence: params.configSequence,
-        desiredSequence: params.desiredSequence,
-        formantBaseHz: params.formantBaseHz,
-        formantCompensation: params.formantCompensation,
-        formantSemitones: params.formantSemitones,
-        intervalMs: params.intervalMs,
-        pitchSemitones: params.pitchSemitones,
-        preset: enumLabel(STRETCH_PRESETS, params.preset, "default"),
-        rate: params.rate,
-        splitComputation: params.splitComputation,
-        tonalityEnabled: params.tonalityEnabled,
-        tonalityHz: params.tonalityHz,
-        transitionFrames: params.transitionFrames,
+        active: params.control.active,
+        blockMs: params.config.blockMs,
+        configSequence: params.config.configSequence,
+        desiredSequence: params.control.desiredSequence,
+        formantBaseHz: params.control.formantBaseHz,
+        formantCompensation: params.control.formantCompensation,
+        formantSemitones: params.control.formantSemitones,
+        intervalMs: params.config.intervalMs,
+        pitchSemitones: params.control.pitchSemitones,
+        preset: enumLabel(STRETCH_PRESETS, params.config.preset, "default"),
+        rate: params.control.rate,
+        splitComputation: params.config.splitComputation,
+        tonalityEnabled: params.control.tonalityEnabled,
+        tonalityHz: params.control.tonalityHz,
+        transitionFrames: params.control.transitionFrames,
       };
     });
 
@@ -373,73 +373,81 @@ export class FakeStretchEngine {
       0xffffffff,
     );
 
-    this.session.runtime.processor.meters.publish((writer) => {
-      writer.set("adapterMode", enumIndex(ADAPTER_MODES, "simulator"));
-      writer.set("audioWorkletFrameHi", audioWorkletFrame.hi);
-      writer.set("audioWorkletFrameLo", audioWorkletFrame.lo);
+    this.session.lab.processor.meters.publish((writer) => {
+      writer.set("runtime.adapterMode", enumIndex(ADAPTER_MODES, "simulator"));
+      writer.set("runtime.audioWorkletFrameHi", audioWorkletFrame.hi);
+      writer.set("runtime.audioWorkletFrameLo", audioWorkletFrame.lo);
       writer.set(
-        "audioWorkletTimeSeconds",
+        "runtime.audioWorkletTimeSeconds",
         this.outputFrame / this.source.sampleRate,
       );
-      writer.set("blockSamples", config.blockSamples);
-      writer.set("bufferReadyFrames", bufferReadyFrames);
-      writer.set("bufferLengthFrames", config.bufferLengthFrames);
-      writer.set("commandDroppedTotal", this.transport.stats().dropped);
-      writer.set("durationFrames", this.source.frames);
-      writer.set("durationSeconds", this.source.durationSeconds);
-      writer.set("effectiveRate", effectiveRate);
-      writer.set("heapGeneration", 0);
-      writer.set("inputLatencyFrames", config.inputLatencyFrames);
-      writer.set("inputLatencySeconds", config.inputLatencySeconds);
-      writer.set("intervalSamples", config.intervalSamples);
-      writer.set("invalidSampleTotal", this.invalidSampleTotal);
-      writer.set("invalidTransitionTotal", this.invalidTransitionTotal);
-      writer.set("lastAppliedCommandSequence", this.lastAppliedCommandSequence);
+      writer.set("runtime.blockSamples", config.blockSamples);
+      writer.set("runtime.bufferReadyFrames", bufferReadyFrames);
+      writer.set("runtime.bufferLengthFrames", config.bufferLengthFrames);
+      writer.set("runtime.commandDroppedTotal", this.transport.stats().dropped);
+      writer.set("runtime.durationFrames", this.source.frames);
+      writer.set("runtime.durationSeconds", this.source.durationSeconds);
+      writer.set("runtime.effectiveRate", effectiveRate);
+      writer.set("runtime.heapGeneration", 0);
+      writer.set("runtime.inputLatencyFrames", config.inputLatencyFrames);
+      writer.set("runtime.inputLatencySeconds", config.inputLatencySeconds);
+      writer.set("runtime.intervalSamples", config.intervalSamples);
+      writer.set("runtime.invalidSampleTotal", this.invalidSampleTotal);
+      writer.set("runtime.invalidTransitionTotal", this.invalidTransitionTotal);
       writer.set(
-        "lastAppliedConfigSequence",
+        "runtime.lastAppliedCommandSequence",
+        this.lastAppliedCommandSequence,
+      );
+      writer.set(
+        "runtime.lastAppliedConfigSequence",
         this.appliedControls.configSequence,
       );
       writer.set(
-        "lastAppliedDesiredSequence",
+        "runtime.lastAppliedDesiredSequence",
         this.appliedControls.desiredSequence,
       );
-      writer.set("lastErrorCode", this.lastErrorCode);
-      writer.set("loopEnabled", this.loopEnabled);
-      writer.set("loopEndFrame", this.loopEndFrame);
-      writer.set("loopRevision", this.loopRevision);
-      writer.set("loopStartFrame", this.loopStartFrame);
-      writer.set("maxObservedRenderQuantum", this.maxObservedRenderQuantum);
-      writer.set("outputFrame", this.outputFrame);
-      writer.set("outputLatencyFrames", config.outputLatencyFrames);
-      writer.set("outputLatencySeconds", config.outputLatencySeconds);
+      writer.set("runtime.lastErrorCode", this.lastErrorCode);
+      writer.set("runtime.loopEnabled", this.loopEnabled);
+      writer.set("runtime.loopEndFrame", this.loopEndFrame);
+      writer.set("runtime.loopRevision", this.loopRevision);
+      writer.set("runtime.loopStartFrame", this.loopStartFrame);
       writer.set(
-        "processingCenterFrame",
+        "runtime.maxObservedRenderQuantum",
+        this.maxObservedRenderQuantum,
+      );
+      writer.set("runtime.outputFrame", this.outputFrame);
+      writer.set("runtime.outputLatencyFrames", config.outputLatencyFrames);
+      writer.set("runtime.outputLatencySeconds", config.outputLatencySeconds);
+      writer.set(
+        "runtime.processingCenterFrame",
         this.sourceFrame + (renderQuantum * effectiveRate) / 2,
       );
-      writer.set("sessionId", this.sessionId);
-      writer.set("sourceFrame", this.sourceFrame);
-      writer.set("staleReadTotal", this.staleReadTotal);
-      writer.set("state", enumIndex(RUNTIME_STATES, state));
-      writer.set("underrunTotal", this.underrunTotal);
-      writer.set("workletGeneration", 0);
+      writer.set("runtime.scheduledCommandDroppedTotal", 0);
+      writer.set("runtime.scheduledCommandQueueSize", 0);
+      writer.set("runtime.sessionId", this.sessionId);
+      writer.set("runtime.sourceFrame", this.sourceFrame);
+      writer.set("runtime.staleReadTotal", this.staleReadTotal);
+      writer.set("runtime.state", enumIndex(RUNTIME_STATES, state));
+      writer.set("runtime.underrunTotal", this.underrunTotal);
+      writer.set("runtime.workletGeneration", 0);
     });
   }
 
   private publishSourceStatus(): void {
-    this.session.source.processor.meters.publish((writer) => {
-      writer.set("appliedLoadSequence", this.appliedLoadSequence);
-      writer.set("bufferEndFrame", this.source.frames);
-      writer.set("bufferStartFrame", 0);
-      writer.set("channelCount", this.source.channels);
-      writer.set("decodeErrorCode", this.decodeErrorCode);
-      writer.set("droppedBufferTotal", this.droppedBufferTotal);
-      writer.set("durationFrames", this.source.frames);
-      writer.set("durationSeconds", this.source.durationSeconds);
-      writer.set("loadSequence", this.loadSequence);
-      writer.set("memoryBytes", this.source.memoryBytes);
-      writer.set("sampleRate", this.source.sampleRate);
-      writer.set("sourceRevision", this.sourceRevision);
-      writer.set("state", enumIndex(SOURCE_STATES, this.sourceState));
+    this.session.lab.processor.meters.publish((writer) => {
+      writer.set("source.appliedLoadSequence", this.appliedLoadSequence);
+      writer.set("source.bufferEndFrame", this.source.frames);
+      writer.set("source.bufferStartFrame", 0);
+      writer.set("source.channelCount", this.source.channels);
+      writer.set("source.decodeErrorCode", this.decodeErrorCode);
+      writer.set("source.droppedBufferTotal", this.droppedBufferTotal);
+      writer.set("source.durationFrames", this.source.frames);
+      writer.set("source.durationSeconds", this.source.durationSeconds);
+      writer.set("source.loadSequence", this.loadSequence);
+      writer.set("source.memoryBytes", this.source.memoryBytes);
+      writer.set("source.sampleRate", this.source.sampleRate);
+      writer.set("source.sourceRevision", this.sourceRevision);
+      writer.set("source.state", enumIndex(SOURCE_STATES, this.sourceState));
     });
   }
 
@@ -483,38 +491,38 @@ export class FakeStretchEngine {
     this.historyPeak[this.historyCursor] = Math.max(peakLeft, peakRight);
     this.historyCursor = (this.historyCursor + 1) % this.historyRms.length;
 
-    this.session.levels.processor.meters.publish((writer) => {
-      writer.set("channelCount", this.source.channels);
-      writer.set("clipLatched", this.fullScaleLeftTotal > 0);
-      writer.set("fullScaleLeftTotal", this.fullScaleLeftTotal);
-      writer.set("fullScaleRightTotal", this.fullScaleRightTotal);
-      writer.set("invalidSampleTotal", this.invalidSampleTotal);
-      writer.set("lastErrorCode", failed ? this.lastErrorCode : 0);
-      writer.set("maxAbsWindow", Math.max(peakLeft, peakRight));
-      writer.set("outputBranchActive", active);
-      writer.set("peakLeft", peakLeft);
-      writer.set("peakRight", peakRight);
+    this.session.lab.processor.meters.publish((writer) => {
+      writer.set("levels.channelCount", this.source.channels);
+      writer.set("levels.clipLatched", this.fullScaleLeftTotal > 0);
+      writer.set("levels.fullScaleLeftTotal", this.fullScaleLeftTotal);
+      writer.set("levels.fullScaleRightTotal", this.fullScaleRightTotal);
+      writer.set("levels.invalidSampleTotal", this.invalidSampleTotal);
+      writer.set("levels.lastErrorCode", failed ? this.lastErrorCode : 0);
+      writer.set("levels.maxAbsWindow", Math.max(peakLeft, peakRight));
+      writer.set("levels.outputBranchActive", active);
+      writer.set("levels.peakLeft", peakLeft);
+      writer.set("levels.peakRight", peakRight);
       writer.set(
-        "probeState",
+        "levels.probeState",
         enumIndex(
           PROBE_STATES,
           failed ? "failed" : active ? "active" : "ready",
         ),
       );
-      writer.set("rmsLeft", rmsLeft);
-      writer.set("rmsRight", rmsRight);
-      writer.set("referenceBranchActive", active);
-      writer.set("silent", !active || rmsLeft < 0.001);
+      writer.set("levels.rmsLeft", rmsLeft);
+      writer.set("levels.rmsRight", rmsRight);
+      writer.set("levels.referenceBranchActive", active);
+      writer.set("levels.silent", !active || rmsLeft < 0.001);
       writer.set(
-        "unsupportedChannelBlockTotal",
+        "levels.unsupportedChannelBlockTotal",
         this.unsupportedChannelBlockTotal,
       );
-      writer.set("windowEndOutputFrame", this.outputFrame);
-      writer.set("windowFrames", renderQuantum);
-      writer.stage("historyPeak", (history) => {
+      writer.set("levels.windowEndOutputFrame", this.outputFrame);
+      writer.set("levels.windowFrames", renderQuantum);
+      writer.stage("levels.historyPeak", (history) => {
         history.set(this.historyPeak);
       });
-      writer.stage("historyRms", (history) => {
+      writer.stage("levels.historyRms", (history) => {
         history.set(this.historyRms);
       });
     });

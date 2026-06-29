@@ -229,20 +229,23 @@ export function publishSourceStatus(
 ): void {
   const facts = options.facts;
 
-  session.source.processor.meters.publish((writer) => {
-    writer.set("appliedLoadSequence", state === "accepted" ? loadSequence : 0);
-    writer.set("bufferEndFrame", facts?.durationFrames ?? 0);
-    writer.set("bufferStartFrame", 0);
-    writer.set("channelCount", facts?.channels ?? 0);
-    writer.set("decodeErrorCode", options.errorCode ?? 0);
-    writer.set("droppedBufferTotal", 0);
-    writer.set("durationFrames", facts?.durationFrames ?? 0);
-    writer.set("durationSeconds", facts?.durationSeconds ?? 0);
-    writer.set("loadSequence", loadSequence);
-    writer.set("memoryBytes", facts?.memoryBytes ?? 0);
-    writer.set("sampleRate", facts?.sampleRate ?? 0);
-    writer.set("sourceRevision", sourceRevision);
-    writer.set("state", enumIndex(SOURCE_STATES, state));
+  session.lab.processor.meters.publish((writer) => {
+    writer.set(
+      "source.appliedLoadSequence",
+      state === "accepted" ? loadSequence : 0,
+    );
+    writer.set("source.bufferEndFrame", facts?.durationFrames ?? 0);
+    writer.set("source.bufferStartFrame", 0);
+    writer.set("source.channelCount", facts?.channels ?? 0);
+    writer.set("source.decodeErrorCode", options.errorCode ?? 0);
+    writer.set("source.droppedBufferTotal", 0);
+    writer.set("source.durationFrames", facts?.durationFrames ?? 0);
+    writer.set("source.durationSeconds", facts?.durationSeconds ?? 0);
+    writer.set("source.loadSequence", loadSequence);
+    writer.set("source.memoryBytes", facts?.memoryBytes ?? 0);
+    writer.set("source.sampleRate", facts?.sampleRate ?? 0);
+    writer.set("source.sourceRevision", sourceRevision);
+    writer.set("source.state", enumIndex(SOURCE_STATES, state));
   });
 }
 

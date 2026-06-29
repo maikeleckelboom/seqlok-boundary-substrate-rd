@@ -2,17 +2,18 @@ import {
   SIGNALSMITH_STRETCH_GENERATED_MODULE,
   SIGNALSMITH_WASM_EXPORTS,
 } from "./module-types";
-import {
-  desiredStretchSpec,
-  processedOutputLevelsSpec,
-  runtimeStatusSpec,
-  sourceStatusSpec,
-} from "../boundary/specs";
+import { signalsmithStretchLabSpec } from "../boundary/specs";
 
 export const SIGNALSMITH_ADAPTER_CONTRACT = {
+  labBoundary: {
+    handoffs: 1,
+    reader: "AudioWorklet processor and host observer",
+    specId: signalsmithStretchLabSpec.id,
+    writer: "host controller, source loader, and AudioWorklet processor",
+  },
   desiredControls: {
     reader: "future AudioWorklet processor",
-    specId: desiredStretchSpec.id,
+    specId: signalsmithStretchLabSpec.id,
     wrapperCalls: [
       "_setTransposeSemitones",
       "_setFormantSemitones",
@@ -30,12 +31,12 @@ export const SIGNALSMITH_ADAPTER_CONTRACT = {
   },
   processedOutputLevels: {
     reader: "host observer",
-    specId: processedOutputLevelsSpec.id,
+    specId: signalsmithStretchLabSpec.id,
     writer: "AudioWorklet processor output-level probe",
   },
   runtimeStatus: {
     reader: "host observer",
-    specId: runtimeStatusSpec.id,
+    specId: signalsmithStretchLabSpec.id,
     writer: "AudioWorklet processor",
     wrapperCalls: [
       "_blockSamples",
@@ -49,7 +50,7 @@ export const SIGNALSMITH_ADAPTER_CONTRACT = {
   },
   sourceStatus: {
     reader: "host observer",
-    specId: sourceStatusSpec.id,
+    specId: signalsmithStretchLabSpec.id,
     writer: "source loader and AudioWorklet acceptance path",
   },
 } as const;

@@ -66,6 +66,7 @@ export class StretchWorkletRuntime {
   private constructor(
     private readonly audioContext: AudioContext,
     private readonly node: AudioWorkletNode,
+    private readonly outputGain: GainNode,
   ) {
     this.node.port.onmessage = (event: MessageEvent<StretchWorkletMessage>) => {
       this.handleMessage(event.data);
@@ -89,12 +90,7 @@ export class StretchWorkletRuntime {
         outputChannelCount: [2],
         processorOptions: {
           commandRing: options.commands.backing,
-          handoffs: {
-            desired: options.session.desired.handoff,
-            levels: options.session.levels.handoff,
-            runtime: options.session.runtime.handoff,
-            source: options.session.source.handoff,
-          },
+          handoff: options.session.lab.handoff,
           initialChunk: options.initialChunk,
           loadSequence: options.source.loadSequence,
           moduleUrl: options.generatedModuleUrl,
@@ -104,9 +100,11 @@ export class StretchWorkletRuntime {
       },
     );
 
-    node.connect(options.audioContext.destination);
+    const outputGain = options.audioContext.createGain();
+    node.connect(outputGain);
+    outputGain.connect(options.audioContext.destination);
 
-    return new StretchWorkletRuntime(options.audioContext, node);
+    return new StretchWorkletRuntime(options.audioContext, node, outputGain);
   }
 
   get status(): StretchWorkletRuntimeStatus {
@@ -145,7 +143,17 @@ export class StretchWorkletRuntime {
   dispose(): void {
     this.postMessage({ type: "destroy" });
     this.node.disconnect();
+    this.outputGain.disconnect();
     this.node.port.close();
+  }
+
+  setOutputGain(value: number): void {
+    const clamped = Math.min(1, Math.max(0, value));
+    this.outputGain.gain.setTargetAtTime(
+      clamped,
+      this.audioContext.currentTime,
+      0.015,
+    );
   }
 
   async resume(): Promise<void> {

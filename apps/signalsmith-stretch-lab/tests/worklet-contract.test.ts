@@ -84,35 +84,34 @@ describe("Signalsmith real Worklet contract", () => {
     expect(moduleLoader).toContain("__SIGNALSMITH_STRETCH_MODULE_FACTORY__");
   });
 
-  it("binds accepted Exclave handoffs for desired, runtime, source, and levels", () => {
+  it("binds one accepted Exclave handoff for the lab runtime", () => {
     const source = readFileSync(BOUNDARY_BINDINGS, "utf8");
 
-    expect(source).toContain("acceptHandoff(handoffs.desired)");
-    expect(source).toContain("acceptHandoff(handoffs.runtime)");
-    expect(source).toContain("acceptHandoff(handoffs.source)");
-    expect(source).toContain("acceptHandoff(handoffs.levels)");
+    expect(source).toContain("acceptHandoff(handoff)");
     expect(source).toContain("bindProcessor");
+    expect(source).not.toContain("handoffs.desired");
+    expect(source).not.toContain("handoffs.runtime");
+    expect(source).not.toContain("handoffs.source");
+    expect(source).not.toContain("handoffs.levels");
   });
 
-  it("reads flat desired params and does not use nested control/config keys", () => {
+  it("reads nested control and config params through processor aliases", () => {
     const source = readFileSync(WORKLET_PROCESSOR, "utf8");
 
     for (const key of [
-      "params.active",
-      "params.rate",
-      "params.pitchSemitones",
-      "params.configSequence",
-      "params.blockMs",
-      "params.intervalMs",
-      "params.splitComputation",
+      "params.control.active",
+      "params.control.rate",
+      "params.control.pitchSemitones",
+      "params.config.configSequence",
+      "params.config.blockMs",
+      "params.config.intervalMs",
+      "params.config.splitComputation",
     ]) {
       expect(source).toContain(key);
     }
-
-    expect(source).not.toMatch(/params\.(control|config)\./u);
   });
 
-  it("publishes flat runtime, source, and level meters", () => {
+  it("publishes canonical dot-key runtime, source, and level meters", () => {
     const source = [
       readFileSync(WORKLET_PROCESSOR, "utf8"),
       readFileSync(
@@ -123,18 +122,16 @@ describe("Signalsmith real Worklet contract", () => {
     ].join("\n");
 
     for (const key of [
-      '"effectiveRate"',
-      '"blockSamples"',
-      '"audioWorkletTimeSeconds"',
-      '"sourceRevision"',
-      '"durationFrames"',
-      '"rmsLeft"',
-      '"peakLeft"',
+      '"runtime.effectiveRate"',
+      '"runtime.blockSamples"',
+      '"runtime.audioWorkletTimeSeconds"',
+      '"source.sourceRevision"',
+      '"source.durationFrames"',
+      '"levels.rmsLeft"',
+      '"levels.peakLeft"',
     ]) {
       expect(source).toContain(key);
     }
-
-    expect(source).not.toMatch(/"(runtime|source|levels)\./u);
   });
 
   it("names buffered source reads against the Signalsmith latency window", () => {

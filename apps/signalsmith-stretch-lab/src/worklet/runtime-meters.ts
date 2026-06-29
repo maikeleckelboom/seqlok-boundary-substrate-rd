@@ -5,7 +5,7 @@ import {
   type RuntimeState,
 } from "../types";
 
-import type { runtimeStatusSpec } from "../boundary/specs";
+import type { signalsmithStretchLabSpec } from "../boundary/specs";
 import type { ProcessorBinding } from "@exclave/boundary";
 
 export interface RuntimeMeterInput {
@@ -35,6 +35,8 @@ export interface RuntimeMeterInput {
   readonly outputFrame: number;
   readonly outputLatencyFrames: number;
   readonly processingCenterFrame: number;
+  readonly scheduledCommandDroppedTotal: number;
+  readonly scheduledCommandQueueSize: number;
   readonly sessionId: number;
   readonly sourceFrame: number;
   readonly staleReadTotal: number;
@@ -44,7 +46,7 @@ export interface RuntimeMeterInput {
 }
 
 export function publishRuntimeMeters(
-  runtime: ProcessorBinding<typeof runtimeStatusSpec>,
+  runtime: ProcessorBinding<typeof signalsmithStretchLabSpec>,
   input: RuntimeMeterInput,
 ): void {
   const frame = splitU64(input.audioWorkletFrame);
@@ -56,42 +58,71 @@ export function publishRuntimeMeters(
   );
 
   runtime.meters.publish((writer) => {
-    writer.set("adapterMode", enumIndex(ADAPTER_MODES, "real-worklet"));
-    writer.set("audioWorkletFrameHi", frame.hi);
-    writer.set("audioWorkletFrameLo", frame.lo);
-    writer.set("audioWorkletTimeSeconds", input.audioWorkletTimeSeconds);
-    writer.set("blockSamples", input.blockSamples);
-    writer.set("bufferReadyFrames", input.bufferReadyFrames);
-    writer.set("bufferLengthFrames", input.bufferLengthFrames);
-    writer.set("commandDroppedTotal", input.commandDroppedTotal);
-    writer.set("durationFrames", input.durationFrames);
-    writer.set("durationSeconds", input.durationSeconds);
-    writer.set("effectiveRate", input.effectiveRate);
-    writer.set("heapGeneration", input.heapGeneration);
-    writer.set("inputLatencyFrames", input.inputLatencyFrames);
-    writer.set("inputLatencySeconds", input.inputLatencyFrames / sampleRate);
-    writer.set("intervalSamples", input.intervalSamples);
-    writer.set("invalidSampleTotal", input.invalidSampleTotal);
-    writer.set("invalidTransitionTotal", input.invalidTransitionTotal);
-    writer.set("lastAppliedCommandSequence", input.lastAppliedCommandSequence);
-    writer.set("lastAppliedConfigSequence", input.lastAppliedConfigSequence);
-    writer.set("lastAppliedDesiredSequence", input.lastAppliedDesiredSequence);
-    writer.set("lastErrorCode", input.lastErrorCode);
-    writer.set("loopEnabled", input.loopEnabled);
-    writer.set("loopEndFrame", input.loopEndFrame);
-    writer.set("loopRevision", input.loopRevision);
-    writer.set("loopStartFrame", input.loopStartFrame);
-    writer.set("maxObservedRenderQuantum", input.maxObservedRenderQuantum);
-    writer.set("outputFrame", input.outputFrame);
-    writer.set("outputLatencyFrames", input.outputLatencyFrames);
-    writer.set("outputLatencySeconds", input.outputLatencyFrames / sampleRate);
-    writer.set("processingCenterFrame", input.processingCenterFrame);
-    writer.set("sessionId", input.sessionId);
-    writer.set("sourceFrame", input.sourceFrame);
-    writer.set("staleReadTotal", input.staleReadTotal);
-    writer.set("state", enumIndex(RUNTIME_STATES, input.state));
-    writer.set("underrunTotal", input.underrunTotal);
-    writer.set("workletGeneration", input.workletGeneration);
+    writer.set("runtime.adapterMode", enumIndex(ADAPTER_MODES, "real-worklet"));
+    writer.set("runtime.audioWorkletFrameHi", frame.hi);
+    writer.set("runtime.audioWorkletFrameLo", frame.lo);
+    writer.set(
+      "runtime.audioWorkletTimeSeconds",
+      input.audioWorkletTimeSeconds,
+    );
+    writer.set("runtime.blockSamples", input.blockSamples);
+    writer.set("runtime.bufferReadyFrames", input.bufferReadyFrames);
+    writer.set("runtime.bufferLengthFrames", input.bufferLengthFrames);
+    writer.set("runtime.commandDroppedTotal", input.commandDroppedTotal);
+    writer.set("runtime.durationFrames", input.durationFrames);
+    writer.set("runtime.durationSeconds", input.durationSeconds);
+    writer.set("runtime.effectiveRate", input.effectiveRate);
+    writer.set("runtime.heapGeneration", input.heapGeneration);
+    writer.set("runtime.inputLatencyFrames", input.inputLatencyFrames);
+    writer.set(
+      "runtime.inputLatencySeconds",
+      input.inputLatencyFrames / sampleRate,
+    );
+    writer.set("runtime.intervalSamples", input.intervalSamples);
+    writer.set("runtime.invalidSampleTotal", input.invalidSampleTotal);
+    writer.set("runtime.invalidTransitionTotal", input.invalidTransitionTotal);
+    writer.set(
+      "runtime.lastAppliedCommandSequence",
+      input.lastAppliedCommandSequence,
+    );
+    writer.set(
+      "runtime.lastAppliedConfigSequence",
+      input.lastAppliedConfigSequence,
+    );
+    writer.set(
+      "runtime.lastAppliedDesiredSequence",
+      input.lastAppliedDesiredSequence,
+    );
+    writer.set("runtime.lastErrorCode", input.lastErrorCode);
+    writer.set("runtime.loopEnabled", input.loopEnabled);
+    writer.set("runtime.loopEndFrame", input.loopEndFrame);
+    writer.set("runtime.loopRevision", input.loopRevision);
+    writer.set("runtime.loopStartFrame", input.loopStartFrame);
+    writer.set(
+      "runtime.maxObservedRenderQuantum",
+      input.maxObservedRenderQuantum,
+    );
+    writer.set("runtime.outputFrame", input.outputFrame);
+    writer.set("runtime.outputLatencyFrames", input.outputLatencyFrames);
+    writer.set(
+      "runtime.outputLatencySeconds",
+      input.outputLatencyFrames / sampleRate,
+    );
+    writer.set("runtime.processingCenterFrame", input.processingCenterFrame);
+    writer.set(
+      "runtime.scheduledCommandDroppedTotal",
+      input.scheduledCommandDroppedTotal,
+    );
+    writer.set(
+      "runtime.scheduledCommandQueueSize",
+      input.scheduledCommandQueueSize,
+    );
+    writer.set("runtime.sessionId", input.sessionId);
+    writer.set("runtime.sourceFrame", input.sourceFrame);
+    writer.set("runtime.staleReadTotal", input.staleReadTotal);
+    writer.set("runtime.state", enumIndex(RUNTIME_STATES, input.state));
+    writer.set("runtime.underrunTotal", input.underrunTotal);
+    writer.set("runtime.workletGeneration", input.workletGeneration);
   });
 }
 

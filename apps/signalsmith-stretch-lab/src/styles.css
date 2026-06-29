@@ -28,6 +28,15 @@ input {
   font: inherit;
 }
 
+select {
+  min-height: 44px;
+  border: 1px solid rgba(232, 237, 240, 0.18);
+  border-radius: 6px;
+  color: #f8faf9;
+  background: #11191d;
+  font: inherit;
+}
+
 button,
 .file-picker {
   min-height: 44px;
@@ -67,6 +76,13 @@ input[type="number"] {
   border-radius: 6px;
   color: #f8faf9;
   background: #11191d;
+}
+
+.dual-input {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(84px, 0.28fr);
+  gap: 10px;
+  align-items: center;
 }
 
 .lab-shell {
@@ -281,7 +297,7 @@ output {
 .control-grid,
 .inspector-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
 }
 

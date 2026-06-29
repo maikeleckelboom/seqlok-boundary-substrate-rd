@@ -4,7 +4,10 @@ export interface AppElements {
   readonly adapterAvailability: HTMLElement;
   readonly clearClipButton: HTMLButtonElement;
   readonly clearLoopButton: HTMLButtonElement;
+  readonly blockMs: HTMLInputElement;
+  readonly blockMsNumber: HTMLInputElement;
   readonly commandDrops: HTMLElement;
+  readonly configPreset: HTMLSelectElement;
   readonly faultButton: HTMLButtonElement;
   readonly fileInput: HTMLInputElement;
   readonly formantBase: HTMLInputElement;
@@ -20,6 +23,9 @@ export interface AppElements {
   readonly loopStart: HTMLInputElement;
   readonly loopStartValue: HTMLElement;
   readonly metadata: HTMLElement;
+  readonly intervalMs: HTMLInputElement;
+  readonly overlap: HTMLInputElement;
+  readonly overlapNumber: HTMLInputElement;
   readonly pauseButton: HTMLButtonElement;
   readonly pendingState: HTMLElement;
   readonly pitch: HTMLInputElement;
@@ -35,6 +41,8 @@ export interface AppElements {
   readonly seekFrame: HTMLInputElement;
   readonly seekRange: HTMLInputElement;
   readonly setLoopButton: HTMLButtonElement;
+  readonly splitCompareMode: HTMLInputElement;
+  readonly splitComputation: HTMLInputElement;
   readonly sourceDrop: HTMLElement;
   readonly staleButton: HTMLButtonElement;
   readonly status: HTMLElement;
@@ -127,11 +135,15 @@ export function renderAppShell(root: HTMLElement): AppElements {
           <legend>Monitor</legend>
           <label>
             <input id="processedMode" type="radio" name="sourceMode" value="processed" checked />
-            <span>Processed simulation</span>
+            <span>Processed Worklet</span>
           </label>
           <label>
             <input id="alignedSourceMode" type="radio" name="sourceMode" value="aligned" />
-            <span>Aligned source mock</span>
+            <span>Aligned reference preview</span>
+          </label>
+          <label>
+            <input id="splitCompareMode" type="radio" name="sourceMode" value="split" />
+            <span>Split compare</span>
           </label>
         </fieldset>
       </section>
@@ -183,6 +195,40 @@ export function renderAppShell(root: HTMLElement): AppElements {
           </label>
         </div>
 
+        <div class="control-panel config-panel">
+          <p class="section-label">Stretch engine config</p>
+          <label>
+            <span>Preset</span>
+            <select id="configPreset">
+              <option value="default">default</option>
+              <option value="custom">custom</option>
+              <option value="cheaper">cheaper</option>
+            </select>
+          </label>
+          <label>
+            <span>Block (ms)</span>
+            <div class="dual-input">
+              <input id="blockMs" type="range" min="50" max="240" step="1" value="120" />
+              <input id="blockMsNumber" type="number" min="50" max="240" step="1" value="120" />
+            </div>
+          </label>
+          <label>
+            <span>Overlap</span>
+            <div class="dual-input">
+              <input id="overlap" type="range" min="2" max="8" step="0.1" value="4" />
+              <input id="overlapNumber" type="number" min="2" max="8" step="0.1" value="4" />
+            </div>
+          </label>
+          <label>
+            <span>Interval (ms)</span>
+            <input id="intervalMs" type="number" min="6.25" max="120" step="0.1" value="30" />
+          </label>
+          <label class="toggle-row">
+            <input id="splitComputation" type="checkbox" />
+            <span>Split computation</span>
+          </label>
+        </div>
+
         <div class="control-panel levels-panel">
           <p class="section-label">Processed output</p>
           <div id="levelsSummary" class="levels-summary"></div>
@@ -222,9 +268,12 @@ export function renderAppShell(root: HTMLElement): AppElements {
     alignedSourceMode: must(root, "#alignedSourceMode", HTMLInputElement),
     appliedSequence: must(root, "#appliedSequence", HTMLElement),
     adapterAvailability: must(root, "#adapterAvailability", HTMLElement),
+    blockMs: must(root, "#blockMs", HTMLInputElement),
+    blockMsNumber: must(root, "#blockMsNumber", HTMLInputElement),
     clearClipButton: must(root, "#clearClipButton", HTMLButtonElement),
     clearLoopButton: must(root, "#clearLoopButton", HTMLButtonElement),
     commandDrops: must(root, "#commandDrops", HTMLElement),
+    configPreset: must(root, "#configPreset", HTMLSelectElement),
     faultButton: must(root, "#faultButton", HTMLButtonElement),
     fileInput: must(root, "#fileInput", HTMLInputElement),
     formantBase: must(root, "#formantBase", HTMLInputElement),
@@ -240,6 +289,9 @@ export function renderAppShell(root: HTMLElement): AppElements {
     loopStart: must(root, "#loopStart", HTMLInputElement),
     loopStartValue: must(root, "#loopStartValue", HTMLElement),
     metadata: must(root, "#metadata", HTMLElement),
+    intervalMs: must(root, "#intervalMs", HTMLInputElement),
+    overlap: must(root, "#overlap", HTMLInputElement),
+    overlapNumber: must(root, "#overlapNumber", HTMLInputElement),
     pauseButton: must(root, "#pauseButton", HTMLButtonElement),
     pendingState: must(root, "#pendingState", HTMLElement),
     pitch: must(root, "#pitch", HTMLInputElement),
@@ -255,6 +307,8 @@ export function renderAppShell(root: HTMLElement): AppElements {
     seekFrame: must(root, "#seekFrame", HTMLInputElement),
     seekRange: must(root, "#seekRange", HTMLInputElement),
     setLoopButton: must(root, "#setLoopButton", HTMLButtonElement),
+    splitCompareMode: must(root, "#splitCompareMode", HTMLInputElement),
+    splitComputation: must(root, "#splitComputation", HTMLInputElement),
     sourceDrop: must(root, "#sourceDrop", HTMLElement),
     staleButton: must(root, "#staleButton", HTMLButtonElement),
     status: must(root, "#status", HTMLElement),
