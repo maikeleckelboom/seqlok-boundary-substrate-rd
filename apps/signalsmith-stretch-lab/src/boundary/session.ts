@@ -17,18 +17,22 @@ import {
 } from "@exclave/boundary";
 
 import {
+  ADAPTER_MODES,
   defaultDesiredControls,
   enumLabel,
   PROBE_STATES,
   RUNTIME_STATES,
+  SOURCE_STATES,
   type DesiredStretchControls,
   type ProcessedLevelsSnapshot,
   type RuntimeStatusSnapshot,
+  type SourceStatusSnapshot,
 } from "../types";
 import {
   desiredStretchSpec,
   processedOutputLevelsSpec,
   runtimeStatusSpec,
+  sourceStatusSpec,
 } from "./specs";
 
 export interface BoundaryPlanSummary {
@@ -66,6 +70,7 @@ export interface StretchBoundarySession {
   readonly desired: AppBoundarySession<typeof desiredStretchSpec>;
   readonly levels: AppBoundarySession<typeof processedOutputLevelsSpec>;
   readonly runtime: AppBoundarySession<typeof runtimeStatusSpec>;
+  readonly source: AppBoundarySession<typeof sourceStatusSpec>;
 }
 
 function createAppBoundarySession<const S extends SpecInput>(
@@ -92,6 +97,7 @@ export function createStretchBoundarySession(): StretchBoundarySession {
     desired: createAppBoundarySession(desiredStretchSpec),
     levels: createAppBoundarySession(processedOutputLevelsSpec),
     runtime: createAppBoundarySession(runtimeStatusSpec),
+    source: createAppBoundarySession(sourceStatusSpec),
   };
 }
 
@@ -104,6 +110,9 @@ export function disposeStretchBoundarySession(
   session.runtime.controller.dispose();
   session.runtime.processor.dispose();
   session.runtime.observer.dispose();
+  session.source.controller.dispose();
+  session.source.processor.dispose();
+  session.source.observer.dispose();
   session.levels.controller.dispose();
   session.levels.processor.dispose();
   session.levels.observer.dispose();
@@ -121,6 +130,12 @@ export function writeDesiredControls(
   controls: DesiredStretchControls,
 ): void {
   session.desired.controller.params.update({
+    "config.blockMs": controls.blockMs,
+    "config.configSequence": controls.configSequence,
+    "config.intervalMs": controls.intervalMs,
+    "config.preset": controls.preset,
+    "config.splitComputation": controls.splitComputation,
+    "control.active": controls.active,
     "control.desiredSequence": controls.desiredSequence,
     "control.formantBaseHz": controls.formantBaseHz,
     "control.formantCompensation": controls.formantCompensation,
@@ -139,12 +154,18 @@ export function readDesiredControls(
   const snapshot = session.desired.observer.params.snapshot();
 
   return {
+    active: snapshot["control.active"],
+    blockMs: snapshot["config.blockMs"],
+    configSequence: snapshot["config.configSequence"],
     desiredSequence: snapshot["control.desiredSequence"],
     formantBaseHz: snapshot["control.formantBaseHz"],
     formantCompensation: snapshot["control.formantCompensation"],
     formantSemitones: snapshot["control.formantSemitones"],
+    intervalMs: snapshot["config.intervalMs"],
     pitchSemitones: snapshot["control.pitchSemitones"],
+    preset: snapshot["config.preset"],
     rate: snapshot["control.rate"],
+    splitComputation: snapshot["config.splitComputation"],
     tonalityEnabled: snapshot["control.tonalityEnabled"],
     tonalityHz: snapshot["control.tonalityHz"],
     transitionFrames: snapshot["control.transitionFrames"],
@@ -156,11 +177,28 @@ export function readRuntimeStatus(
 ): RuntimeStatusSnapshot {
   const snapshot = session.runtime.observer.meters.snapshot();
   const stateIndex = snapshot["runtime.state"];
+  const adapterModeIndex = snapshot["runtime.adapterMode"];
 
   return {
+    adapterMode: enumLabel(ADAPTER_MODES, adapterModeIndex, "fallback"),
+    adapterModeIndex,
+    audioWorkletFrameHi: snapshot["runtime.audioWorkletFrameHi"],
+    audioWorkletFrameLo: snapshot["runtime.audioWorkletFrameLo"],
+    audioWorkletTimeSeconds: snapshot["runtime.audioWorkletTimeSeconds"],
+    blockSamples: snapshot["runtime.blockSamples"],
     bufferReadyFrames: snapshot["runtime.bufferReadyFrames"],
+    bufferLengthFrames: snapshot["runtime.bufferLengthFrames"],
     commandDroppedTotal: snapshot["runtime.commandDroppedTotal"],
+    durationFrames: snapshot["runtime.durationFrames"],
+    durationSeconds: snapshot["runtime.durationSeconds"],
+    effectiveRate: snapshot["runtime.effectiveRate"],
+    heapGeneration: snapshot["runtime.heapGeneration"],
+    inputLatencyFrames: snapshot["runtime.inputLatencyFrames"],
+    inputLatencySeconds: snapshot["runtime.inputLatencySeconds"],
+    intervalSamples: snapshot["runtime.intervalSamples"],
+    invalidSampleTotal: snapshot["runtime.invalidSampleTotal"],
     invalidTransitionTotal: snapshot["runtime.invalidTransitionTotal"],
+    lastAppliedConfigSequence: snapshot["runtime.lastAppliedConfigSequence"],
     lastAppliedCommandSequence: snapshot["runtime.lastAppliedCommandSequence"],
     lastAppliedDesiredSequence: snapshot["runtime.lastAppliedDesiredSequence"],
     lastErrorCode: snapshot["runtime.lastErrorCode"],
@@ -169,6 +207,8 @@ export function readRuntimeStatus(
     loopRevision: snapshot["runtime.loopRevision"],
     loopStartFrame: snapshot["runtime.loopStartFrame"],
     maxObservedRenderQuantum: snapshot["runtime.maxObservedRenderQuantum"],
+    outputLatencyFrames: snapshot["runtime.outputLatencyFrames"],
+    outputLatencySeconds: snapshot["runtime.outputLatencySeconds"],
     outputFrame: snapshot["runtime.outputFrame"],
     processingCenterFrame: snapshot["runtime.processingCenterFrame"],
     sessionId: snapshot["runtime.sessionId"],
@@ -177,6 +217,31 @@ export function readRuntimeStatus(
     state: enumLabel(RUNTIME_STATES, stateIndex, "idle"),
     stateIndex,
     underrunTotal: snapshot["runtime.underrunTotal"],
+    workletGeneration: snapshot["runtime.workletGeneration"],
+  };
+}
+
+export function readSourceStatus(
+  session: StretchBoundarySession,
+): SourceStatusSnapshot {
+  const snapshot = session.source.observer.meters.snapshot();
+  const stateIndex = snapshot["source.state"];
+
+  return {
+    appliedLoadSequence: snapshot["source.appliedLoadSequence"],
+    bufferEndFrame: snapshot["source.bufferEndFrame"],
+    bufferStartFrame: snapshot["source.bufferStartFrame"],
+    channelCount: snapshot["source.channelCount"],
+    decodeErrorCode: snapshot["source.decodeErrorCode"],
+    droppedBufferTotal: snapshot["source.droppedBufferTotal"],
+    durationFrames: snapshot["source.durationFrames"],
+    durationSeconds: snapshot["source.durationSeconds"],
+    loadSequence: snapshot["source.loadSequence"],
+    memoryBytes: snapshot["source.memoryBytes"],
+    sampleRate: snapshot["source.sampleRate"],
+    sourceRevision: snapshot["source.sourceRevision"],
+    state: enumLabel(SOURCE_STATES, stateIndex, "none"),
+    stateIndex,
   };
 }
 
@@ -188,16 +253,20 @@ export function readProcessedLevels(
 
   return {
     channelCount: snapshot["levels.channelCount"],
+    clipLatched: snapshot["levels.clipLatched"],
     fullScaleLeftTotal: snapshot["levels.fullScaleLeftTotal"],
     fullScaleRightTotal: snapshot["levels.fullScaleRightTotal"],
     historyPeak: snapshot["levels.historyPeak"],
     historyRms: snapshot["levels.historyRms"],
     invalidSampleTotal: snapshot["levels.invalidSampleTotal"],
     lastErrorCode: snapshot["levels.lastErrorCode"],
+    maxAbsWindow: snapshot["levels.maxAbsWindow"],
+    outputBranchActive: snapshot["levels.outputBranchActive"],
     peakLeft: snapshot["levels.peakLeft"],
     peakRight: snapshot["levels.peakRight"],
     probeState: enumLabel(PROBE_STATES, probeStateIndex, "uninitialized"),
     probeStateIndex,
+    referenceBranchActive: snapshot["levels.referenceBranchActive"],
     rmsLeft: snapshot["levels.rmsLeft"],
     rmsRight: snapshot["levels.rmsRight"],
     silent: snapshot["levels.silent"],
@@ -235,11 +304,14 @@ function summarizePlan<S extends SpecInput>(
 
 export function readPlanSummaries(
   session: StretchBoundarySession,
-): Readonly<Record<"desired" | "levels" | "runtime", BoundaryPlanSummary>> {
+): Readonly<
+  Record<"desired" | "levels" | "runtime" | "source", BoundaryPlanSummary>
+> {
   return {
     desired: summarizePlan(session.desired),
     levels: summarizePlan(session.levels),
     runtime: summarizePlan(session.runtime),
+    source: summarizePlan(session.source),
   };
 }
 

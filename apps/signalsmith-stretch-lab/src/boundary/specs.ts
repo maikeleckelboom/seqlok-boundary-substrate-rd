@@ -1,20 +1,34 @@
 import { defineSpec } from "@exclave/boundary";
 
-import { PROBE_STATES, RUNTIME_STATES } from "../types";
+import {
+  ADAPTER_MODES,
+  PROBE_STATES,
+  RUNTIME_STATES,
+  SOURCE_STATES,
+  STRETCH_PRESETS,
+} from "../types";
 
 export const desiredStretchSpec = defineSpec(({ param }) => ({
   id: "signalsmith-stretch-lab/desired-stretch" as const,
   params: {
     control: {
       desiredSequence: param.u32(),
-      rate: param.f32({ min: 0.125, max: 8 }),
+      active: param.bool(),
+      rate: param.f32({ min: 0.05, max: 8 }),
       pitchSemitones: param.f32({ min: -48, max: 48 }),
       tonalityEnabled: param.bool(),
-      tonalityHz: param.f32({ min: 0, max: 20_000 }),
+      tonalityHz: param.f32({ min: 0, max: 24_000 }),
       formantSemitones: param.f32({ min: -48, max: 48 }),
       formantCompensation: param.bool(),
-      formantBaseHz: param.f32({ min: 0, max: 20_000 }),
+      formantBaseHz: param.f32({ min: 0, max: 24_000 }),
       transitionFrames: param.u32({ min: 0, max: 48_000 }),
+    },
+    config: {
+      configSequence: param.u32(),
+      preset: param.enum(STRETCH_PRESETS),
+      blockMs: param.f32({ min: 0, max: 1_000 }),
+      intervalMs: param.f32({ min: 0, max: 1_000 }),
+      splitComputation: param.bool(),
     },
   },
 }));
@@ -25,12 +39,27 @@ export const runtimeStatusSpec = defineSpec(({ meter }) => ({
     runtime: {
       state: meter.enum(RUNTIME_STATES),
       sessionId: meter.u32(),
+      adapterMode: meter.enum(ADAPTER_MODES),
       lastErrorCode: meter.u32(),
       lastAppliedDesiredSequence: meter.u32(),
+      lastAppliedConfigSequence: meter.u32(),
       lastAppliedCommandSequence: meter.u32(),
       outputFrame: meter.f64(),
       sourceFrame: meter.f64(),
       processingCenterFrame: meter.f64(),
+      effectiveRate: meter.f32(),
+      blockSamples: meter.u32(),
+      intervalSamples: meter.u32(),
+      inputLatencyFrames: meter.u32(),
+      outputLatencyFrames: meter.u32(),
+      inputLatencySeconds: meter.f64(),
+      outputLatencySeconds: meter.f64(),
+      bufferLengthFrames: meter.u32(),
+      durationFrames: meter.f64(),
+      durationSeconds: meter.f64(),
+      audioWorkletTimeSeconds: meter.f64(),
+      audioWorkletFrameLo: meter.u32(),
+      audioWorkletFrameHi: meter.u32(),
       loopEnabled: meter.bool(),
       loopStartFrame: meter.f64(),
       loopEndFrame: meter.f64(),
@@ -40,7 +69,31 @@ export const runtimeStatusSpec = defineSpec(({ meter }) => ({
       underrunTotal: meter.f64(),
       staleReadTotal: meter.f64(),
       invalidTransitionTotal: meter.f64(),
+      invalidSampleTotal: meter.f64(),
       maxObservedRenderQuantum: meter.u32(),
+      heapGeneration: meter.u32(),
+      workletGeneration: meter.u32(),
+    },
+  },
+}));
+
+export const sourceStatusSpec = defineSpec(({ meter }) => ({
+  id: "signalsmith-stretch-lab/source-status" as const,
+  meters: {
+    source: {
+      state: meter.enum(SOURCE_STATES),
+      sourceRevision: meter.u32(),
+      loadSequence: meter.u32(),
+      appliedLoadSequence: meter.u32(),
+      sampleRate: meter.u32(),
+      channelCount: meter.u32(),
+      durationFrames: meter.f64(),
+      durationSeconds: meter.f64(),
+      bufferStartFrame: meter.f64(),
+      bufferEndFrame: meter.f64(),
+      memoryBytes: meter.f64(),
+      decodeErrorCode: meter.u32(),
+      droppedBufferTotal: meter.f64(),
     },
   },
 }));
@@ -56,6 +109,10 @@ export const processedOutputLevelsSpec = defineSpec(({ meter }) => ({
       rmsRight: meter.f32(),
       peakLeft: meter.f32(),
       peakRight: meter.f32(),
+      outputBranchActive: meter.bool(),
+      referenceBranchActive: meter.bool(),
+      maxAbsWindow: meter.f32(),
+      clipLatched: meter.bool(),
       fullScaleLeftTotal: meter.f64(),
       fullScaleRightTotal: meter.f64(),
       invalidSampleTotal: meter.f64(),

@@ -1,19 +1,25 @@
 import {
   readProcessedLevels,
   readRuntimeStatus,
+  readSourceStatus,
   type StretchBoundarySession,
 } from "../boundary/session";
 import {
+  ADAPTER_MODES,
   defaultDesiredControls,
   defaultSimulatedSource,
   enumIndex,
+  enumLabel,
   PROBE_STATES,
   RUNTIME_STATES,
+  SOURCE_STATES,
+  STRETCH_PRESETS,
   type DesiredStretchControls,
   type ProcessedLevelsSnapshot,
   type RuntimeState,
   type RuntimeStatusSnapshot,
   type SimulatedSource,
+  type SourceStatusSnapshot,
 } from "../types";
 
 import type {
@@ -35,6 +41,7 @@ export interface FakeStretchTickResult {
   readonly levels: ProcessedLevelsSnapshot;
   readonly pendingDesiredSequence: number | null;
   readonly runtime: RuntimeStatusSnapshot;
+  readonly source: SourceStatusSnapshot;
 }
 
 export class FakeStretchEngine {
@@ -51,8 +58,12 @@ export class FakeStretchEngine {
   private historyCursor = 0;
   private invalidSampleTotal = 0;
   private invalidTransitionTotal = 0;
+  private appliedLoadSequence = 1;
+  private decodeErrorCode = 0;
+  private droppedBufferTotal = 0;
   private lastAppliedCommandSequence = 0;
   private lastErrorCode = 0;
+  private loadSequence = 1;
   private loopEnabled = false;
   private loopEndFrame = 0;
   private loopRevision = 0;
@@ -65,6 +76,7 @@ export class FakeStretchEngine {
   private seekStateTicks = 0;
   private source: SimulatedSource;
   private sourceFrame = 0;
+  private sourceRevision = 1;
   private staleReadBursts = 0;
   private staleReadTotal = 0;
   private underrunTotal = 0;
@@ -96,6 +108,10 @@ export class FakeStretchEngine {
 
   loadSource(source: SimulatedSource): void {
     this.source = source;
+    this.loadSequence = (this.loadSequence + 1) >>> 0;
+    this.appliedLoadSequence = this.loadSequence;
+    this.sourceRevision = (this.sourceRevision + 1) >>> 0;
+    this.decodeErrorCode = 0;
     this.outputFrame = 0;
     this.sourceFrame = 0;
     this.loopEnabled = false;
@@ -140,12 +156,14 @@ export class FakeStretchEngine {
     }
 
     this.publishRuntime(renderQuantum);
+    this.publishSourceStatus();
     this.publishLevels(renderQuantum);
 
     return {
       levels: readProcessedLevels(this.session),
       pendingDesiredSequence: this.pendingDesiredSequence,
       runtime: readRuntimeStatus(this.session),
+      source: readSourceStatus(this.session),
     };
   }
 
@@ -160,22 +178,33 @@ export class FakeStretchEngine {
 
     this.session.desired.processor.params.within((params) => {
       nextControls = {
+        active: params.control.active,
+        blockMs: params.config.blockMs,
+        configSequence: params.config.configSequence,
         desiredSequence: params.control.desiredSequence,
         formantBaseHz: params.control.formantBaseHz,
         formantCompensation: params.control.formantCompensation,
         formantSemitones: params.control.formantSemitones,
+        intervalMs: params.config.intervalMs,
         pitchSemitones: params.control.pitchSemitones,
+        preset: enumLabel(STRETCH_PRESETS, params.config.preset, "default"),
         rate: params.control.rate,
+        splitComputation: params.config.splitComputation,
         tonalityEnabled: params.control.tonalityEnabled,
         tonalityHz: params.control.tonalityHz,
         transitionFrames: params.control.transitionFrames,
       };
     });
 
-    if (
-      nextControls.desiredSequence !== this.appliedControls.desiredSequence &&
-      nextControls.desiredSequence !== this.pendingControls?.desiredSequence
-    ) {
+    const desiredChanged =
+      nextControls.desiredSequence !== this.appliedControls.desiredSequence;
+    const configChanged =
+      nextControls.configSequence !== this.appliedControls.configSequence;
+    const alreadyPending =
+      this.pendingControls?.desiredSequence === nextControls.desiredSequence &&
+      this.pendingControls.configSequence === nextControls.configSequence;
+
+    if ((desiredChanged || configChanged) && !alreadyPending) {
       this.pendingControls = nextControls;
       this.pendingTicks = this.applyDelayTicks;
     }
@@ -243,7 +272,7 @@ export class FakeStretchEngine {
   private seekToFrame(frame: number): void {
     const target = clamp(frame, 0, this.source.frames);
     this.sourceFrame = target;
-    this.outputFrame = target / Math.max(0.125, this.appliedControls.rate);
+    this.outputFrame = target / Math.max(0.05, this.appliedControls.rate);
     this.seekStateTicks = 2;
   }
 
@@ -278,7 +307,7 @@ export class FakeStretchEngine {
 
     this.outputFrame += renderQuantum;
     this.sourceFrame +=
-      renderQuantum * Math.max(0.125, this.appliedControls.rate);
+      renderQuantum * Math.max(0.05, this.appliedControls.rate);
 
     if (this.loopEnabled && this.sourceFrame >= this.loopEndFrame) {
       const loopLength = Math.max(1, this.loopEndFrame - this.loopStartFrame);
@@ -294,6 +323,9 @@ export class FakeStretchEngine {
 
   private publishRuntime(renderQuantum: number): void {
     const state = this.stateForPublish();
+    const config = resolveSimulatorConfig(this.appliedControls, this.source);
+    const effectiveRate = Math.max(0.05, this.appliedControls.rate);
+    const audioWorkletFrame = splitU64(this.outputFrame);
     const bufferReadyFrames = clamp(
       this.source.frames - Math.floor(this.sourceFrame),
       0,
@@ -301,12 +333,33 @@ export class FakeStretchEngine {
     );
 
     this.session.runtime.processor.meters.publish((writer) => {
+      writer.set("runtime.adapterMode", enumIndex(ADAPTER_MODES, "simulator"));
+      writer.set("runtime.audioWorkletFrameHi", audioWorkletFrame.hi);
+      writer.set("runtime.audioWorkletFrameLo", audioWorkletFrame.lo);
+      writer.set(
+        "runtime.audioWorkletTimeSeconds",
+        this.outputFrame / this.source.sampleRate,
+      );
+      writer.set("runtime.blockSamples", config.blockSamples);
       writer.set("runtime.bufferReadyFrames", bufferReadyFrames);
+      writer.set("runtime.bufferLengthFrames", config.bufferLengthFrames);
       writer.set("runtime.commandDroppedTotal", this.transport.stats().dropped);
+      writer.set("runtime.durationFrames", this.source.frames);
+      writer.set("runtime.durationSeconds", this.source.durationSeconds);
+      writer.set("runtime.effectiveRate", effectiveRate);
+      writer.set("runtime.heapGeneration", 0);
+      writer.set("runtime.inputLatencyFrames", config.inputLatencyFrames);
+      writer.set("runtime.inputLatencySeconds", config.inputLatencySeconds);
+      writer.set("runtime.intervalSamples", config.intervalSamples);
+      writer.set("runtime.invalidSampleTotal", this.invalidSampleTotal);
       writer.set("runtime.invalidTransitionTotal", this.invalidTransitionTotal);
       writer.set(
         "runtime.lastAppliedCommandSequence",
         this.lastAppliedCommandSequence,
+      );
+      writer.set(
+        "runtime.lastAppliedConfigSequence",
+        this.appliedControls.configSequence,
       );
       writer.set(
         "runtime.lastAppliedDesiredSequence",
@@ -322,15 +375,36 @@ export class FakeStretchEngine {
         this.maxObservedRenderQuantum,
       );
       writer.set("runtime.outputFrame", this.outputFrame);
+      writer.set("runtime.outputLatencyFrames", config.outputLatencyFrames);
+      writer.set("runtime.outputLatencySeconds", config.outputLatencySeconds);
       writer.set(
         "runtime.processingCenterFrame",
-        this.sourceFrame + (renderQuantum * this.appliedControls.rate) / 2,
+        this.sourceFrame + (renderQuantum * effectiveRate) / 2,
       );
       writer.set("runtime.sessionId", this.sessionId);
       writer.set("runtime.sourceFrame", this.sourceFrame);
       writer.set("runtime.staleReadTotal", this.staleReadTotal);
       writer.set("runtime.state", enumIndex(RUNTIME_STATES, state));
       writer.set("runtime.underrunTotal", this.underrunTotal);
+      writer.set("runtime.workletGeneration", 0);
+    });
+  }
+
+  private publishSourceStatus(): void {
+    this.session.source.processor.meters.publish((writer) => {
+      writer.set("source.appliedLoadSequence", this.appliedLoadSequence);
+      writer.set("source.bufferEndFrame", this.source.frames);
+      writer.set("source.bufferStartFrame", 0);
+      writer.set("source.channelCount", this.source.channels);
+      writer.set("source.decodeErrorCode", this.decodeErrorCode);
+      writer.set("source.droppedBufferTotal", this.droppedBufferTotal);
+      writer.set("source.durationFrames", this.source.frames);
+      writer.set("source.durationSeconds", this.source.durationSeconds);
+      writer.set("source.loadSequence", this.loadSequence);
+      writer.set("source.memoryBytes", this.source.memoryBytes);
+      writer.set("source.sampleRate", this.source.sampleRate);
+      writer.set("source.sourceRevision", this.sourceRevision);
+      writer.set("source.state", enumIndex(SOURCE_STATES, "accepted"));
     });
   }
 
@@ -376,10 +450,13 @@ export class FakeStretchEngine {
 
     this.session.levels.processor.meters.publish((writer) => {
       writer.set("levels.channelCount", this.source.channels);
+      writer.set("levels.clipLatched", this.fullScaleLeftTotal > 0);
       writer.set("levels.fullScaleLeftTotal", this.fullScaleLeftTotal);
       writer.set("levels.fullScaleRightTotal", this.fullScaleRightTotal);
       writer.set("levels.invalidSampleTotal", this.invalidSampleTotal);
       writer.set("levels.lastErrorCode", failed ? this.lastErrorCode : 0);
+      writer.set("levels.maxAbsWindow", Math.max(peakLeft, peakRight));
+      writer.set("levels.outputBranchActive", active);
       writer.set("levels.peakLeft", peakLeft);
       writer.set("levels.peakRight", peakRight);
       writer.set(
@@ -391,6 +468,7 @@ export class FakeStretchEngine {
       );
       writer.set("levels.rmsLeft", rmsLeft);
       writer.set("levels.rmsRight", rmsRight);
+      writer.set("levels.referenceBranchActive", active);
       writer.set("levels.silent", !active || rmsLeft < 0.001);
       writer.set(
         "levels.unsupportedChannelBlockTotal",
@@ -418,6 +496,71 @@ export class FakeStretchEngine {
 
     return this.runtimeState;
   }
+}
+
+interface SimulatorConfig {
+  readonly blockSamples: number;
+  readonly bufferLengthFrames: number;
+  readonly inputLatencyFrames: number;
+  readonly inputLatencySeconds: number;
+  readonly intervalSamples: number;
+  readonly outputLatencyFrames: number;
+  readonly outputLatencySeconds: number;
+}
+
+function resolveSimulatorConfig(
+  controls: DesiredStretchControls,
+  source: SimulatedSource,
+): SimulatorConfig {
+  const sampleRate = Math.max(1, source.sampleRate);
+  const presetBlockMs = controls.preset === "cheaper" ? 240 : 120;
+  const blockMs =
+    controls.blockMs > 0
+      ? controls.blockMs
+      : controls.preset === "custom"
+        ? 0
+        : presetBlockMs;
+  const intervalMs =
+    controls.intervalMs > 0
+      ? controls.intervalMs
+      : blockMs > 0
+        ? blockMs / 4
+        : 0;
+  const blockSamples = clamp(
+    Math.round((sampleRate * blockMs) / 1_000),
+    0,
+    0xffffffff,
+  );
+  const intervalSamples = clamp(
+    Math.round((sampleRate * intervalMs) / 1_000),
+    0,
+    0xffffffff,
+  );
+  const inputLatencyFrames = blockSamples;
+  const outputLatencyFrames = intervalSamples;
+
+  return {
+    blockSamples,
+    bufferLengthFrames: clamp(
+      inputLatencyFrames + outputLatencyFrames,
+      0,
+      0xffffffff,
+    ),
+    inputLatencyFrames,
+    inputLatencySeconds: inputLatencyFrames / sampleRate,
+    intervalSamples,
+    outputLatencyFrames,
+    outputLatencySeconds: outputLatencyFrames / sampleRate,
+  };
+}
+
+function splitU64(value: number): { readonly hi: number; readonly lo: number } {
+  const whole = Math.max(0, Math.floor(value));
+
+  return {
+    hi: Math.floor(whole / 0x100000000) >>> 0,
+    lo: whole >>> 0,
+  };
 }
 
 function clamp(value: number, min: number, max: number): number {

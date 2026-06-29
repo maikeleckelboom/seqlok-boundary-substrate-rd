@@ -3,6 +3,7 @@ import {
   desiredStretchSpec,
   processedOutputLevelsSpec,
   runtimeStatusSpec,
+  sourceStatusSpec,
 } from "../boundary/specs";
 
 export const SIGNALSMITH_ADAPTER_CONTRACT = {
@@ -14,6 +15,8 @@ export const SIGNALSMITH_ADAPTER_CONTRACT = {
       "_setFormantSemitones",
       "_setFormantBase",
       "_configure",
+      "_presetDefault",
+      "_presetCheaper",
     ],
     writer: "host controller",
   },
@@ -40,5 +43,10 @@ export const SIGNALSMITH_ADAPTER_CONTRACT = {
       "_process",
       "_flush",
     ],
+  },
+  sourceStatus: {
+    reader: "host observer",
+    specId: sourceStatusSpec.id,
+    writer: "future source loader and AudioWorklet acceptance path",
   },
 } as const;

@@ -9,9 +9,11 @@ import {
   describeBoundaryError,
   disposeStretchBoundarySession,
   initializeDesiredControls,
+  readDesiredControls,
   readPlanSummaries,
   readProcessedLevels,
   readRuntimeStatus,
+  readSourceStatus,
   writeDesiredControls,
 } from "./boundary/session";
 import { FakeStretchEngine } from "./runtime/fake-stretch-engine";
@@ -33,6 +35,7 @@ import {
   type ProcessedLevelsSnapshot,
   type RuntimeStatusSnapshot,
   type SimulatedSource,
+  type SourceStatusSnapshot,
 } from "./types";
 import { renderAppShell, renderUnsupported } from "./ui/dom";
 import { createWaveformPeaks, drawWaveform } from "./ui/waveform";
@@ -135,6 +138,7 @@ function startLab(appRoot: HTMLElement): void {
         desired = collectDesiredFromInputs(
           elements,
           nextSequence(desired.desiredSequence),
+          desired,
         );
         writeDesiredControls(session, desired);
         updateControlOutputs();
@@ -223,6 +227,22 @@ function startLab(appRoot: HTMLElement): void {
     });
 
     function enqueueCommand(name: StretchCommandName): void {
+      const nextActive =
+        name === "play"
+          ? true
+          : name === "pause" || name === "stop"
+            ? false
+            : desired.active;
+
+      if (nextActive !== desired.active) {
+        desired = {
+          ...desired,
+          active: nextActive,
+          desiredSequence: nextSequence(desired.desiredSequence),
+        };
+        writeDesiredControls(session, desired);
+      }
+
       commands.enqueue(name);
       engine.tick({ renderQuantum: 128 });
       render();
@@ -301,21 +321,25 @@ function startLab(appRoot: HTMLElement): void {
     }
 
     function render(): void {
+      const desiredSnapshot = readDesiredControls(session);
       const runtime = readRuntimeStatus(session);
       const levels = readProcessedLevels(session);
+      const sourceStatus = readSourceStatus(session);
       const plans = readPlanSummaries(session);
       const monitor = elements.alignedSourceMode.checked
         ? "Aligned source mock"
         : "Processed simulation";
       const pending =
-        desired.desiredSequence !== runtime.lastAppliedDesiredSequence;
+        desiredSnapshot.desiredSequence !==
+          runtime.lastAppliedDesiredSequence ||
+        desiredSnapshot.configSequence !== runtime.lastAppliedConfigSequence;
       const clipLeft = levels.fullScaleLeftTotal - clipBaselineLeft;
       const clipRight = levels.fullScaleRightTotal - clipBaselineRight;
 
       elements.transportState.textContent = runtime.state;
-      elements.appliedSequence.textContent = `${runtime.lastAppliedDesiredSequence.toString()} applied / ${desired.desiredSequence.toString()} desired`;
+      elements.appliedSequence.textContent = `${runtime.lastAppliedDesiredSequence.toString()} control, ${runtime.lastAppliedConfigSequence.toString()} config`;
       elements.pendingState.textContent = pending
-        ? `waiting for ${desired.desiredSequence.toString()}`
+        ? `waiting for control ${desiredSnapshot.desiredSequence.toString()} / config ${desiredSnapshot.configSequence.toString()}`
         : "none";
       elements.commandDrops.textContent =
         runtime.commandDroppedTotal.toString();
@@ -330,7 +354,7 @@ function startLab(appRoot: HTMLElement): void {
 
       renderMetadata(source);
       renderLevels(levels, clipLeft, clipRight);
-      renderInspector(plans, runtime, levels);
+      renderInspector(plans, desiredSnapshot, runtime, sourceStatus, levels);
 
       elements.status.classList.toggle("is-error", runtime.lastErrorCode !== 0);
       elements.status.textContent = [
@@ -399,7 +423,9 @@ function startLab(appRoot: HTMLElement): void {
 
     function renderInspector(
       plans: ReturnType<typeof readPlanSummaries>,
+      desiredSnapshot: DesiredStretchControls,
       runtime: RuntimeStatusSnapshot,
+      sourceStatus: SourceStatusSnapshot,
       levels: ProcessedLevelsSnapshot,
     ): void {
       renderKeyValues(elements.inspector, [
@@ -415,8 +441,23 @@ function startLab(appRoot: HTMLElement): void {
           signalsmithAssets.generatedWorkletExists ? "present" : "missing",
         ],
         ["Runtime adapter", runtimeModeFact(signalsmithAssets)],
+        ["Adapter mode", runtime.adapterMode],
+        ["Desired active", desiredSnapshot.active ? "true" : "false"],
+        ["Effective rate", `${runtime.effectiveRate.toFixed(3)}x`],
+        [
+          "Block / interval",
+          `${runtime.blockSamples.toString()} / ${runtime.intervalSamples.toString()} samples`,
+        ],
+        [
+          "Input / output latency",
+          `${formatFrame(runtime.inputLatencyFrames)} / ${formatFrame(runtime.outputLatencyFrames)} frames`,
+        ],
+        ["Duration", formatTime(runtime.durationFrames, source.sampleRate)],
+        ["Source state", sourceStatus.state],
+        ["Source revision", sourceStatus.sourceRevision.toString()],
         ["Desired plan", planFact(plans.desired)],
         ["Runtime plan", planFact(plans.runtime)],
+        ["Source plan", planFact(plans.source)],
         ["Levels plan", planFact(plans.levels)],
         ["PU/MU versions", versionFact(plans)],
         [
@@ -461,8 +502,10 @@ function renderAdapterHeader(
 function collectDesiredFromInputs(
   elements: ReturnType<typeof renderAppShell>,
   desiredSequence: number,
+  previousControls: DesiredStretchControls,
 ): DesiredStretchControls {
   return {
+    ...previousControls,
     desiredSequence,
     formantBaseHz: Number(elements.formantBase.value),
     formantCompensation: elements.formantCompensation.checked,
@@ -550,6 +593,7 @@ function versionFact(plans: ReturnType<typeof readPlanSummaries>): string {
   return [
     `desired ${plans.desired.paramVersion.toString()}/${plans.desired.meterVersion.toString()}`,
     `runtime ${plans.runtime.paramVersion.toString()}/${plans.runtime.meterVersion.toString()}`,
+    `source ${plans.source.paramVersion.toString()}/${plans.source.meterVersion.toString()}`,
     `levels ${plans.levels.paramVersion.toString()}/${plans.levels.meterVersion.toString()}`,
   ].join("; ");
 }

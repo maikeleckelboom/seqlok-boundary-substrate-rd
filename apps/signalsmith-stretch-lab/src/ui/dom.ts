@@ -141,7 +141,7 @@ export function renderAppShell(root: HTMLElement): AppElements {
           <p class="section-label">Timing and pitch</p>
           <label>
             <span>Rate</span>
-            <input id="rate" type="range" min="0.125" max="8" step="0.001" value="1" />
+            <input id="rate" type="range" min="0.05" max="8" step="0.001" value="1" />
             <output id="rateValue">1.000x</output>
           </label>
           <label>
@@ -164,7 +164,7 @@ export function renderAppShell(root: HTMLElement): AppElements {
           </label>
           <label>
             <span>Tonality Hz</span>
-            <input id="tonalityHz" type="range" min="0" max="20000" step="1" value="440" />
+            <input id="tonalityHz" type="range" min="0" max="24000" step="1" value="440" />
             <output id="tonalityHzValue">440 Hz</output>
           </label>
           <label>
@@ -178,7 +178,7 @@ export function renderAppShell(root: HTMLElement): AppElements {
           </label>
           <label>
             <span>Formant base</span>
-            <input id="formantBase" type="range" min="0" max="20000" step="1" value="0" />
+            <input id="formantBase" type="range" min="0" max="24000" step="1" value="0" />
             <output id="formantBaseValue">Auto</output>
           </label>
         </div>

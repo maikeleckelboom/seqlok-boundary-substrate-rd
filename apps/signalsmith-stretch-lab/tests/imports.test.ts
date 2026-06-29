@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 
 const APP_ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const SOURCE_EXTENSIONS = new Set([".css", ".html", ".json", ".mts", ".ts"]);
+const AUTHORED_JAVASCRIPT_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
 
 describe("Stage B app import and language guards", () => {
   it("uses the current boundary package and no stale prototype package names", () => {
@@ -25,6 +26,14 @@ describe("Stage B app import and language guards", () => {
     for (const pattern of forbidden) {
       expect(contents.includes(pattern)).toBe(false);
     }
+  });
+
+  it("does not add authored JavaScript module files under source, scripts, or tests", () => {
+    const forbidden = ["src", "scripts", "tests"]
+      .flatMap((dir) => collectAllFiles(join(APP_ROOT, dir)))
+      .filter((file) => AUTHORED_JAVASCRIPT_EXTENSIONS.has(extname(file)));
+
+    expect(forbidden).toEqual([]);
   });
 });
 
@@ -54,6 +63,23 @@ function collectFiles(dir: string): string[] {
     if (SOURCE_EXTENSIONS.has(extname(entry.name))) {
       files.push(absolute);
     }
+  }
+
+  return files;
+}
+
+function collectAllFiles(dir: string): string[] {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const absolute = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectAllFiles(absolute));
+      continue;
+    }
+
+    files.push(absolute);
   }
 
   return files;

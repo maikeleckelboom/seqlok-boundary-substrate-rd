@@ -7,10 +7,11 @@ import {
   initializeDesiredControls,
   readProcessedLevels,
   readRuntimeStatus,
+  readSourceStatus,
   writeDesiredControls,
 } from "../src/boundary/session";
 import { FakeStretchEngine } from "../src/runtime/fake-stretch-engine";
-import { defaultDesiredControls } from "../src/types";
+import { defaultDesiredControls, defaultSimulatedSource } from "../src/types";
 
 function setup(capacity = 16) {
   const session = createStretchBoundarySession();
@@ -25,6 +26,40 @@ function setup(capacity = 16) {
 }
 
 describe("FakeStretchEngine", () => {
+  it("publishes simulator runtime and source status fields", () => {
+    const { engine, session } = setup();
+
+    try {
+      const runtime = readRuntimeStatus(session);
+      const source = readSourceStatus(session);
+
+      expect(runtime.adapterMode).toBe("simulator");
+      expect(runtime.effectiveRate).toBeCloseTo(1);
+      expect(runtime.blockSamples).toBe(5_760);
+      expect(runtime.intervalSamples).toBe(1_440);
+      expect(runtime.inputLatencyFrames).toBe(5_760);
+      expect(runtime.outputLatencyFrames).toBe(1_440);
+      expect(runtime.bufferLengthFrames).toBe(7_200);
+      expect(runtime.durationFrames).toBe(engine.currentSource.frames);
+      expect(runtime.durationSeconds).toBe(
+        engine.currentSource.durationSeconds,
+      );
+      expect(runtime.heapGeneration).toBe(0);
+      expect(runtime.workletGeneration).toBe(0);
+
+      expect(source.state).toBe("accepted");
+      expect(source.sourceRevision).toBe(1);
+      expect(source.loadSequence).toBe(1);
+      expect(source.appliedLoadSequence).toBe(1);
+      expect(source.sampleRate).toBe(engine.currentSource.sampleRate);
+      expect(source.channelCount).toBe(engine.currentSource.channels);
+      expect(source.durationFrames).toBe(engine.currentSource.frames);
+      expect(source.bufferEndFrame).toBe(engine.currentSource.frames);
+    } finally {
+      disposeStretchBoundarySession(session);
+    }
+  });
+
   it("keeps desired changes pending before applying the sequence", () => {
     const { engine, session } = setup();
 
@@ -42,6 +77,36 @@ describe("FakeStretchEngine", () => {
       const applied = engine.tick({ renderQuantum: 128 });
       expect(applied.pendingDesiredSequence).toBeNull();
       expect(applied.runtime.lastAppliedDesiredSequence).toBe(2);
+      expect(applied.runtime.adapterMode).toBe("simulator");
+      expect(applied.runtime.effectiveRate).toBeCloseTo(2);
+    } finally {
+      disposeStretchBoundarySession(session);
+    }
+  });
+
+  it("publishes source status when simulator metadata source changes", () => {
+    const { engine, session } = setup();
+
+    try {
+      engine.loadSource({
+        ...defaultSimulatedSource(),
+        channels: 1,
+        durationSeconds: 10,
+        frames: 480_000,
+        memoryBytes: 480_000 * Float32Array.BYTES_PER_ELEMENT,
+        name: "short-mono.wav",
+        status: "file-metadata",
+      });
+      engine.tick({ renderQuantum: 128 });
+
+      const source = readSourceStatus(session);
+      expect(source.state).toBe("accepted");
+      expect(source.sourceRevision).toBe(2);
+      expect(source.loadSequence).toBe(2);
+      expect(source.appliedLoadSequence).toBe(2);
+      expect(source.channelCount).toBe(1);
+      expect(source.durationFrames).toBe(480_000);
+      expect(source.droppedBufferTotal).toBe(0);
     } finally {
       disposeStretchBoundarySession(session);
     }
@@ -103,6 +168,10 @@ describe("FakeStretchEngine", () => {
 
       expect(levels.probeState).toBe("active");
       expect(levels.fullScaleLeftTotal).toBeGreaterThan(0);
+      expect(levels.clipLatched).toBe(true);
+      expect(levels.maxAbsWindow).toBeGreaterThan(0);
+      expect(levels.outputBranchActive).toBe(true);
+      expect(levels.referenceBranchActive).toBe(true);
       expect(historyPeak.some((value) => value > 0)).toBe(true);
     } finally {
       disposeStretchBoundarySession(session);
