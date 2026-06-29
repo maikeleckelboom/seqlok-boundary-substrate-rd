@@ -12,6 +12,8 @@
     "lint:fix": "markdownlint-cli2 --config ../../.markdownlint-cli2.jsonc --fix \"src/**/*.md\""
   },
   "devDependencies": {
+    "@shikijs/vitepress-twoslash": "catalog:",
+    "@types/node": "catalog:",
     "markdownlint-cli2": "catalog:",
     "rimraf": "catalog:",
     "typescript": "catalog:",

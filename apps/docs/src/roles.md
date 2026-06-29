@@ -1,0 +1,48 @@
+# Controller, Processor, and Observer Roles
+
+Exclave Boundary exposes separate role bindings because each side has different authority and timing pressure.
+
+## Controller
+
+The controller is the host-side writer for params and reader for meters. It usually lives with UI, automation, preset hydration, or orchestration code.
+
+Controller responsibilities:
+
+- Write scalar params with `params.set(...)` or `params.update(...)`.
+- Write array params with `params.stage(...)`.
+- Hydrate cold-path param state with `params.hydrate(...)`.
+- Read meter snapshots for UI or host-side reporting.
+- Own range policy and meter degradation options.
+
+## Processor
+
+The processor is the timing-sensitive runtime binding. It reads params and publishes meters inside explicit callback windows.
+
+Processor responsibilities:
+
+- Read params inside `params.within(...)`.
+- Treat array param views as callback-scoped.
+- Publish scalar meters with direct writer functions or `writer.set(...)`.
+- Publish array meters with `writer.stage(...)`.
+- Keep planning, allocation, validation, logging, and orchestration outside the tight loop.
+
+## Observer
+
+The observer is a read-only binding for telemetry, inspection, visualizers, and secondary consumers.
+
+Observer responsibilities:
+
+- Read param snapshots.
+- Read meter snapshots.
+- Use `within(...)` for coherent read windows when snapshot allocation is not appropriate.
+- Avoid writes entirely.
+
+## Choosing a Role
+
+| Need | Role |
+| --- | --- |
+| Update control state from UI or host automation. | Controller |
+| Read control state in a timing-sensitive loop. | Processor |
+| Publish runtime meters. | Processor |
+| Feed diagnostics, visualization, or a HUD. | Observer |
+| Own the memory plan and backing allocation. | Owner/controller side before binding |

@@ -1,4 +1,4 @@
-# Migration Notes
+# Migration from the Seqlok Prototype
 
 Exclave Boundary was formerly developed under the Seqlok prototype name. Current integrations should use `@exclave/boundary`.
 
@@ -10,17 +10,23 @@ Use the current package import:
 import { defineSpec } from "@exclave/boundary";
 ```
 
-## Spec Shape
+Do not use old prototype package names in new code or docs.
 
-Specs may now be authored as nested ASTs. Write APIs use explicit canonical string keys returned by `defineSpec()`, while processor read views expose nested aliases such as `params.runtime.enabled`.
+## Vocabulary
 
-## Anonymous IDs
+- Keep `Seqlok` only when discussing history.
+- Use `seqlock` only for the concurrency primitive.
+- Use Exclave Boundary for the public package and docs.
 
-Specs without an explicit `id` receive a deterministic anonymous id derived from canonical contents. Set an explicit `id` when handoff compatibility should be tied to a stable public contract name.
+## Practical Changes
 
-## Expanded Kinds
-
-`u32`, `u32.array`, `u8.array`, `i8.array`, `i16.array`, `u16.array`, `i32` meters, and enum meters are part of the public core surface for this pass.
+| Prototype-era habit | Current guidance |
+| --- | --- |
+| Importing prototype package names. | Import `@exclave/boundary`. |
+| Treating docs as repository archaeology. | Explain the current package contract first. |
+| Reconstructing layout on both sides. | Build a handoff from one plan and accept it at the boundary. |
+| Treating audio as the only domain. | Use audio as the clearest first example, not the abstraction limit. |
+| Importing internals for convenience. | Stay on root exports or `@exclave/boundary/diagnostics`. |
 
 ## Boundary Semantics
 

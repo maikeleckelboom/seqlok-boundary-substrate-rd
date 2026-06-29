@@ -1,14 +1,153 @@
 # Examples
 
-## Nested Params and Meters
+Use Twoslash examples where the type system proves part of the boundary contract. Plain code blocks are used for transport sketches or operational commands.
 
-```ts
+## Spec Inference and Canonical Keys
+
+```ts twoslash
+import { defineSpec } from "@exclave/boundary";
+
 const spec = defineSpec(({ param, meter }) => ({
+  id: "examples/transport" as const,
   params: {
     transport: {
       enabled: param.bool(),
-      cursor: param.u32({ min: 0, max: 0xffffffff }),
+      mode: param.enum(["idle", "active", "fault"]),
       payload: param.u8.array(16),
+    },
+  },
+  meters: {
+    transport: {
+      state: meter.enum(["idle", "active", "fault"]),
+      drift: meter.i32(),
+      spectrum: meter.f32.array(8),
+    },
+  },
+}));
+
+spec.params["transport.mode"];
+// ^?
+
+spec.meters["transport.spectrum"];
+// ^?
+```
+
+The authored shape is nested, but the canonical spec uses dot keys. Those keys are accepted by controller and observer APIs.
+
+## Controller Params
+
+```ts twoslash
+import {
+  allocateShared,
+  bindController,
+  defineSpec,
+  planLayout,
+} from "@exclave/boundary";
+
+const spec = defineSpec(({ param, meter }) => ({
+  id: "examples/controller" as const,
+  params: {
+    transport: {
+      enabled: param.bool(),
+      mode: param.enum(["idle", "active", "fault"]),
+      payload: param.u8.array(16),
+    },
+  },
+  meters: {
+    frames: meter.u32(),
+  },
+}));
+
+const plan = planLayout(spec);
+const backing = allocateShared(plan);
+const controller = bindController(spec, plan, backing);
+
+controller.params.set("transport.enabled", true);
+controller.params.set("transport.mode", "active");
+controller.params.stage("transport.payload", (payload) => {
+  payload.set([1, 2, 3, 4]);
+  payload;
+  // ^?
+});
+```
+
+Scalar enum params use labels on the controller side. Processor and meter enum values are numeric indices at the runtime boundary.
+
+## Processor Views
+
+```ts twoslash
+import {
+  acceptHandoff,
+  allocateShared,
+  bindProcessor,
+  buildHandoff,
+  defineSpec,
+  planLayout,
+} from "@exclave/boundary";
+
+const spec = defineSpec(({ param, meter }) => ({
+  id: "examples/processor" as const,
+  params: {
+    transport: {
+      enabled: param.bool(),
+      mode: param.enum(["idle", "active", "fault"]),
+      payload: param.u8.array(16),
+    },
+  },
+  meters: {
+    frames: meter.u32(),
+    spectrum: meter.f32.array(8),
+  },
+}));
+
+const plan = planLayout(spec);
+const backing = allocateShared(plan);
+const accepted = acceptHandoff(buildHandoff(plan, backing));
+const processor = bindProcessor(accepted);
+
+processor.params.within((params) => {
+  params.transport.enabled;
+  // ^?
+
+  params.transport.mode;
+  // ^?
+
+  params.transport.payload;
+  // ^?
+});
+
+processor.meters.publish((meters) => {
+  meters.frames(128);
+  meters.stage("spectrum", (spectrum) => {
+    spectrum[0] = 0.25;
+    spectrum;
+    // ^?
+  });
+});
+```
+
+The nested aliases inside `within(...)` are read conveniences over the canonical dot-key contract. Array views are ephemeral and scoped to the callback.
+
+## Observer Snapshots
+
+Observers are read-only bindings for telemetry, inspection, or secondary consumers. They can bind from the same accepted handoff as the processor.
+
+```ts twoslash
+import {
+  acceptHandoff,
+  allocateShared,
+  bindObserver,
+  buildHandoff,
+  defineSpec,
+  planLayout,
+} from "@exclave/boundary";
+
+const spec = defineSpec(({ param, meter }) => ({
+  id: "examples/observer" as const,
+  params: {
+    transport: {
+      enabled: param.bool(),
+      mode: param.enum(["idle", "active", "fault"]),
     },
   },
   meters: {
@@ -18,26 +157,40 @@ const spec = defineSpec(({ param, meter }) => ({
     },
   },
 }));
+
+const plan = planLayout(spec);
+const backing = allocateShared(plan);
+const accepted = acceptHandoff(buildHandoff(plan, backing));
+const observer = bindObserver(accepted);
+
+const params = observer.params.snapshot([
+  "transport.enabled",
+  "transport.mode",
+] as const);
+const meters = observer.meters.snapshot("transport.state", "transport.drift");
+
+params["transport.mode"];
+// ^?
+
+meters["transport.state"];
+// ^?
 ```
 
-Use canonical keys after compilation:
+## BoundaryError Narrowing
 
-```ts
-controller.params.set("transport.enabled", true);
-controller.params.stage("transport.payload", (payload) => {
-  payload.set([1, 2, 3, 4]);
-});
-```
+```ts twoslash
+import { isBoundaryError } from "@exclave/boundary";
 
-## Observer Binding
+export function summarizeError(error: unknown) {
+  if (isBoundaryError(error)) {
+    error.code;
+    // ^?
 
-Observers are read-only bindings for telemetry, inspection, or secondary consumers.
+    return error.toJSON();
+  }
 
-```ts
-const observer = bindObserver(acceptHandoff(handoff));
-
-const params = observer.params.snapshot(["transport.enabled"]);
-const meters = observer.meters.snapshot(["transport.state"]);
+  return { name: "Unknown" };
+}
 ```
 
 ## Pack Smoke Shape

@@ -24,6 +24,8 @@ packages/**/.coverage/
 # ── Vite and other caches
 .vite/
 .cache/
+apps/**/src/.vitepress/cache/
+packages/**/src/.vitepress/cache/
 .eslintcache
 *.tsbuildinfo
 

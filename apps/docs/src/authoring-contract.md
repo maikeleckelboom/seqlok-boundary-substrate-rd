@@ -1,44 +1,64 @@
 # Authored AST vs Runtime Contract
 
-The authored AST is the human-facing input. The runtime contract is the canonical spec returned by `defineSpec()`.
-
-## Authored AST
-
-Nested namespaces keep specs readable:
+Authors can write nested specs because nested objects are easier to read and review:
 
 ```ts
-const spec = defineSpec(({ param, meter }) => ({
+const spec = defineSpec(({ param }) => ({
   params: {
-    engine: {
+    filter: {
+      cutoff: param.f32({ min: 20, max: 20_000 }),
       enabled: param.bool(),
-      frame: param.u32({ min: 0, max: 0xffffffff }),
-    },
-  },
-  meters: {
-    engine: {
-      state: meter.enum(["idle", "running"]),
     },
   },
 }));
 ```
 
-## Canonical Runtime
-
-The returned spec is flat and deterministic. Canonical runtime keys for the example above are:
-
-- `engine.enabled`
-- `engine.frame`
-- `engine.state`
-
-Processor read views expose nested aliases for authored namespaces:
+The runtime contract is canonical and flat:
 
 ```ts
-params.engine.enabled;
-params.engine.frame;
+spec.params["filter.cutoff"];
+spec.params["filter.enabled"];
 ```
 
-Anonymous specs receive deterministic `anon_<hash>` ids derived from canonical contents. Equivalent authored and plain canonical specs compile to the same runtime shape.
+The dot-key contract is what controllers use for dynamic writes, snapshots, and deterministic layout. Processor read views also expose nested aliases for ergonomic coherent reads.
+
+```ts twoslash
+import { defineSpec, type ParamValues } from "@exclave/boundary";
+
+const spec = defineSpec(({ param, meter }) => ({
+  id: "authoring/filter" as const,
+  params: {
+    filter: {
+      cutoff: param.f32({ min: 20, max: 20_000 }),
+      enabled: param.bool(),
+      mode: param.enum(["lowpass", "highpass"]),
+    },
+  },
+  meters: {
+    filter: {
+      peak: meter.f32(),
+    },
+  },
+}));
+
+spec.params["filter.mode"];
+// ^?
+
+type ControllerParamValues = ParamValues<typeof spec>;
+//   ^?
+```
+
+## Why Canonical Keys Matter
+
+Canonical dot keys are stable across controller writes, snapshot selection, plan generation, diagnostics, and generated examples. They also keep dynamic UI or automation code honest: a controller can update `"filter.cutoff"` without needing the authored nested object at runtime.
 
 ## Conflict Rules
 
 A leaf and namespace cannot claim the same canonical dot key. For example, `params.engine` as a leaf conflicts with `params.engine.frame` as a descendant. This prevents ambiguous runtime memory layout.
+
+## Why This Matters
+
+- Generated layouts are deterministic.
+- Handoff artifacts carry the planned contract, not an implicit local reconstruction.
+- Type inference follows the contract from spec to binding.
+- Runtime examples can prove the key names through Twoslash rather than relying on prose.

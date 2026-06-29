@@ -1,8 +1,8 @@
 # Quickstart
 
-This is the smallest complete Exclave Boundary flow: define a spec, plan memory, allocate backing, bind controller and processor roles, then publish values through the seqlock-protected boundary.
+This is the smallest complete Exclave Boundary flow: define a spec, plan memory, allocate backing, build a handoff, accept it on the runtime side, and bind the roles that read or write shared state.
 
-```ts
+```ts twoslash
 import {
   acceptHandoff,
   allocateShared,
@@ -14,6 +14,7 @@ import {
 } from "@exclave/boundary";
 
 const spec = defineSpec(({ param, meter }) => ({
+  id: "quickstart/control" as const,
   params: {
     runtime: {
       enabled: param.bool(),
@@ -27,11 +28,16 @@ const spec = defineSpec(({ param, meter }) => ({
   },
 }));
 
+spec.params["runtime.enabled"];
+// ^?
+
 const plan = planLayout(spec);
 const backing = allocateShared(plan);
 
 const controller = bindController(spec, plan, backing);
-const processor = bindProcessor(acceptHandoff(buildHandoff(plan, backing)));
+const handoff = buildHandoff(plan, backing);
+const accepted = acceptHandoff(handoff);
+const processor = bindProcessor(accepted);
 
 controller.params.set("runtime.enabled", true);
 controller.params.set("runtime.count", 42);
@@ -41,6 +47,9 @@ controller.params.stage("runtime.window", (view) => {
 
 processor.params.within((params) => {
   if (params.runtime.enabled) {
+    params.runtime.count;
+    // ^?
+
     processor.meters.publish((meters) => {
       meters.status(1);
       meters.signedDelta(-1);
@@ -48,7 +57,19 @@ processor.params.within((params) => {
   }
 });
 
-console.log(controller.meters.snapshot());
+const meterSnapshot = controller.meters.snapshot();
+meterSnapshot;
+// ^?
 ```
 
-Write APIs use explicit canonical string keys. Processor read views expose nested aliases such as `params.runtime.enabled`.
+Write APIs use explicit canonical string keys such as `"runtime.enabled"`. Processor read views expose nested aliases such as `params.runtime.enabled` inside `within(...)`; array views are callback-scoped and should not be retained.
+
+## What Crosses the Boundary
+
+The handoff is the boundary artifact. It carries the plan and backing descriptor. It can be moved with a worker message, an AudioWorklet port message, or another host transport, but the transport is not the contract.
+
+```ts
+worker.postMessage({ type: "boundary-handoff", handoff });
+```
+
+On the receiving side, treat inbound values as untrusted until `acceptHandoff(...)` validates the protocol version, plan shape, packing mode, and backing sizes.

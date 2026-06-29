@@ -6,6 +6,8 @@ dist/**
 node_modules/
 dist/
 coverage/
+apps/**/src/.vitepress/cache/**
+packages/**/src/.vitepress/cache/**
 
 # All docs in packages
 packages/**/docs/**

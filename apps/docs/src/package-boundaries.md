@@ -1,26 +1,36 @@
-# Package Graph and Internal Boundaries
+# Package Boundaries
 
-This release direction uses one public package:
+The public package boundary is:
 
-```txt
+```text
 @exclave/boundary
+@exclave/boundary/diagnostics
 ```
 
-Exclave is the ecosystem name. Boundary is this package. The former split between base, schema, and primitives is internalized. Those layers are allowed to exist as source folders, but they are not workspace runtime dependencies in the packed output.
-
-## Public Boundary
-
-Consumers should import from:
+Use root exports for the boundary flow. Use diagnostics exports for support checks and instrumentation.
 
 ```ts
 import { defineSpec, planLayout } from "@exclave/boundary";
 import { snapshotCounters } from "@exclave/boundary/diagnostics";
 ```
 
-## Internal Boundary
+Do not import internal files from `packages/core/src`. Internal modules may change without semver guarantees unless they are exported from `@exclave/boundary` or `@exclave/boundary/diagnostics`.
 
-Internal modules may change without semver guarantees unless they are exported from `@exclave/boundary` or `@exclave/boundary/diagnostics`.
+## What Belongs Inside the Package
 
-## Publish Rule
+- Spec authoring helpers and canonical spec types.
+- Deterministic layout planning.
+- Supported shared backing allocation.
+- Handoff construction and acceptance.
+- Controller, processor, and observer bindings.
+- Enum helpers, structured errors, and diagnostics helpers.
 
-The packed package must not depend on `workspace:*` packages at runtime. If a future pass splits packages again, each package must be publish-ready, packed, and smoke-tested as a real dependency.
+## What Does Not Belong Inside the Package
+
+- Worker, worklet, or process lifecycle orchestration.
+- Domain-specific command protocols.
+- UI state management.
+- Persistence, preset storage, or project-file formats.
+- Application-level retry, reconnect, or deployment policy.
+
+Those layers can use `@exclave/boundary`, but they should not be hidden inside it.
