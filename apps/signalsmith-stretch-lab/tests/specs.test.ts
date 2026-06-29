@@ -28,6 +28,14 @@ const APP_SPECS = [
   processedOutputLevelsSpec,
 ] as const;
 
+const APP_PRIVATE_PREFIXES = [
+  "control.",
+  "config.",
+  "runtime.",
+  "source.",
+  "levels.",
+] as const;
+
 describe("Stage B boundary specs", () => {
   it("defines exact app-private spec ids", () => {
     expect(desiredStretchSpec.id).toBe(
@@ -42,135 +50,145 @@ describe("Stage B boundary specs", () => {
 
   it("defines the required canonical keys", () => {
     expect(Object.keys(desiredStretchSpec.params).sort()).toEqual([
-      "config.blockMs",
-      "config.configSequence",
-      "config.intervalMs",
-      "config.preset",
-      "config.splitComputation",
-      "control.active",
-      "control.desiredSequence",
-      "control.formantBaseHz",
-      "control.formantCompensation",
-      "control.formantSemitones",
-      "control.pitchSemitones",
-      "control.rate",
-      "control.tonalityEnabled",
-      "control.tonalityHz",
-      "control.transitionFrames",
+      "active",
+      "blockMs",
+      "configSequence",
+      "desiredSequence",
+      "formantBaseHz",
+      "formantCompensation",
+      "formantSemitones",
+      "intervalMs",
+      "pitchSemitones",
+      "preset",
+      "rate",
+      "splitComputation",
+      "tonalityEnabled",
+      "tonalityHz",
+      "transitionFrames",
     ]);
 
     expect(Object.keys(runtimeStatusSpec.meters).sort()).toEqual([
-      "runtime.adapterMode",
-      "runtime.audioWorkletFrameHi",
-      "runtime.audioWorkletFrameLo",
-      "runtime.audioWorkletTimeSeconds",
-      "runtime.blockSamples",
-      "runtime.bufferLengthFrames",
-      "runtime.bufferReadyFrames",
-      "runtime.commandDroppedTotal",
-      "runtime.durationFrames",
-      "runtime.durationSeconds",
-      "runtime.effectiveRate",
-      "runtime.heapGeneration",
-      "runtime.inputLatencyFrames",
-      "runtime.inputLatencySeconds",
-      "runtime.intervalSamples",
-      "runtime.invalidSampleTotal",
-      "runtime.invalidTransitionTotal",
-      "runtime.lastAppliedCommandSequence",
-      "runtime.lastAppliedConfigSequence",
-      "runtime.lastAppliedDesiredSequence",
-      "runtime.lastErrorCode",
-      "runtime.loopEnabled",
-      "runtime.loopEndFrame",
-      "runtime.loopRevision",
-      "runtime.loopStartFrame",
-      "runtime.maxObservedRenderQuantum",
-      "runtime.outputFrame",
-      "runtime.outputLatencyFrames",
-      "runtime.outputLatencySeconds",
-      "runtime.processingCenterFrame",
-      "runtime.sessionId",
-      "runtime.sourceFrame",
-      "runtime.staleReadTotal",
-      "runtime.state",
-      "runtime.underrunTotal",
-      "runtime.workletGeneration",
+      "adapterMode",
+      "audioWorkletFrameHi",
+      "audioWorkletFrameLo",
+      "audioWorkletTimeSeconds",
+      "blockSamples",
+      "bufferLengthFrames",
+      "bufferReadyFrames",
+      "commandDroppedTotal",
+      "durationFrames",
+      "durationSeconds",
+      "effectiveRate",
+      "heapGeneration",
+      "inputLatencyFrames",
+      "inputLatencySeconds",
+      "intervalSamples",
+      "invalidSampleTotal",
+      "invalidTransitionTotal",
+      "lastAppliedCommandSequence",
+      "lastAppliedConfigSequence",
+      "lastAppliedDesiredSequence",
+      "lastErrorCode",
+      "loopEnabled",
+      "loopEndFrame",
+      "loopRevision",
+      "loopStartFrame",
+      "maxObservedRenderQuantum",
+      "outputFrame",
+      "outputLatencyFrames",
+      "outputLatencySeconds",
+      "processingCenterFrame",
+      "sessionId",
+      "sourceFrame",
+      "staleReadTotal",
+      "state",
+      "underrunTotal",
+      "workletGeneration",
     ]);
 
     expect(Object.keys(sourceStatusSpec.meters).sort()).toEqual([
-      "source.appliedLoadSequence",
-      "source.bufferEndFrame",
-      "source.bufferStartFrame",
-      "source.channelCount",
-      "source.decodeErrorCode",
-      "source.droppedBufferTotal",
-      "source.durationFrames",
-      "source.durationSeconds",
-      "source.loadSequence",
-      "source.memoryBytes",
-      "source.sampleRate",
-      "source.sourceRevision",
-      "source.state",
+      "appliedLoadSequence",
+      "bufferEndFrame",
+      "bufferStartFrame",
+      "channelCount",
+      "decodeErrorCode",
+      "droppedBufferTotal",
+      "durationFrames",
+      "durationSeconds",
+      "loadSequence",
+      "memoryBytes",
+      "sampleRate",
+      "sourceRevision",
+      "state",
     ]);
 
     expect(Object.keys(processedOutputLevelsSpec.meters).sort()).toEqual([
-      "levels.channelCount",
-      "levels.clipLatched",
-      "levels.fullScaleLeftTotal",
-      "levels.fullScaleRightTotal",
-      "levels.historyPeak",
-      "levels.historyRms",
-      "levels.invalidSampleTotal",
-      "levels.lastErrorCode",
-      "levels.maxAbsWindow",
-      "levels.outputBranchActive",
-      "levels.peakLeft",
-      "levels.peakRight",
-      "levels.probeState",
-      "levels.referenceBranchActive",
-      "levels.rmsLeft",
-      "levels.rmsRight",
-      "levels.silent",
-      "levels.unsupportedChannelBlockTotal",
-      "levels.windowEndOutputFrame",
-      "levels.windowFrames",
+      "channelCount",
+      "clipLatched",
+      "fullScaleLeftTotal",
+      "fullScaleRightTotal",
+      "historyPeak",
+      "historyRms",
+      "invalidSampleTotal",
+      "lastErrorCode",
+      "maxAbsWindow",
+      "outputBranchActive",
+      "peakLeft",
+      "peakRight",
+      "probeState",
+      "referenceBranchActive",
+      "rmsLeft",
+      "rmsRight",
+      "silent",
+      "unsupportedChannelBlockTotal",
+      "windowEndOutputFrame",
+      "windowFrames",
     ]);
   });
 
+  it("does not keep the old nested key prefixes inside app-private specs", () => {
+    const appPrivateKeys = [
+      ...Object.keys(desiredStretchSpec.params),
+      ...Object.keys(runtimeStatusSpec.meters),
+      ...Object.keys(sourceStatusSpec.meters),
+      ...Object.keys(processedOutputLevelsSpec.meters),
+    ];
+
+    expect(
+      appPrivateKeys.filter((key) =>
+        APP_PRIVATE_PREFIXES.some((prefix) => key.startsWith(prefix)),
+      ),
+    ).toEqual([]);
+  });
+
   it("maps the official web demo controls without f64 params", () => {
-    expect(desiredStretchSpec.params["control.rate"]).toMatchObject({
+    expect(desiredStretchSpec.params.rate).toMatchObject({
       kind: "f32",
       max: 8,
       min: 0.05,
     });
-    expect(desiredStretchSpec.params["control.pitchSemitones"]).toMatchObject({
+    expect(desiredStretchSpec.params.pitchSemitones).toMatchObject({
       kind: "f32",
       max: 48,
       min: -48,
     });
-    expect(desiredStretchSpec.params["control.tonalityHz"]).toMatchObject({
+    expect(desiredStretchSpec.params.tonalityHz).toMatchObject({
       kind: "f32",
       max: 24_000,
       min: 0,
     });
-    expect(desiredStretchSpec.params["control.formantBaseHz"]).toMatchObject({
+    expect(desiredStretchSpec.params.formantBaseHz).toMatchObject({
       kind: "f32",
       max: 24_000,
       min: 0,
     });
-    expect(desiredStretchSpec.params["config.preset"]).toMatchObject({
+    expect(desiredStretchSpec.params.preset).toMatchObject({
       kind: "enum",
       values: ["custom", "default", "cheaper"],
     });
 
     expect(Object.keys(desiredStretchSpec.params)).not.toEqual(
-      expect.arrayContaining([
-        "control.input",
-        "control.output",
-        "control.loopStart",
-        "control.loopEnd",
-      ]),
+      expect.arrayContaining(["input", "output", "loopStart", "loopEnd"]),
     );
 
     for (const def of Object.values(desiredStretchSpec.params)) {
@@ -231,13 +249,13 @@ describe("Stage B boundary specs", () => {
       let observedSequence = 0;
 
       session.desired.processor.params.within((params) => {
-        observedActive = params.control.active;
-        observedConfigSequence = params.config.configSequence;
-        observedIntervalMs = params.config.intervalMs;
-        observedPreset = params.config.preset;
-        observedRate = params.control.rate;
-        observedPitch = params.control.pitchSemitones;
-        observedSequence = params.control.desiredSequence;
+        observedActive = params.active;
+        observedConfigSequence = params.configSequence;
+        observedIntervalMs = params.intervalMs;
+        observedPreset = params.preset;
+        observedRate = params.rate;
+        observedPitch = params.pitchSemitones;
+        observedSequence = params.desiredSequence;
       });
 
       expect(observedActive).toBe(true);

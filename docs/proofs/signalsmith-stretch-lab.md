@@ -612,7 +612,7 @@ Definition of done:
 1. Scope: add a private demo app, preferably `apps/signalsmith-stretch-lab`. Do not redesign `@exclave/boundary`. Do not rename package APIs. Do not publish a Signalsmith adapter package.
 2. Naming: public/demo language says Exclave Boundary and Signalsmith Stretch Lab. Keep "Seqlok" only in historical migration notes if needed. Keep "seqlock" only as the primitive term.
 3. Demo thesis: build a desktop-first browser demo shell for loading a local track, viewing waveform/navigation state, controlling rate/pitch/tonality/formant-like desired state, seeing pending vs applied state, showing runtime status, and displaying processed-output RMS/peak/full-scale facts. Audio can be simulated in this first slice if full Signalsmith WASM/AudioWorklet integration is too large.
-4. Boundary proof: use real `@exclave/boundary` APIs. Define at least three specs: desired stretch state, runtime status, and processed output levels. Use `defineSpec`, `planLayout`, `allocateShared`, `buildHandoff`/`acceptHandoff`, `bindController`, `bindProcessor`, and `bindObserver` where appropriate.
+4. Boundary proof: use real `@exclave/boundary` APIs. Define the four app-private specs: desired stretch state, runtime status, source status, and processed output levels. Use `defineSpec`, `planLayout`, `allocateShared`, `buildHandoff`/`acceptHandoff`, `bindController`, `bindProcessor`, and `bindObserver` where appropriate.
 5. Engine strategy: implement a demo-private fake/stretch simulator first. The fake engine should model applied sequence, source frame, output frame, rate, pitch, status, levels, clipping counters, stale/pending state, and failure modes. Leave TODO docs for the later custom C++/WASM/AudioWorklet adapter.
 6. UI: make it visually impressive but truthful. Include load/drop surface, waveform panel, transport row, rate and pitch controls, loop region mock/preview, A/B selector mock, processed output level display, status/latency inspector, and persistent error/status area. Prioritize a clean instrument-panel feel, not a generic playground.
 7. Docs integration: add a docs page and blog post for Signalsmith Stretch Lab under the VitePress docs site only when the demo is ready for public proof framing. Explain what the demo proves, what is simulated, what becomes the real custom adapter later, and how `@exclave/boundary` is used.
@@ -672,93 +672,126 @@ apps/signalsmith-stretch-lab/
 
 #### Exact boundary specs
 
-Define the three Stage B specs in `src/boundary/specs.ts` with
+Define the four Stage B specs in `src/boundary/specs.ts` with
 `defineSpec`. They are app-private contracts. Their IDs and canonical keys
 should be tested exactly.
 
 ```ts
 import { defineSpec } from "@exclave/boundary";
 
+import {
+  ADAPTER_MODES,
+  PROBE_STATES,
+  RUNTIME_STATES,
+  SOURCE_STATES,
+  STRETCH_PRESETS,
+} from "../types";
+
 export const desiredStretchSpec = defineSpec(({ param }) => ({
   id: "signalsmith-stretch-lab/desired-stretch" as const,
   params: {
-    control: {
-      desiredSequence: param.u32(),
-      rate: param.f32({ min: 0.125, max: 8 }),
-      pitchSemitones: param.f32({ min: -48, max: 48 }),
-      tonalityEnabled: param.bool(),
-      tonalityHz: param.f32({ min: 0, max: 20_000 }),
-      formantSemitones: param.f32({ min: -48, max: 48 }),
-      formantCompensation: param.bool(),
-      formantBaseHz: param.f32({ min: 0, max: 20_000 }),
-      transitionFrames: param.u32({ min: 0, max: 48_000 }),
-    },
+    desiredSequence: param.u32(),
+    active: param.bool(),
+    rate: param.f32({ min: 0.05, max: 8 }),
+    pitchSemitones: param.f32({ min: -48, max: 48 }),
+    tonalityEnabled: param.bool(),
+    tonalityHz: param.f32({ min: 0, max: 24_000 }),
+    formantSemitones: param.f32({ min: -48, max: 48 }),
+    formantCompensation: param.bool(),
+    formantBaseHz: param.f32({ min: 0, max: 24_000 }),
+    transitionFrames: param.u32({ min: 0, max: 48_000 }),
+    configSequence: param.u32(),
+    preset: param.enum(STRETCH_PRESETS),
+    blockMs: param.f32({ min: 0, max: 1_000 }),
+    intervalMs: param.f32({ min: 0, max: 1_000 }),
+    splitComputation: param.bool(),
   },
 }));
 
 export const runtimeStatusSpec = defineSpec(({ meter }) => ({
   id: "signalsmith-stretch-lab/runtime-status" as const,
   meters: {
-    runtime: {
-      state: meter.enum([
-        "unsupported",
-        "idle",
-        "ready-paused",
-        "playing",
-        "seeking",
-        "flushing",
-        "ended",
-        "failed-recoverable",
-        "failed-terminal",
-      ]),
-      sessionId: meter.u32(),
-      lastErrorCode: meter.u32(),
-      lastAppliedDesiredSequence: meter.u32(),
-      lastAppliedCommandSequence: meter.u32(),
-      outputFrame: meter.f64(),
-      sourceFrame: meter.f64(),
-      processingCenterFrame: meter.f64(),
-      loopEnabled: meter.bool(),
-      loopStartFrame: meter.f64(),
-      loopEndFrame: meter.f64(),
-      loopRevision: meter.u32(),
-      bufferReadyFrames: meter.u32(),
-      commandDroppedTotal: meter.f64(),
-      underrunTotal: meter.f64(),
-      staleReadTotal: meter.f64(),
-      invalidTransitionTotal: meter.f64(),
-      maxObservedRenderQuantum: meter.u32(),
-    },
+    state: meter.enum(RUNTIME_STATES),
+    sessionId: meter.u32(),
+    adapterMode: meter.enum(ADAPTER_MODES),
+    lastErrorCode: meter.u32(),
+    lastAppliedDesiredSequence: meter.u32(),
+    lastAppliedConfigSequence: meter.u32(),
+    lastAppliedCommandSequence: meter.u32(),
+    outputFrame: meter.f64(),
+    sourceFrame: meter.f64(),
+    processingCenterFrame: meter.f64(),
+    effectiveRate: meter.f32(),
+    blockSamples: meter.u32(),
+    intervalSamples: meter.u32(),
+    inputLatencyFrames: meter.u32(),
+    outputLatencyFrames: meter.u32(),
+    inputLatencySeconds: meter.f64(),
+    outputLatencySeconds: meter.f64(),
+    bufferLengthFrames: meter.u32(),
+    durationFrames: meter.f64(),
+    durationSeconds: meter.f64(),
+    audioWorkletTimeSeconds: meter.f64(),
+    audioWorkletFrameLo: meter.u32(),
+    audioWorkletFrameHi: meter.u32(),
+    loopEnabled: meter.bool(),
+    loopStartFrame: meter.f64(),
+    loopEndFrame: meter.f64(),
+    loopRevision: meter.u32(),
+    bufferReadyFrames: meter.u32(),
+    commandDroppedTotal: meter.f64(),
+    underrunTotal: meter.f64(),
+    staleReadTotal: meter.f64(),
+    invalidTransitionTotal: meter.f64(),
+    invalidSampleTotal: meter.f64(),
+    maxObservedRenderQuantum: meter.u32(),
+    heapGeneration: meter.u32(),
+    workletGeneration: meter.u32(),
+  },
+}));
+
+export const sourceStatusSpec = defineSpec(({ meter }) => ({
+  id: "signalsmith-stretch-lab/source-status" as const,
+  meters: {
+    state: meter.enum(SOURCE_STATES),
+    sourceRevision: meter.u32(),
+    loadSequence: meter.u32(),
+    appliedLoadSequence: meter.u32(),
+    sampleRate: meter.u32(),
+    channelCount: meter.u32(),
+    durationFrames: meter.f64(),
+    durationSeconds: meter.f64(),
+    bufferStartFrame: meter.f64(),
+    bufferEndFrame: meter.f64(),
+    memoryBytes: meter.f64(),
+    decodeErrorCode: meter.u32(),
+    droppedBufferTotal: meter.f64(),
   },
 }));
 
 export const processedOutputLevelsSpec = defineSpec(({ meter }) => ({
   id: "signalsmith-stretch-lab/processed-output-levels" as const,
   meters: {
-    levels: {
-      windowEndOutputFrame: meter.f64(),
-      windowFrames: meter.u32(),
-      channelCount: meter.u32(),
-      rmsLeft: meter.f32(),
-      rmsRight: meter.f32(),
-      peakLeft: meter.f32(),
-      peakRight: meter.f32(),
-      fullScaleLeftTotal: meter.f64(),
-      fullScaleRightTotal: meter.f64(),
-      invalidSampleTotal: meter.f64(),
-      unsupportedChannelBlockTotal: meter.f64(),
-      silent: meter.bool(),
-      probeState: meter.enum([
-        "uninitialized",
-        "ready",
-        "active",
-        "no-input",
-        "failed",
-      ]),
-      lastErrorCode: meter.u32(),
-      historyRms: meter.f32.array(64),
-      historyPeak: meter.f32.array(64),
-    },
+    windowEndOutputFrame: meter.f64(),
+    windowFrames: meter.u32(),
+    channelCount: meter.u32(),
+    rmsLeft: meter.f32(),
+    rmsRight: meter.f32(),
+    peakLeft: meter.f32(),
+    peakRight: meter.f32(),
+    outputBranchActive: meter.bool(),
+    referenceBranchActive: meter.bool(),
+    maxAbsWindow: meter.f32(),
+    clipLatched: meter.bool(),
+    fullScaleLeftTotal: meter.f64(),
+    fullScaleRightTotal: meter.f64(),
+    invalidSampleTotal: meter.f64(),
+    unsupportedChannelBlockTotal: meter.f64(),
+    silent: meter.bool(),
+    probeState: meter.enum(PROBE_STATES),
+    lastErrorCode: meter.u32(),
+    historyRms: meter.f32.array(64),
+    historyPeak: meter.f32.array(64),
   },
 }));
 ```
@@ -774,9 +807,11 @@ Rules for these specs:
 - Use `meter.f64` for frame positions and long counters. Do not invent `u64` or
   pair fields in Stage B unless implementation proves they are absolutely
   necessary.
+- `sourceStatusSpec` uses meters only. The fake runtime/source loader publishes
+  it and the observer/UI reads it.
 - `processedOutputLevelsSpec` uses meters only. The fake runtime/probe publishes
   it and the observer/UI reads it.
-- `levels.historyRms` and `levels.historyPeak` are optional Stage B
+- `historyRms` and `historyPeak` are optional Stage B
   visualization facts that demonstrate array-meter publication with
   `meter.stage`. They are not package API.
 
@@ -836,7 +871,7 @@ Rules:
 - single host producer;
 - single fake-runtime consumer;
 - newest command is dropped on overflow according to SWSR behavior;
-- dropped count is surfaced through `runtime.commandDroppedTotal`;
+- dropped count is surfaced through `commandDroppedTotal`;
 - seek and loop frame arguments are Stage B simulation frame indices, not a new
   public package integer type.
 
