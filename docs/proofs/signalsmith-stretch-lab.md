@@ -622,6 +622,301 @@ Definition of done:
 11. Commit/push: commit and push on the active feature branch. Do not target `main` unless a later task explicitly says to do so.
 12. Final report: include branch, commit SHA, push status, files changed, what from the old spec was preserved, what was intentionally deferred, commands run/results, and remaining risks.
 
+### 11.1 Stage B concrete implementation contract
+
+This section is the concrete Stage B app contract for
+`apps/signalsmith-stretch-lab`. It is still proof/demo authority only. It does
+not promote Signalsmith, audio, Worklet, WASM, or command concepts into
+`@exclave/boundary` package API authority.
+
+#### App package shape
+
+Stage B adds one private workspace app:
+
+- path: `apps/signalsmith-stretch-lab`;
+- package name: `@exclave/signalsmith-stretch-lab`;
+- `private: true`;
+- vanilla Vite + TypeScript unless the repository already has an intentional UI
+  framework dependency for this app surface;
+- no React, Vue, Svelte, or similar UI framework dependency added only for this
+  proof slice;
+- workspace dependency on `@exclave/boundary`;
+- no publication path, and no inclusion in the `@exclave/boundary` package
+  files.
+
+#### Exact Stage B file map
+
+Stage B should create this app-private file map unless implementation discovery
+finds a small repo-local reason to rename a test helper:
+
+```text
+apps/signalsmith-stretch-lab/
+  package.json
+  index.html
+  tsconfig.json
+  vite.config.ts
+  vitest.config.ts
+  src/main.ts
+  src/styles.css
+  src/boundary/specs.ts
+  src/boundary/session.ts
+  src/boundary/commands.ts
+  src/runtime/fake-stretch-engine.ts
+  src/ui/dom.ts
+  src/ui/waveform.ts
+  src/types.ts
+  tests/specs.test.ts
+  tests/fake-stretch-engine.test.ts
+  tests/imports.test.ts
+```
+
+#### Exact boundary specs
+
+Define the three Stage B specs in `src/boundary/specs.ts` with
+`defineSpec`. They are app-private contracts. Their IDs and canonical keys
+should be tested exactly.
+
+```ts
+import { defineSpec } from "@exclave/boundary";
+
+export const desiredStretchSpec = defineSpec(({ param }) => ({
+  id: "signalsmith-stretch-lab/desired-stretch" as const,
+  params: {
+    control: {
+      desiredSequence: param.u32(),
+      rate: param.f32({ min: 0.125, max: 8 }),
+      pitchSemitones: param.f32({ min: -48, max: 48 }),
+      tonalityEnabled: param.bool(),
+      tonalityHz: param.f32({ min: 0, max: 20_000 }),
+      formantSemitones: param.f32({ min: -48, max: 48 }),
+      formantCompensation: param.bool(),
+      formantBaseHz: param.f32({ min: 0, max: 20_000 }),
+      transitionFrames: param.u32({ min: 0, max: 48_000 }),
+    },
+  },
+}));
+
+export const runtimeStatusSpec = defineSpec(({ meter }) => ({
+  id: "signalsmith-stretch-lab/runtime-status" as const,
+  meters: {
+    runtime: {
+      state: meter.enum([
+        "unsupported",
+        "idle",
+        "ready-paused",
+        "playing",
+        "seeking",
+        "flushing",
+        "ended",
+        "failed-recoverable",
+        "failed-terminal",
+      ]),
+      sessionId: meter.u32(),
+      lastErrorCode: meter.u32(),
+      lastAppliedDesiredSequence: meter.u32(),
+      lastAppliedCommandSequence: meter.u32(),
+      outputFrame: meter.f64(),
+      sourceFrame: meter.f64(),
+      processingCenterFrame: meter.f64(),
+      loopEnabled: meter.bool(),
+      loopStartFrame: meter.f64(),
+      loopEndFrame: meter.f64(),
+      loopRevision: meter.u32(),
+      bufferReadyFrames: meter.u32(),
+      commandDroppedTotal: meter.f64(),
+      underrunTotal: meter.f64(),
+      staleReadTotal: meter.f64(),
+      invalidTransitionTotal: meter.f64(),
+      maxObservedRenderQuantum: meter.u32(),
+    },
+  },
+}));
+
+export const processedOutputLevelsSpec = defineSpec(({ meter }) => ({
+  id: "signalsmith-stretch-lab/processed-output-levels" as const,
+  meters: {
+    levels: {
+      windowEndOutputFrame: meter.f64(),
+      windowFrames: meter.u32(),
+      channelCount: meter.u32(),
+      rmsLeft: meter.f32(),
+      rmsRight: meter.f32(),
+      peakLeft: meter.f32(),
+      peakRight: meter.f32(),
+      fullScaleLeftTotal: meter.f64(),
+      fullScaleRightTotal: meter.f64(),
+      invalidSampleTotal: meter.f64(),
+      unsupportedChannelBlockTotal: meter.f64(),
+      silent: meter.bool(),
+      probeState: meter.enum([
+        "uninitialized",
+        "ready",
+        "active",
+        "no-input",
+        "failed",
+      ]),
+      lastErrorCode: meter.u32(),
+      historyRms: meter.f32.array(64),
+      historyPeak: meter.f32.array(64),
+    },
+  },
+}));
+```
+
+Rules for these specs:
+
+- `desiredStretchSpec` uses params only. The host/controller writes it and the
+  fake runtime/processor reads it.
+- Use only current supported param kinds. Do not use `param.f64`, `u64`, or
+  pair-backed sequence fields in Stage B.
+- `runtimeStatusSpec` uses meters only. The fake runtime/processor publishes it
+  and the observer/UI reads it.
+- Use `meter.f64` for frame positions and long counters. Do not invent `u64` or
+  pair fields in Stage B unless implementation proves they are absolutely
+  necessary.
+- `processedOutputLevelsSpec` uses meters only. The fake runtime/probe publishes
+  it and the observer/UI reads it.
+- `levels.historyRms` and `levels.historyPeak` are optional Stage B
+  visualization facts that demonstrate array-meter publication with
+  `meter.stage`. They are not package API.
+
+#### Boundary usage requirements
+
+The app must visibly exercise the current `@exclave/boundary` surface:
+
+- `defineSpec`;
+- `planLayout`;
+- `allocateShared`;
+- `buildHandoff`;
+- `verifyHandoff`;
+- `acceptHandoff`;
+- `bindController`;
+- `bindProcessor`;
+- `bindObserver`;
+- `BoundaryError` and `isBoundaryError` where useful;
+- `allocateSwsrRing`, `bindSwsrRingProducer`, and `bindSwsrRingConsumer` if the
+  demo-private command ring is implemented in Stage B.
+
+Use `allocateShared` for the normal Stage B runtime path.
+`allocateSharedPartitioned` may be demonstrated in tests or a debug toggle if
+that stays simple. Do not require `allocateWasmShared` in Stage B because
+wasm-shared handoff is not the first-slice path.
+
+Do not create public Signalsmith, Worklet, WASM, audio, or command exports from
+`@exclave/boundary`.
+
+#### Demo-private command transport
+
+If implemented cleanly in Stage B, transport operations use a bounded
+app-private SWSR command ring. The command vocabulary remains app-private:
+
+- `play`;
+- `pause`;
+- `stop`;
+- `seek`;
+- `setLoop`;
+- `clearLoop`;
+- `resetFault`.
+
+The Stage B slot contract is fixed-width `Uint32` payloads:
+
+| Word | Meaning |
+| --- | --- |
+| `0` | command sequence |
+| `1` | command id |
+| `2` | argument 0, such as seek frame or loop start frame |
+| `3` | argument 1, such as loop end frame |
+| `4` | argument 2, such as loop revision |
+| `5` | flags |
+| `6` | reserved |
+| `7` | reserved |
+
+Rules:
+
+- single host producer;
+- single fake-runtime consumer;
+- newest command is dropped on overflow according to SWSR behavior;
+- dropped count is surfaced through `runtime.commandDroppedTotal`;
+- seek and loop frame arguments are Stage B simulation frame indices, not a new
+  public package integer type.
+
+#### UI proof requirements
+
+The Stage B app must show:
+
+- Exclave Boundary + Signalsmith Stretch Lab branded shell;
+- simulation mode badge;
+- load/drop surface;
+- metadata panel with truthful simulated or decoded status;
+- waveform overview generated from decoded data or deterministic simulation;
+- applied playhead and requested seek ghost;
+- loop preview and applied loop state;
+- rate and pitch controls;
+- tonality/formant-like controls;
+- processed/aligned source selector, marked as a truthful mock when no real
+  audio exists;
+- processed output RMS, peak, and full-scale panel;
+- Boundary Inspector showing plan IDs, spec hashes, `bytesTotal`, plane byte
+  lengths, lock stride, handoff versions, applied sequence, command drops, stale
+  reads, and latest error code;
+- persistent error/status area.
+
+#### Tests and stale-name guards
+
+Stage B tests must cover:
+
+- exact spec IDs and required canonical keys;
+- `planLayout` produces non-zero byte totals for all three specs;
+- `buildHandoff`, `verifyHandoff`, and `acceptHandoff` round-trip;
+- controller writes desired params and processor reads them;
+- fake runtime publishes runtime status and processed-output levels;
+- array meter history is published through `meter.stage`;
+- SWSR command overflow and drop accounting if the command ring is implemented;
+- new app files do not import `@seqlok/core`, `@exclave/core`, old seqlok
+  package subpaths, or public rename-status language.
+
+#### Validation commands
+
+When the Stage B app is implemented, the validation run must execute at least:
+
+```sh
+pnpm format
+pnpm lint
+pnpm test:types
+pnpm test
+pnpm build
+pnpm run docs
+pnpm docs:build
+pnpm test:pack
+pnpm --filter @exclave/boundary pack
+pnpm --filter @exclave/signalsmith-stretch-lab lint
+pnpm --filter @exclave/signalsmith-stretch-lab test:types
+pnpm --filter @exclave/signalsmith-stretch-lab test
+pnpm --filter @exclave/signalsmith-stretch-lab build
+git diff --check
+```
+
+For this docs-only refinement run, execute:
+
+```sh
+pnpm format
+pnpm lint
+pnpm lint:md
+git diff --check
+```
+
+Stage B remains under these guardrails:
+
+- do not change package public API;
+- do not publish a Signalsmith adapter;
+- do not add public docs/nav links yet;
+- do not claim real Signalsmith WASM/AudioWorklet processing;
+- do not claim zero-copy audio;
+- do not claim sample-accurate automation;
+- do not reintroduce `@seqlok/core`, `@exclave/core`, old seqlok
+  package-subpath architecture, or public rename-status language;
+- keep "seqlock" only as the primitive term where relevant.
+
 ---
 
 ## 12. Release guardrails
