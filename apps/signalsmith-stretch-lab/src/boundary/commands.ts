@@ -99,6 +99,7 @@ export interface StretchCommandTransport {
     options?: EnqueueCommandOptions,
   ): {
     readonly accepted: boolean;
+    readonly command: StretchCommand;
     readonly dropped: number;
     readonly sequence: number;
   };
@@ -237,6 +238,7 @@ export function createStretchCommandTransport(
 
       return {
         accepted,
+        command,
         dropped: producer.stats().dropped,
         sequence,
       };

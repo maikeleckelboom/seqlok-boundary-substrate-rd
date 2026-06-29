@@ -26,6 +26,7 @@ import {
 } from "./audio/waveform-peaks";
 import {
   createStretchCommandTransport,
+  type EnqueueCommandOptions,
   type StretchCommandName,
 } from "./boundary/commands";
 import {
@@ -117,6 +118,20 @@ interface QualityConfig {
   readonly preset: DesiredStretchControls["preset"];
   readonly splitComputation: boolean;
 }
+
+interface SourceLoadOptions {
+  readonly origin: SourceOrigin;
+  readonly resumeAudio: boolean;
+}
+
+type SourceOrigin = "default" | "local";
+
+const DEFAULT_SOURCE = {
+  fileName: "signalsmith-demo-loop.wav",
+  label: "official Signalsmith demo loop",
+  url: "/audio/signalsmith-demo-loop.wav",
+} as const;
+const RECENT_SEEK_MARK_WINDOW_MS = 1_500;
 
 const RANGE_MODE_LIMITS: Record<RangeMode, ControlRanges> = {
   extended: {
@@ -214,6 +229,10 @@ function startLab(appRoot: HTMLElement): void {
     let sourceFacts: PcmSourceFacts | null = null;
     let sourceRevision = 1;
     let selectedFileName: string | null = null;
+    let sourceLoadRequestId = 0;
+    let sourceOrigin: SourceOrigin | null = null;
+    let defaultSourceLoadCancelled = false;
+    let lastFileInputToken: string | null = null;
     let lastWavProbe: WavProbe | null = null;
     let wavMode: WavLoadMode = "none";
     let sourceStatusText = "No source loaded.";
@@ -221,6 +240,8 @@ function startLab(appRoot: HTMLElement): void {
     let waveformMode: WaveformPeakMode = waveform.mode;
     let waveformAbort: AbortController | null = null;
     let requestedSeekFrame: number | null = null;
+    let recentSeekFrame: number | null = null;
+    let recentSeekAt = 0;
     let loopRevision = 1;
     let loopDraft = createLoopDraft(source.frames, loopRevision);
     let clipBaselineLeft = 0;
@@ -289,7 +310,6 @@ function startLab(appRoot: HTMLElement): void {
     for (const input of [
       elements.rate,
       elements.pitch,
-      elements.transitionFrames,
       elements.tonalityEnabled,
       elements.tonalityHz,
       elements.formantShift,
@@ -395,6 +415,9 @@ function startLab(appRoot: HTMLElement): void {
     elements.seekRange.addEventListener("input", () => {
       commitSeek(Number(elements.seekRange.value));
     });
+    elements.seekFrame.addEventListener("input", () => {
+      commitSeek(Number(elements.seekFrame.value));
+    });
     elements.seekFrame.addEventListener("change", () => {
       commitSeek(Number(elements.seekFrame.value));
     });
@@ -422,12 +445,20 @@ function startLab(appRoot: HTMLElement): void {
       clearDraftAndAppliedLoop();
     });
 
-    elements.fileInput.addEventListener("change", () => {
+    const handleFileInput = (): void => {
       const file = elements.fileInput.files?.item(0);
       if (file) {
-        void loadFileSource(file);
+        const token = `${file.name}:${file.size.toString()}:${file.lastModified.toString()}`;
+        if (token === lastFileInputToken) {
+          return;
+        }
+
+        lastFileInputToken = token;
+        void loadFileSource(file, { origin: "local", resumeAudio: true });
       }
-    });
+    };
+    elements.fileInput.addEventListener("input", handleFileInput);
+    elements.fileInput.addEventListener("change", handleFileInput);
     elements.sourceDrop.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -446,7 +477,7 @@ function startLab(appRoot: HTMLElement): void {
       elements.sourceDrop.classList.remove("is-dragging");
       const file = event.dataTransfer?.files.item(0);
       if (file) {
-        void loadFileSource(file);
+        void loadFileSource(file, { origin: "local", resumeAudio: true });
       }
     });
     for (const mode of [
@@ -465,6 +496,7 @@ function startLab(appRoot: HTMLElement): void {
       if (time - lastTickAt >= 80) {
         lastTickAt = time;
         if (realRuntimeOwnsCommandRing()) {
+          notifyPendingRealCommands();
           maybePrefetchFromRuntime();
         } else {
           engine.tick({ renderQuantum: 256 });
@@ -482,8 +514,13 @@ function startLab(appRoot: HTMLElement): void {
       realRuntime?.dispose();
       disposeStretchBoundarySession(session);
     });
+    void loadDefaultSource();
 
     function enqueueCommand(name: StretchCommandName): void {
+      if (name === "play" || name === "stop") {
+        recentSeekFrame = null;
+      }
+
       const nextActive =
         name === "play"
           ? true
@@ -493,8 +530,7 @@ function startLab(appRoot: HTMLElement): void {
 
       setDesiredActive(nextActive);
 
-      commands.enqueue(name);
-      pumpSimulatorCommandRing();
+      enqueueRuntimeCommand(name);
       render();
     }
 
@@ -512,19 +548,50 @@ function startLab(appRoot: HTMLElement): void {
     }
 
     function pumpSimulatorCommandRing(): void {
+      if (realRuntimeOwnsCommandRing()) {
+        realRuntime?.notifyCommandsAvailable();
+        return;
+      }
+
+      engine.tick({ renderQuantum: 128 });
+    }
+
+    function enqueueRuntimeCommand(
+      name: StretchCommandName,
+      options?: EnqueueCommandOptions,
+    ): ReturnType<typeof commands.enqueue> {
+      const result = commands.enqueue(name, options);
+      if (realRuntimeOwnsCommandRing()) {
+        realRuntime?.postCommand(result.command);
+      }
+      pumpSimulatorCommandRing();
+      return result;
+    }
+
+    function notifyPendingRealCommands(): void {
       if (!realRuntimeOwnsCommandRing()) {
-        engine.tick({ renderQuantum: 128 });
+        return;
+      }
+
+      const runtime = readRuntimeStatus(session);
+      const stats = commands.stats();
+      if (
+        stats.writeIndex !== stats.readIndex ||
+        stats.writeSeq !== runtime.lastAppliedCommandSequence
+      ) {
+        realRuntime?.notifyCommandsAvailable();
       }
     }
 
     function commitSeek(value: number): void {
       const frame = clamp(value, 0, source.frames);
       requestedSeekFrame = frame;
+      recentSeekFrame = frame;
+      recentSeekAt = performance.now();
       elements.seekRange.value = String(frame);
       elements.seekFrame.value = String(frame);
       prefetchForFrame(frame);
-      commands.enqueue("seek", { targetSourceFrame: frame });
-      pumpSimulatorCommandRing();
+      enqueueRuntimeCommand("seek", { targetSourceFrame: frame });
       render();
     }
 
@@ -549,7 +616,11 @@ function startLab(appRoot: HTMLElement): void {
 
     function markLoopBoundary(boundary: "end" | "start"): void {
       const runtime = readRuntimeStatus(session);
-      const frame = clamp(runtime.sourceFrame, 0, source.frames);
+      const frame = clamp(
+        recentSeekFrameForMark(runtime.state) ?? runtime.sourceFrame,
+        0,
+        source.frames,
+      );
 
       loopDraft =
         boundary === "start"
@@ -569,6 +640,24 @@ function startLab(appRoot: HTMLElement): void {
       render();
     }
 
+    function recentSeekFrameForMark(runtimeState: string): number | null {
+      if (requestedSeekFrame !== null) {
+        return requestedSeekFrame;
+      }
+
+      if (recentSeekFrame === null) {
+        return null;
+      }
+
+      if (runtimeState !== "playing") {
+        return recentSeekFrame;
+      }
+
+      return performance.now() - recentSeekAt <= RECENT_SEEK_MARK_WINDOW_MS
+        ? recentSeekFrame
+        : null;
+    }
+
     function applyDraftLoop(): void {
       const runtime = readRuntimeStatus(session);
       const status = validateLoopDraft(runtime);
@@ -579,8 +668,11 @@ function startLab(appRoot: HTMLElement): void {
       }
 
       prefetchForLoop(status.validation.range, runtime);
-      enqueueApplyLoop(commands, status.validation.range, loopFacts(runtime));
-      pumpSimulatorCommandRing();
+      enqueueApplyLoop(
+        { enqueue: enqueueRuntimeCommand },
+        status.validation.range,
+        loopFacts(runtime),
+      );
       render();
     }
 
@@ -593,25 +685,74 @@ function startLab(appRoot: HTMLElement): void {
         return;
       }
 
+      recentSeekFrame = null;
       setDesiredActive(true);
       prefetchForLoop(status.validation.range, runtime);
-      enqueuePlayLoop(commands, status.validation.range, loopFacts(runtime));
-      pumpSimulatorCommandRing();
+      enqueuePlayLoop(
+        { enqueue: enqueueRuntimeCommand },
+        status.validation.range,
+        loopFacts(runtime),
+      );
       render();
     }
 
     function clearDraftAndAppliedLoop(): void {
       loopDraft = createLoopDraft(source.frames, nextLoopRevision());
       syncLoopDraftInputs();
-      commands.enqueue("clearLoop");
-      pumpSimulatorCommandRing();
+      enqueueRuntimeCommand("clearLoop");
       render();
     }
 
-    async function loadFileSource(file: File): Promise<void> {
+    async function loadDefaultSource(): Promise<void> {
+      const loadRequestBaseline = sourceLoadRequestId;
+      sourceStatusText = `Loading ${DEFAULT_SOURCE.label}`;
+      render();
+
+      try {
+        const response = await fetch(DEFAULT_SOURCE.url);
+        if (!response.ok) {
+          throw new Error(
+            `Default source request failed with ${response.status.toString()}.`,
+          );
+        }
+
+        if (shouldSkipDefaultSource(loadRequestBaseline)) {
+          return;
+        }
+
+        const file = new File(
+          [await response.blob()],
+          DEFAULT_SOURCE.fileName,
+          {
+            type: "audio/wav",
+          },
+        );
+        await loadFileSource(file, { origin: "default", resumeAudio: false });
+      } catch (error) {
+        if (shouldSkipDefaultSource(loadRequestBaseline)) {
+          return;
+        }
+
+        sourceStatusText =
+          error instanceof Error ? error.message : String(error);
+        render();
+      }
+    }
+
+    async function loadFileSource(
+      file: File,
+      options: SourceLoadOptions,
+    ): Promise<void> {
+      if (options.origin === "local") {
+        defaultSourceLoadCancelled = true;
+      }
+
+      const loadRequestId = sourceLoadRequestId + 1;
+      sourceLoadRequestId = loadRequestId;
       const nextLoadSequence = loadSequence + 1;
       const nextSourceRevision = sourceRevision + 1;
       selectedFileName = file.name;
+      sourceOrigin = options.origin;
       lastWavProbe = null;
       wavMode = "probing";
       let loadWasWav = isLikelyWavFile(file);
@@ -627,7 +768,9 @@ function startLab(appRoot: HTMLElement): void {
           throw new Error("Input .wav file is not a RIFF/WAVE file.");
         }
 
-        const context = await ensureAudioContextForProbe(wavProbe);
+        const context = await ensureAudioContextForProbe(wavProbe, {
+          resumeAudio: options.resumeAudio,
+        });
 
         sourceStatusText = `Reading ${file.name}`;
         render();
@@ -643,6 +786,10 @@ function startLab(appRoot: HTMLElement): void {
           sourceRevision: nextSourceRevision,
         });
 
+        if (loadRequestId !== sourceLoadRequestId) {
+          return;
+        }
+
         acceptedSource = loaded;
         loadSequence = nextLoadSequence;
         sourceRevision = nextSourceRevision;
@@ -653,15 +800,32 @@ function startLab(appRoot: HTMLElement): void {
         resetWaveformForLoadedSource(loaded);
         loopDraft = createLoopDraft(source.frames, nextLoopRevision());
         requestedSeekFrame = null;
+        recentSeekFrame = null;
         engine.loadSource(source);
         updateSourceLimits();
 
         if (loaded.kind === "chunked-wav") {
           startActualWaveformPeaks(loaded);
-          await prepareRealRuntime(loaded);
-          commands.enqueue("loadSource", {
-            sourceRevision: loaded.sourceRevision,
-          });
+          let realRuntimePrepared = false;
+          try {
+            realRuntimePrepared = await prepareRealRuntime(loaded, {
+              loadRequestId,
+              resumeAudio: options.resumeAudio,
+            });
+          } catch {
+            realRuntime?.dispose();
+            realRuntime = null;
+          }
+
+          if (loadRequestId !== sourceLoadRequestId) {
+            return;
+          }
+
+          if (realRuntimePrepared) {
+            enqueueRuntimeCommand("loadSource", {
+              sourceRevision: loaded.sourceRevision,
+            });
+          }
         } else {
           realRuntime?.dispose();
           realRuntime = null;
@@ -669,6 +833,10 @@ function startLab(appRoot: HTMLElement): void {
           prefetch = null;
         }
       } catch (error) {
+        if (loadRequestId !== sourceLoadRequestId) {
+          return;
+        }
+
         wavMode = loadWasWav ? "unsupported" : "browser decoded";
         sourceStatusText =
           error instanceof Error ? error.message : String(error);
@@ -677,13 +845,22 @@ function startLab(appRoot: HTMLElement): void {
       render();
     }
 
+    function shouldSkipDefaultSource(loadRequestBaseline: number): boolean {
+      return (
+        defaultSourceLoadCancelled ||
+        sourceLoadRequestId !== loadRequestBaseline ||
+        acceptedSource !== null
+      );
+    }
+
     async function ensureAudioContextForProbe(
       wavProbe: Awaited<ReturnType<typeof probeWavFile>>,
+      options: { readonly resumeAudio: boolean },
     ): Promise<AudioContext> {
       if (!wavProbe.isWav) {
         lastWavProbe = null;
         wavMode = "browser decoded";
-        return ensureAudioContext();
+        return ensureAudioContext({ resumeAudio: options.resumeAudio });
       }
 
       lastWavProbe = wavProbe;
@@ -693,6 +870,7 @@ function startLab(appRoot: HTMLElement): void {
       }
 
       const context = await ensureAudioContext({
+        resumeAudio: options.resumeAudio,
         sampleRate: wavProbe.sampleRate,
       });
 
@@ -708,6 +886,7 @@ function startLab(appRoot: HTMLElement): void {
 
     async function ensureAudioContext(
       options: {
+        readonly resumeAudio?: boolean;
         readonly sampleRate?: number;
       } = {},
     ): Promise<AudioContext> {
@@ -735,7 +914,9 @@ function startLab(appRoot: HTMLElement): void {
           : { sampleRate: options.sampleRate },
       );
 
-      await resumeAudioContext(audioContext);
+      if (options.resumeAudio ?? true) {
+        await resumeAudioContext(audioContext);
+      }
       return audioContext;
     }
 
@@ -749,25 +930,37 @@ function startLab(appRoot: HTMLElement): void {
 
     async function prepareRealRuntime(
       loaded: ChunkedWavPcmSource,
-    ): Promise<void> {
-      const context = await ensureAudioContext();
-      referenceMonitor ??= new SourceReferenceMonitor(context);
-      syncMonitorGains();
-      prefetch = new SourcePrefetch(loaded.source, {
+      options: {
+        readonly loadRequestId: number;
+        readonly resumeAudio: boolean;
+      },
+    ): Promise<boolean> {
+      const context = await ensureAudioContext({
+        resumeAudio: options.resumeAudio,
+      });
+      const nextPrefetch = new SourcePrefetch(loaded.source, {
         windowFrames: Math.max(4_096, Math.floor(loaded.sampleRate * 2)),
       });
-      const initialChunk = await prefetch.prefetchWindow(
+      const initialChunk = await nextPrefetch.prefetchWindow(
         0,
         Math.max(4_096, Math.floor(loaded.sampleRate * 2)),
       );
 
+      if (options.loadRequestId !== sourceLoadRequestId) {
+        return false;
+      }
+
+      referenceMonitor ??= new SourceReferenceMonitor(context);
+      syncMonitorGains();
+      prefetch = nextPrefetch;
+
       if (!signalsmithAssets.generatedModuleUrl) {
-        return;
+        return false;
       }
 
       if (!realRuntime || realRuntime.status.failed) {
-        realRuntime?.dispose();
-        realRuntime = await StretchWorkletRuntime.create({
+        const previousRuntime = realRuntime;
+        const nextRuntime = await StretchWorkletRuntime.create({
           audioContext: context,
           commands,
           generatedModuleUrl: signalsmithAssets.generatedModuleUrl,
@@ -775,9 +968,19 @@ function startLab(appRoot: HTMLElement): void {
           session,
           source: loaded,
         });
+
+        if (options.loadRequestId !== sourceLoadRequestId) {
+          nextRuntime.dispose();
+          return false;
+        }
+
+        previousRuntime?.dispose();
+        realRuntime = nextRuntime;
       } else {
         realRuntime.postSource(loaded, initialChunk);
       }
+
+      return realRuntime !== null && !realRuntime.status.failed;
     }
 
     function prefetchForFrame(
@@ -929,7 +1132,6 @@ function startLab(appRoot: HTMLElement): void {
     function updateControlOutputs(): void {
       elements.rateValue.textContent = `${Number(elements.rate.value).toFixed(3)}x`;
       elements.pitchValue.textContent = `${Number(elements.pitch.value).toFixed(1)} st`;
-      elements.transitionFramesValue.textContent = `${Math.round(Number(elements.transitionFrames.value)).toString()} frames`;
       elements.tonalityHzValue.textContent = `${Math.round(Number(elements.tonalityHz.value)).toString()} Hz`;
       elements.formantShiftValue.textContent = `${Number(elements.formantShift.value).toFixed(1)} st`;
       elements.formantBase.disabled = elements.formantBaseAuto.checked;
@@ -1227,7 +1429,9 @@ function startLab(appRoot: HTMLElement): void {
 
       elements.sourcePrimary.textContent = selectedFileName ?? source.name;
       elements.sourceSecondary.textContent =
-        "Source loaded for real-time pitch and time stretch.";
+        sourceOrigin === "default"
+          ? "Official Signalsmith demo loop, converted to WAV for comparison."
+          : "Source loaded for real-time pitch and time stretch.";
       elements.sourceState.textContent = sourceStatusText;
     }
 
@@ -1564,7 +1768,6 @@ function collectDesiredFromInputs(
     rate,
     tonalityEnabled: elements.tonalityEnabled.checked,
     tonalityHz,
-    transitionFrames: Math.round(Number(elements.transitionFrames.value)),
   };
 }
 
@@ -1643,7 +1846,6 @@ function applyControlsToInputs(
   elements.pitch.value = String(
     clampFloat(controls.pitchSemitones, ranges.pitch.min, ranges.pitch.max),
   );
-  elements.transitionFrames.value = String(controls.transitionFrames);
   elements.tonalityEnabled.checked = controls.tonalityEnabled;
   elements.tonalityHz.value = String(clampTonalityLimitHz(controls.tonalityHz));
   elements.formantShift.value = String(
@@ -1806,7 +2008,6 @@ function processingInputs(
     elements.stopButton,
     elements.tonalityEnabled,
     elements.tonalityHz,
-    elements.transitionFrames,
   ];
 }
 

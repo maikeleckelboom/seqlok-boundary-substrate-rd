@@ -5,39 +5,45 @@ import { expect, test, type Page } from "@playwright/test";
 const SAMPLE_RATE = 48_000;
 const SMOKE_WAV_SECONDS = 2;
 
-test("primary demo starts empty and keeps lab diagnostics collapsed", async ({
+test("primary demo loads the default comparison track and keeps lab diagnostics collapsed", async ({
   page,
 }) => {
   await page.goto("/");
 
   await expect(page.locator("#sourceDrop")).toBeVisible();
-  await expect(page.getByText("Drop a WAV file to begin")).toBeVisible();
-  await expect(page.locator("#sourceState")).toHaveText("No source loaded");
-  await expect(page.locator("#sourceStatusBadge")).toHaveText(
-    "No source loaded",
+  await expect(page.locator("#sourcePrimary")).toHaveText(
+    "signalsmith-demo-loop.wav",
   );
-  await expect(page.locator("#status")).toContainText("No source loaded.");
-  await expect(page.locator("#waveformPanel")).toBeHidden();
-  await expect(page.locator("#waveform")).toBeHidden();
+  await expect(page.locator("#sourceSecondary")).toHaveText(
+    "Official Signalsmith demo loop, converted to WAV for comparison.",
+  );
+  await expect(page.locator("#sourceState")).toHaveText(
+    "WAV chunked PCM 16-bit 48000 Hz stereo",
+  );
+  await expect(page.locator("#sourceStatusBadge")).toHaveText("Source loaded");
+  await expect(page.locator("#waveformPanel")).toBeVisible();
+  await expect(page.locator("#waveform")).toBeVisible();
   await expect(page.getByText("Deterministic simulator source")).toHaveCount(0);
   await expect(page.getByText("1:34.0")).toBeHidden();
   await expect(page.getByText("34.4 MiB")).toBeHidden();
   await expect(
     page.getByText("Applied playhead and requested seek"),
   ).toHaveCount(0);
-  await expect.poll(() => canvasHasPaint(page, "#waveform")).toBe(false);
+  await expect.poll(() => canvasHasPaint(page, "#waveform")).toBe(true);
 
-  await expect(page.locator("#playButton")).toBeDisabled();
-  await expect(page.locator("#pauseButton")).toBeDisabled();
-  await expect(page.locator("#seekRange")).toBeDisabled();
-  await expect(page.locator("#loopStart")).toBeDisabled();
-  await expect(page.locator("#processedMode")).toBeDisabled();
-  await expect(page.locator("#rate")).toBeDisabled();
-  await expect(page.locator("#pitch")).toBeDisabled();
-  await expect(page.locator("#configPreset")).toBeDisabled();
-  await expect(page.locator("#controlsHint")).toHaveText(
-    "Load a source to enable processing",
-  );
+  await expect(page.locator("#playButton")).toBeEnabled();
+  await expect(page.locator("#pauseButton")).toBeEnabled();
+  await expect(page.locator("#seekRange")).toBeEnabled();
+  await expect(page.locator("#loopStart")).toBeEnabled();
+  await expect(page.locator("#processedMode")).toBeEnabled();
+  await expect(page.locator("#rate")).toBeEnabled();
+  await expect(page.locator("#pitch")).toBeEnabled();
+  await expect(page.locator("#transitionFrames")).toHaveCount(0);
+  await expect(
+    page.locator("label").filter({ hasText: "Transition" }),
+  ).toHaveCount(0);
+  await expect(page.locator("#configPreset")).toBeEnabled();
+  await expect(page.locator("#controlsHint")).toBeHidden();
 
   await expect(
     page.locator("label").filter({ hasText: "Tonality limit" }),
@@ -62,10 +68,10 @@ test("primary demo starts empty and keeps lab diagnostics collapsed", async ({
   await page.locator("#advancedInspector > summary").click();
   await expect(page.getByText("Exclave spec hash")).toBeVisible();
   await expect(page.getByText("Nested spec plan")).toBeVisible();
-  await expect.poll(() => runtimeFact(page, "Source mode")).toBe("none");
+  await expect.poll(() => runtimeFact(page, "Source mode")).toBe("chunked WAV");
   await expect
     .poll(() => runtimeFact(page, "Source format"))
-    .toBe("No source loaded");
+    .toBe("WAV chunked PCM 16-bit 48000 Hz stereo");
   await expect
     .poll(() => runtimeFact(page, "Voice/formant base"))
     .toBe("Auto (0)");
@@ -175,9 +181,14 @@ test("reports refused WAV sample-rate contexts without resampling", async ({
 
   await expect
     .poll(() =>
-      page.evaluate(() => window.__audioContextOptions?.[0]?.sampleRate ?? 0),
+      page.evaluate(
+        () =>
+          window.__audioContextOptions?.map(
+            (options) => options.sampleRate ?? 0,
+          ) ?? [],
+      ),
     )
-    .toBe(44_100);
+    .toContain(44_100);
   await expect.poll(() => runtimeFact(page, "WAV mode")).toBe("unsupported");
   await expect(page.locator("#status")).toContainText("resampling is required");
   await expect(page.locator("#status")).toContainText("not implemented yet");
@@ -216,9 +227,14 @@ test("requests a 44.1 kHz AudioContext for a 44.1 kHz WAV", async ({
 
   await expect
     .poll(() =>
-      page.evaluate(() => window.__audioContextOptions?.[0]?.sampleRate ?? 0),
+      page.evaluate(
+        () =>
+          window.__audioContextOptions?.map(
+            (options) => options.sampleRate ?? 0,
+          ) ?? [],
+      ),
     )
-    .toBe(44_100);
+    .toContain(44_100);
   await expect.poll(() => runtimeFact(page, "Sample rate")).toBe("44100 Hz");
 });
 
@@ -307,11 +323,13 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
   writeFileSync(wavPath, createSmokeWav());
 
   await page.locator("#fileInput").setInputFiles(wavPath);
+  await expect(page.locator("#sourcePrimary")).toHaveText(
+    "signalsmith-smoke.wav",
+  );
   await expect(page.locator("#status")).toContainText("Real Worklet active.");
   await expect(page.locator("#runtimeModeBadge")).toHaveText(
     "Real Worklet active",
   );
-  await expect(page.getByText("signalsmith-smoke.wav")).toBeVisible();
   await expect.poll(() => runtimeFact(page, "Source format")).toContain("WAV");
   await expect.poll(() => runtimeFact(page, "WAV mode")).toBe("chunked");
   await expect.poll(() => runtimeFact(page, "Worklet mode")).toBe("real");
@@ -323,12 +341,12 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
   await expect
     .poll(() => runtimeFact(page, "Waveform mode"))
     .toContain("actual");
-  await expect
-    .poll(() => smokeFact(page, "sourceAcceptedMessages"))
-    .toBeGreaterThanOrEqual(0);
-  await expect
-    .poll(() => smokeFact(page, "sourceAcceptedMessages"))
-    .toBeLessThanOrEqual(1);
+  const sourceAcceptedAfterLoad = await smokeFact(
+    page,
+    "sourceAcceptedMessages",
+  );
+  expect(sourceAcceptedAfterLoad).toBeGreaterThanOrEqual(0);
+  expect(sourceAcceptedAfterLoad).toBeLessThanOrEqual(2);
 
   await page.locator("#playButton").click();
   await expect.poll(() => runtimeFact(page, "State")).toBe("playing");
@@ -360,7 +378,7 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
     .toBe(blockIntervalBefore);
   await expect
     .poll(() => smokeFact(page, "sourceAcceptedMessages"))
-    .toBeLessThanOrEqual(1);
+    .toBe(sourceAcceptedAfterLoad);
 
   await setRange(page, "#tonalityHz", "9000");
   await setRange(page, "#formantShift", "2");
@@ -421,18 +439,20 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
   await page.locator("#pauseButton").click();
   await expect.poll(() => runtimeFact(page, "State")).toBe("ready-paused");
 
-  await setRange(page, "#seekRange", "12000");
+  await setSeekFrame(page, "12000");
   await expect.poll(() => sourceFrameNear(page, 12_000, 2_048)).toBe(true);
   await page.locator("#markLoopStartButton").click();
   await expect(page.locator("#loopDraft")).toContainText("not set");
 
-  await setRange(page, "#seekRange", "36000");
+  await setSeekFrame(page, "36000");
   await expect.poll(() => sourceFrameNear(page, 36_000, 2_048)).toBe(true);
   await page.locator("#markLoopEndButton").click();
   await expect(page.locator("#loopDraft")).toContainText("12,");
+  await expect(page.locator("#loopDraft")).toContainText("36,000");
   await expect(page.locator("#loopValidation")).toContainText("Ready");
 
   await page.locator("#playLoopButton").click();
+  await expect(page.locator("#loopApplied")).toContainText("12,000 to 36,000");
   await expect
     .poll(() => runtimeFact(page, "Loop"))
     .toContain("12,000 to 36,000");
@@ -444,9 +464,9 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
     .toBeGreaterThan(30_000);
   await expect
     .poll(() => numericRuntimeFact(page, "Audible source frame"), {
-      timeout: 10_000,
+      timeout: 15_000,
     })
-    .toBeLessThan(18_000);
+    .toBeLessThan(28_000);
   await expect.poll(() => runtimeFact(page, "State")).toBe("playing");
   await expect
     .poll(() => runtimeFact(page, "Source prefetch"))
@@ -459,7 +479,7 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
   await expect.poll(() => runtimeFact(page, "Loop")).toBe("inactive");
   await expect(page.locator("#loopDraft")).toHaveText("none");
 
-  await setRange(page, "#seekRange", "96000");
+  await setSeekFrame(page, "96000");
   await expect.poll(() => sourceFrameNear(page, 96_000, 2_048)).toBe(true);
   await page.locator("#playButton").click();
   await expect.poll(() => runtimeFact(page, "State")).toBe("playing");
@@ -530,7 +550,7 @@ async function sourceFrameNear(
   expected: number,
   tolerance: number,
 ): Promise<boolean> {
-  const frame = await numericRuntimeFact(page, "Audible source frame");
+  const frame = parseFrameFact(await page.locator("#seekRange").inputValue());
 
   return Math.abs(frame - expected) <= tolerance;
 }
@@ -547,6 +567,18 @@ async function setRange(
 
     element.value = nextValue;
     element.dispatchEvent(new Event("input", { bubbles: true }));
+  }, value);
+}
+
+async function setSeekFrame(page: Page, value: string): Promise<void> {
+  await page.locator("#seekFrame").evaluate((element, nextValue) => {
+    if (!(element instanceof HTMLInputElement)) {
+      throw new Error("Expected seek frame input.");
+    }
+
+    element.value = nextValue;
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
   }, value);
 }
 

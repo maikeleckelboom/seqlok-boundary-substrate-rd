@@ -22,6 +22,7 @@ const WORKLET_PROCESSOR = join(
   "worklet",
   "stretch-processor.ts",
 );
+const STRETCH_NODE = join(APP_ROOT, "src", "audio", "stretch-node.ts");
 const MAIN = join(APP_ROOT, "src", "main.ts");
 
 describe("Signalsmith Worklet runtime semantics", () => {
@@ -45,11 +46,34 @@ describe("Signalsmith Worklet runtime semantics", () => {
     expect(desiredBody).toContain("_setTransposeSemitones");
     expect(desiredBody).toContain("_setFormantSemitones");
     expect(desiredBody).toContain("_setFormantBase");
+    expect(desiredBody).not.toContain("transitionFrames");
     expect(desiredBody).not.toContain("configureModule");
     expect(desiredBody).not.toContain("_configure");
     expect(desiredBody).not.toContain("_setBuffers");
     expect(configBody).toContain("configureModule");
     expect(configBody).toContain("_reset");
+  });
+
+  it("delivers host commands without changing the Signalsmith buffered render path", () => {
+    const processor = readFileSync(WORKLET_PROCESSOR, "utf8");
+    const stretchNode = readFileSync(STRETCH_NODE, "utf8");
+    const handleMessageBody = methodBody(processor, "handleMessage");
+    const applyHostCommandBody = methodBody(processor, "applyHostCommand");
+    const applyCommandBody = methodBody(processor, "applyCommand");
+    const renderBody = methodBody(processor, "renderQuantum");
+
+    expect(stretchNode).toContain("notifyCommandsAvailable()");
+    expect(stretchNode).toContain("postCommand(command: StretchCommand)");
+    expect(handleMessageBody).toContain('case "command"');
+    expect(handleMessageBody).toContain('case "commandsAvailable"');
+    expect(applyHostCommandBody).toContain("scheduleOrApplyCommand(command)");
+    expect(applyCommandBody).toContain(
+      "command.sequence <= this.lastAppliedCommandSequence",
+    );
+    expect(renderBody).toContain(
+      "module._seek(this.bufferLengthFrames, this.effectiveRate)",
+    );
+    expect(renderBody).toContain("module._process(0, outputFrameCount)");
   });
 
   it("keeps the Worklet fallback defaults aligned with musical pitch defaults", () => {

@@ -69,8 +69,6 @@ export interface AppElements {
   readonly tonalityEnabled: HTMLInputElement;
   readonly tonalityHz: HTMLInputElement;
   readonly tonalityHzValue: HTMLElement;
-  readonly transitionFrames: HTMLInputElement;
-  readonly transitionFramesValue: HTMLElement;
   readonly transportState: HTMLElement;
   readonly waveform: HTMLCanvasElement;
   readonly waveformPanel: HTMLElement;
@@ -210,11 +208,6 @@ export function renderAppShell(root: HTMLElement): AppElements {
             <span>Pitch</span>
             <input id="pitch" type="range" min="-7" max="7" step="0.1" value="0" />
             <output id="pitchValue">0.0 st</output>
-          </label>
-          <label>
-            <span>Transition</span>
-            <input id="transitionFrames" type="range" min="0" max="48000" step="64" value="2048" />
-            <output id="transitionFramesValue">2048 frames</output>
           </label>
         </div>
 
@@ -412,8 +405,6 @@ export function renderAppShell(root: HTMLElement): AppElements {
     tonalityEnabled: must(root, "#tonalityEnabled", HTMLInputElement),
     tonalityHz: must(root, "#tonalityHz", HTMLInputElement),
     tonalityHzValue: must(root, "#tonalityHzValue", HTMLElement),
-    transitionFrames: must(root, "#transitionFrames", HTMLInputElement),
-    transitionFramesValue: must(root, "#transitionFramesValue", HTMLElement),
     transportState: must(root, "#transportState", HTMLElement),
     waveform: must(root, "#waveform", HTMLCanvasElement),
     waveformPanel: must(root, "#waveformPanel", HTMLElement),

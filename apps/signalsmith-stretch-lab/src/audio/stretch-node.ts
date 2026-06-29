@@ -4,7 +4,10 @@ import { STRETCH_PROCESSOR_NAME } from "../worklet/processor-name";
 
 import type { PlanarFrameChunk } from "./chunked-wav-source";
 import type { ChunkedWavPcmSource } from "./pcm-source";
-import type { StretchCommandTransport } from "../boundary/commands";
+import type {
+  StretchCommand,
+  StretchCommandTransport,
+} from "../boundary/commands";
 import type { StretchBoundarySession } from "../boundary/session";
 
 export interface StretchWorkletRuntimeOptions {
@@ -51,6 +54,13 @@ type StretchWorkletHostMessage =
       readonly loadSequence: number;
       readonly sourceRevision: number;
       readonly type: "sourceInfo";
+    }
+  | {
+      readonly type: "commandsAvailable";
+    }
+  | {
+      readonly command: StretchCommand;
+      readonly type: "command";
     }
   | {
       readonly type: "destroy";
@@ -138,6 +148,14 @@ export class StretchWorkletRuntime {
       sourceRevision,
       type: "sourceChunk",
     });
+  }
+
+  notifyCommandsAvailable(): void {
+    this.postMessage({ type: "commandsAvailable" });
+  }
+
+  postCommand(command: StretchCommand): void {
+    this.postMessage({ command, type: "command" });
   }
 
   dispose(): void {

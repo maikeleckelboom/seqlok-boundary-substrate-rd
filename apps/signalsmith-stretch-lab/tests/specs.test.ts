@@ -154,7 +154,7 @@ describe("Signalsmith Stretch Lab boundary spec", () => {
     ).toBe(true);
   });
 
-  it("maps the official web demo controls without f64 params", () => {
+  it("maps active audio controls and keeps transition reserved in the spec", () => {
     expect(signalsmithStretchLabSpec.params["control.rate"]).toMatchObject({
       kind: "f32",
       max: 8,
@@ -191,6 +191,13 @@ describe("Signalsmith Stretch Lab boundary spec", () => {
     expect(signalsmithStretchLabSpec.params["config.preset"]).toMatchObject({
       kind: "enum",
       values: ["custom", "default", "cheaper"],
+    });
+    expect(
+      signalsmithStretchLabSpec.params["control.transitionFrames"],
+    ).toMatchObject({
+      kind: "u32",
+      max: 48_000,
+      min: 0,
     });
 
     expect(Object.keys(signalsmithStretchLabSpec.params)).not.toEqual(

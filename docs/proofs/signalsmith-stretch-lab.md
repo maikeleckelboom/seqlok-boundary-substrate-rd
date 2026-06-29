@@ -202,7 +202,7 @@ Fields:
 | `formantSemitones` | `f32` | Independent voice/formant shift, -12 to 12 st |
 | `formantCompensation` | `u32` or `bool` | Engine compensation flag |
 | `formantBaseHz` | `f32` | Zero for Auto; manual voice base clamps to 50-500 Hz |
-| `transitionFrames` | `u32` | Hot-control transition length |
+| `transitionFrames` | `u32` | Reserved for future hot-control smoothing; not currently read by the Worklet |
 
 The first demo slice may use current numeric kinds only. If the current package does not support true `u64` fields, do not redesign the package. Use a documented pair or `u32` sequence for the demo.
 
@@ -699,6 +699,7 @@ export const desiredStretchSpec = defineSpec(({ param }) => ({
     formantSemitones: param.f32({ min: -12, max: 12 }),
     formantCompensation: param.bool(),
     formantBaseHz: param.f32({ min: 0, max: 500 }),
+    // Reserved for future smoothing; not currently read by the Worklet.
     transitionFrames: param.u32({ min: 0, max: 48_000 }),
     configSequence: param.u32(),
     preset: param.enum(STRETCH_PRESETS),

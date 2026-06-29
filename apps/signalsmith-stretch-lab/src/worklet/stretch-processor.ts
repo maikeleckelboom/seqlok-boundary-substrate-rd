@@ -76,6 +76,13 @@ type HostMessage =
       readonly type: "sourceInfo";
     }
   | {
+      readonly type: "commandsAvailable";
+    }
+  | {
+      readonly command: StretchCommand;
+      readonly type: "command";
+    }
+  | {
       readonly type: "destroy";
     };
 
@@ -225,6 +232,12 @@ class SignalsmithStretchLabProcessor extends AudioWorkletProcessor {
 
   private handleMessage(message: HostMessage): void {
     switch (message.type) {
+      case "command":
+        this.applyHostCommand(message.command);
+        break;
+      case "commandsAvailable":
+        this.drainCommandsFromHost();
+        break;
       case "destroy":
         this.runtimeState = "idle";
         break;
@@ -243,6 +256,26 @@ class SignalsmithStretchLabProcessor extends AudioWorkletProcessor {
         this.updateBuffers();
         this.acceptSource();
         break;
+    }
+  }
+
+  private applyHostCommand(command: StretchCommand): void {
+    try {
+      this.scheduleOrApplyCommand(command);
+      this.readDesiredParams();
+      this.publishAll([], 0, true);
+    } catch (error) {
+      this.fail(5_003, error);
+    }
+  }
+
+  private drainCommandsFromHost(): void {
+    try {
+      this.drainCommands();
+      this.readDesiredParams();
+      this.publishAll([], 0, true);
+    } catch (error) {
+      this.fail(5_002, error);
     }
   }
 
@@ -340,6 +373,10 @@ class SignalsmithStretchLabProcessor extends AudioWorkletProcessor {
   }
 
   private applyCommand(command: StretchCommand): void {
+    if (command.sequence <= this.lastAppliedCommandSequence) {
+      return;
+    }
+
     this.lastAppliedCommandSequence = command.sequence;
 
     switch (command.name) {
