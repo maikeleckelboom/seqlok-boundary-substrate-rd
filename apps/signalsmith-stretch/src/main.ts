@@ -22,7 +22,11 @@ import {
   computeChunkedWaveformPeaks,
   computePlanarWaveformPeaks,
   createEmptyWaveformPeaks,
+  DEFAULT_WAVEFORM_CACHE_BIN_COUNT,
+  resamplePeaksMax,
+  resolveWaveformBinCount,
   type WaveformPeakMode,
+  type WaveformPeaksState,
 } from "./audio/waveform-peaks";
 import {
   createStretchCommandTransport,
@@ -76,7 +80,7 @@ import {
   type SourceStatusSnapshot,
 } from "./types";
 import { renderAppShell, renderUnsupported } from "./ui/dom";
-import { drawWaveform } from "./ui/waveform";
+import { createWaveformRenderer } from "./ui/waveform";
 
 import type { PlanarFrameChunk } from "./audio/chunked-wav-source";
 
@@ -132,6 +136,7 @@ const DEFAULT_SOURCE = {
   url: "/audio/signalsmith-demo-loop.wav",
 } as const;
 const RECENT_SEEK_MARK_WINDOW_MS = 1_500;
+const WAVEFORM_RESAMPLE_DEBOUNCE_MS = 80;
 
 const RANGE_MODE_LIMITS: Record<RangeMode, ControlRanges> = {
   extended: {
@@ -211,6 +216,10 @@ if (typeof SharedArrayBuffer === "undefined") {
 function startSignalsmithStretch(appRoot: HTMLElement): void {
   try {
     const elements = renderAppShell(appRoot);
+    const waveformRenderer = createWaveformRenderer({
+      overlayCanvas: elements.waveformOverlay,
+      staticCanvas: elements.waveform,
+    });
     const signalsmithAssets = readSignalsmithWorkletAssets();
     const runtimeSupport = detectAudioRuntimeSupport();
     const session = createStretchBoundarySession();
@@ -236,9 +245,15 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
     let lastWavProbe: WavProbe | null = null;
     let wavMode: WavLoadMode = "none";
     let sourceStatusText = "No source loaded.";
-    let waveform = createEmptyWaveformPeaks();
+    let waveformCache = createEmptyWaveformPeaks();
+    let waveform = waveformCache;
     let waveformMode: WaveformPeakMode = waveform.mode;
     let waveformAbort: AbortController | null = null;
+    let waveformCacheSourceRevision = sourceRevision;
+    let waveformDisplayCachePeaks: Readonly<Float32Array> = waveformCache.peaks;
+    let waveformDisplayTargetBinCount = waveform.peaks.length;
+    let waveformRequestGeneration = 0;
+    let waveformResizeTimer: number | null = null;
     let requestedSeekFrame: number | null = null;
     let recentSeekFrame: number | null = null;
     let recentSeekAt = 0;
@@ -491,6 +506,12 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
       });
     }
 
+    const waveformResizeObserver = new ResizeObserver(() => {
+      scheduleWaveformResample();
+    });
+    waveformResizeObserver.observe(elements.waveformStack);
+    window.addEventListener("resize", scheduleWaveformResample);
+
     let lastTickAt = 0;
     const animate = (time: number): void => {
       if (time - lastTickAt >= 80) {
@@ -510,6 +531,11 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
     };
     window.requestAnimationFrame(animate);
     window.addEventListener("beforeunload", () => {
+      waveformResizeObserver.disconnect();
+      window.removeEventListener("resize", scheduleWaveformResample);
+      if (waveformResizeTimer !== null) {
+        window.clearTimeout(waveformResizeTimer);
+      }
       referenceMonitor?.dispose();
       realRuntime?.dispose();
       disposeStretchBoundarySession(session);
@@ -1156,26 +1182,40 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
     function resetWaveformForLoadedSource(loaded: ProofPcmSource): void {
       waveformAbort?.abort();
       waveformAbort = null;
-      waveform =
+      waveformRequestGeneration = nextSequence(waveformRequestGeneration);
+      waveformCacheSourceRevision = loaded.sourceRevision;
+      waveformCache =
         loaded.kind === "decoded-pcm"
-          ? computePlanarWaveformPeaks(loaded.planar, loaded.durationFrames)
-          : createEmptyWaveformPeaks();
-      waveformMode = waveform.mode;
+          ? computePlanarWaveformPeaks(
+              loaded.planar,
+              loaded.durationFrames,
+              resolveWaveformCacheBinCount(),
+            )
+          : createEmptyWaveformPeaks(resolveWaveformCacheBinCount());
+      waveformRenderer.reset();
+      resampleWaveformFromCache();
     }
 
     function startActualWaveformPeaks(loaded: ChunkedWavPcmSource): void {
       waveformAbort?.abort();
       const abort = new AbortController();
+      const generation = nextSequence(waveformRequestGeneration);
+      waveformRequestGeneration = generation;
       waveformAbort = abort;
 
       void computeChunkedWaveformPeaks(loaded.source, {
+        binCount: resolveWaveformCacheBinCount(),
+        coarseBinCount: 320,
         onProgress: (state) => {
-          if (abort.signal.aborted || acceptedSource !== loaded) {
+          if (
+            abort.signal.aborted ||
+            acceptedSource !== loaded ||
+            generation !== waveformRequestGeneration
+          ) {
             return;
           }
 
-          waveform = state;
-          waveformMode = state.mode;
+          commitWaveformCache(loaded.sourceRevision, state);
           render();
         },
         signal: abort.signal,
@@ -1188,6 +1228,93 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
           error instanceof Error ? error.message : String(error);
         render();
       });
+    }
+
+    function scheduleWaveformResample(): void {
+      if (waveformResizeTimer !== null) {
+        window.clearTimeout(waveformResizeTimer);
+      }
+
+      waveformResizeTimer = window.setTimeout(() => {
+        waveformResizeTimer = null;
+        if (acceptedSource === null) {
+          return;
+        }
+
+        resampleWaveformFromCache();
+        maybeRequestHigherWaveformResolution();
+        render();
+      }, WAVEFORM_RESAMPLE_DEBOUNCE_MS);
+    }
+
+    function resolveWaveformCacheBinCount(): number {
+      return Math.max(
+        DEFAULT_WAVEFORM_CACHE_BIN_COUNT,
+        resolveWaveformTargetBinCount(),
+      );
+    }
+
+    function resolveWaveformTargetBinCount(): number {
+      const measure = waveformRenderer.measure();
+      return resolveWaveformBinCount(measure.widthCssPx, measure.dpr);
+    }
+
+    function commitWaveformCache(
+      sourceRevisionForCache: number,
+      state: WaveformPeaksState,
+    ): void {
+      if (sourceRevisionForCache !== waveformCacheSourceRevision) {
+        return;
+      }
+
+      waveformCache = state;
+      resampleWaveformFromCache();
+    }
+
+    function resampleWaveformFromCache(): void {
+      const targetBinCount = resolveWaveformTargetBinCount();
+
+      if (
+        waveformDisplayTargetBinCount === targetBinCount &&
+        waveformDisplayCachePeaks === waveformCache.peaks &&
+        waveform.mode === waveformCache.mode
+      ) {
+        return;
+      }
+
+      waveform = {
+        mode: waveformCache.mode,
+        peaks: resamplePeaksMax(waveformCache.peaks, targetBinCount),
+      };
+      waveformMode = waveform.mode;
+      waveformDisplayCachePeaks = waveformCache.peaks;
+      waveformDisplayTargetBinCount = targetBinCount;
+      waveformRenderer.invalidateStatic();
+    }
+
+    function maybeRequestHigherWaveformResolution(): void {
+      const loaded = acceptedSource;
+
+      if (loaded === null) {
+        return;
+      }
+
+      const requestedBinCount = resolveWaveformCacheBinCount();
+      if (requestedBinCount <= waveformCache.peaks.length) {
+        return;
+      }
+
+      if (loaded.kind === "decoded-pcm") {
+        waveformCache = computePlanarWaveformPeaks(
+          loaded.planar,
+          loaded.durationFrames,
+          requestedBinCount,
+        );
+        resampleWaveformFromCache();
+        return;
+      }
+
+      startActualWaveformPeaks(loaded);
     }
 
     function selectedMonitorMode(): "processed" | "reference" | "split" {
@@ -1347,7 +1474,7 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
       });
 
       if (hasLoadedSource) {
-        drawWaveform(elements.waveform, waveform.peaks, {
+        waveformRenderer.draw(waveform.peaks, {
           appliedLoop: {
             enabled: runtime.loopEnabled,
             endFrame: runtime.loopEndFrame,
@@ -1363,7 +1490,11 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
             revision: loopDraft.revision,
             startFrame: loopDraft.startFrame,
           },
-          levels: levels.historyPeak,
+          levels: {
+            peak: levels.historyPeak,
+            rms: levels.historyRms,
+          },
+          peakMode: waveformMode,
           requestedSeekFrame,
           runtime,
           source,
@@ -1440,6 +1571,8 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
       elements.shell.classList.toggle("is-loaded", hasLoadedSource);
       elements.waveformPanel.hidden = !hasLoadedSource;
       elements.waveform.hidden = !hasLoadedSource;
+      elements.waveformOverlay.hidden = !hasLoadedSource;
+      elements.waveformStack.hidden = !hasLoadedSource;
       elements.levelsPanel.hidden = !hasLoadedSource;
       elements.controlsHint.hidden = hasLoadedSource;
       elements.controlGrid.classList.toggle("is-unloaded", !hasLoadedSource);
