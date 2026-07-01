@@ -17,7 +17,7 @@ Supported meters include `f32`, `f64`, `i32`, `u32`, `bool`, `enum`, and arrays 
 import { defineSpec, type CanonicalSpecFromAst } from "@exclave/boundary";
 
 const authored = {
-  id: "api/spec" as const,
+  id: "api/spec",
   params: {
     filter: {
       cutoff: { kind: "f32", min: 20, max: 20_000 },
@@ -27,13 +27,11 @@ const authored = {
 
 const spec = defineSpec(authored);
 type Canonical = CanonicalSpecFromAst<typeof authored>;
-
-spec.params["filter.cutoff"];
 ```
 
 ## Plan and Backing
 
-- `planLayout(spec)` returns a deterministic memory plan.
+- `planLayout(spec)` returns a deterministic memory plan, including canonical param definitions used by observer snapshots.
 - `allocatePacked(plan)` creates packed backing.
 - `allocatePartitioned(plan)` creates partitioned backing.
 - `allocateWasm(plan, memory)` attaches compatible shared WebAssembly memory.
@@ -47,7 +45,7 @@ spec.params["filter.cutoff"];
 - `bindObserver(source, options?)`
 - `bindObserver(spec, plan, backing, options?)`
 
-Observer `source` can be a handoff or accepted handoff.
+Observer `source` can be a handoff or accepted handoff. Observer snapshots decode enum params to labels for explicit spec triples and handoff-derived sources.
 
 Role-specific public types include `ControllerBinding`, `ProcessorBinding`, `ObserverBinding`, `ControllerParams`, `ProcessorParams`, `ObserverParams`, `ControllerMeters`, `ProcessorMeters`, `ObserverMeters`, `ParamValueFor`, `MeterValueFor`, `ScalarParamPatch`, `HydratePatch`, `ParamsSnapshot`, and `MetersSnapshot`.
 
@@ -91,7 +89,7 @@ Inside `publish(...)`, `writer.set(key, value)` still accepts fully qualified sc
 import { defineSpec, type MeterGroupValues } from "@exclave/boundary";
 
 const spec = defineSpec(({ meter }) => ({
-  id: "api/meters" as const,
+  id: "api/meters",
   meters: {
     runtime: {
       blockSamples: meter.u32(),

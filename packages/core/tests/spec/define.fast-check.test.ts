@@ -25,7 +25,7 @@ type SpecBuilder = (api: {
  * allowing us to intentionally feed invalid data to the runtime validator.
  */
 function runSpec(builder: SpecBuilder): () => unknown {
-  return () => defineSpec(builder as unknown as SpecInput);
+  return () => defineSpec(builder as SpecInput);
 }
 
 describe("Scalar range validation (property-based)", () => {

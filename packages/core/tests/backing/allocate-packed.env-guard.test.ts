@@ -42,10 +42,9 @@ describe("allocate-packed.env-guard", () => {
 
   it("assertSabSupportFromSummary fails gracefully when SAB is missing", () => {
     const fakeEnv = {
-      kind: "browser" as const,
-      hasSharedArrayBuffer: false,
+      document: {},
       crossOriginIsolated: false,
-    } as unknown as EnvGlobal;
+    } as EnvGlobal;
 
     const summary = summarizeEnv(fakeEnv);
 

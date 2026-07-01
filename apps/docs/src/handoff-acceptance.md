@@ -22,7 +22,9 @@ When the handoff type is preserved, the runtime side can bind directly:
 const processor = bindProcessor(handoff);
 ```
 
-`acceptHandoff(...)` validates the protocol version, plan shape, packing mode, and backing sizes. It returns a smaller accepted capability containing the plan and backing descriptor a binding needs.
+`acceptHandoff(...)` validates the protocol version, plan shape, packing mode, and backing sizes. It returns a runtime-branded accepted capability containing the plan and backing descriptor a processor or observer binding needs.
+
+The accepted capability is not a transport envelope. The handoff remains the value to move across `postMessage` or process boundaries; the accepted value is the local proof that an unknown handoff passed boundary validation.
 
 Use it at unknown transport boundaries:
 

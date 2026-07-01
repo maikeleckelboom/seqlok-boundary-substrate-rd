@@ -23,12 +23,7 @@ describe("Coherent Param Shape", () => {
   it("scalars are value-like (numeric for enums) and not callable", () => {
     expectTypeOf(p.gain).toExtend<number>();
     expectTypeOf(p.mode).toExtend<number>();
-
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (false as unknown as never) {
-      // @ts-expect-error Intentional check to ensure CoherentValue is not callable.
-      p.gain(123);
-    }
+    expectTypeOf(p.gain).not.toExtend<(...args: never[]) => unknown>();
 
     // Verify usage as primitives.
     void (p.gain * 2);

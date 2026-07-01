@@ -5,7 +5,7 @@
  */
 
 import type { PlaneKey } from "../primitives/planes";
-import type { SpecHash, SpecInput } from "../spec/types";
+import type { ParamDef, SpecHash, SpecInput } from "../spec/types";
 
 /**
  * Logical stride (in bytes) reserved around seqlock planes (PU/MU).
@@ -104,6 +104,15 @@ export interface Plan<S extends SpecInput> {
 
   /** Per-entry param slots, keyed by authored param keys. */
   readonly params: Readonly<{ [K in keyof S["params"]]: EntrySlot }>;
+
+  /**
+   * Canonical param definitions, keyed by authored param keys.
+   *
+   * Kept with the plan so observer bindings created from handoffs can decode
+   * public param snapshots, including enum labels, without carrying the full
+   * authored spec separately.
+   */
+  readonly paramDefs: Readonly<{ [K in keyof S["params"]]: ParamDef }>;
 
   /** Per-entry meter slots, keyed by authored meter keys. */
   readonly meters: Readonly<{ [K in keyof S["meters"]]: EntrySlot }>;

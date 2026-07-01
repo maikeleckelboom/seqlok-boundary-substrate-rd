@@ -13,6 +13,8 @@ import {
   acceptHandoff,
 } from "../../src";
 
+import type { PackedBacking } from "../../src/backing/types";
+
 describe("observer binding – coverage edges", () => {
   const spec = defineSpec(({ param, meter }) => ({
     params: {
@@ -199,7 +201,10 @@ describe("observer binding – coverage edges", () => {
 
     // Deliberately allocate a SAB smaller than plan.bytesTotal
     const undersizedSab = new SharedArrayBuffer(bigPlan.bytesTotal - 4);
-    const smallBacking = { kind: "packed", sab: undersizedSab } as const;
+    const smallBacking: PackedBacking = {
+      kind: "packed",
+      sab: undersizedSab,
+    };
 
     expect(() => {
       bindObserver(bigSpec, bigPlan, smallBacking);

@@ -1,3 +1,5 @@
+import { hasAcceptedHandoffRuntimeBrand } from "../../handoff/accepted-brand";
+
 import type { Backing } from "../../backing/types";
 import type { Handoff, AcceptedHandoff } from "../../handoff/types";
 import type { SpecInput } from "../../spec/types";
@@ -18,8 +20,7 @@ export function isAcceptedHandoff<S extends SpecInput>(
   value: unknown,
 ): value is AcceptedHandoff<S> {
   return (
-    typeof value === "object" &&
-    value !== null &&
+    hasAcceptedHandoffRuntimeBrand(value) &&
     "packing" in value &&
     "plan" in value &&
     !("version" in value)

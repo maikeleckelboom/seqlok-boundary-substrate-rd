@@ -18,6 +18,7 @@
  *   has been validated by `acceptHandoff`.
  */
 
+import { brandAcceptedHandoffRuntime } from "./accepted-brand";
 import { createError } from "../errors/error";
 import { isObject } from "../internal/is-object";
 import { ALL_PLANES, type PlaneKey } from "../primitives/planes";
@@ -25,7 +26,7 @@ import { ALL_PLANES, type PlaneKey } from "../primitives/planes";
 import type { Handoff, AcceptedHandoff } from "./types";
 import type { Backing } from "../backing/types";
 import type { Plan, PlaneByteLengths } from "../plan/types";
-import type { SpecInput } from "../spec/types";
+import type { ParamDef, SpecInput } from "../spec/types";
 
 /**
  * Protocol version supported by this module.
@@ -51,74 +52,180 @@ function isSharedArrayBuffer(value: unknown): value is SharedArrayBuffer {
   );
 }
 
-/**
- * Structural guard for `PlaneByteLengths`.
- *
- * @internal
- */
-function isPlaneByteLengths(value: unknown): value is PlaneByteLengths {
-  if (!isObject(value)) {
-    return false;
-  }
-
-  for (const v of Object.values(value)) {
-    if (typeof v !== "number" || !Number.isFinite(v) || v < 0) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-/**
- * Structural guard for `Plan<S>` used at the boundary.
- *
- * @internal
- */
-function isPlanLike<S extends SpecInput>(plan: unknown): plan is Plan<S> {
-  if (!isObject(plan)) {
-    return false;
-  }
-
-  const maybeHash = plan.hash;
-  const maybeBytesTotal = plan.bytesTotal;
-  const maybePlanes = plan.planes;
-
-  if (typeof maybeHash !== "string" || typeof maybeBytesTotal !== "number") {
-    return false;
-  }
-
-  return isPlaneByteLengths(maybePlanes);
-}
-
 function brandHandoff<S extends SpecInput>(
-  handoff: {
-    readonly version: 1;
-    readonly packing: "packed";
-    readonly sab: SharedArrayBuffer;
-    readonly plan: Plan<S>;
-  } | {
-    readonly version: 1;
-    readonly packing: "partitioned";
-    readonly planes: Readonly<Record<string, SharedArrayBuffer>>;
-    readonly plan: Plan<S>;
-  },
+  handoff:
+    | {
+        readonly version: 1;
+        readonly packing: "packed";
+        readonly sab: SharedArrayBuffer;
+        readonly plan: Plan<S>;
+      }
+    | {
+        readonly version: 1;
+        readonly packing: "partitioned";
+        readonly planes: Readonly<Record<string, SharedArrayBuffer>>;
+        readonly plan: Plan<S>;
+      },
 ): Handoff<S> {
   return handoff as Handoff<S>;
 }
 
 function brandAcceptedHandoff<S extends SpecInput>(
-  accepted: {
-    readonly packing: "packed";
-    readonly sab: SharedArrayBuffer;
-    readonly plan: Plan<S>;
-  } | {
-    readonly packing: "partitioned";
-    readonly planes: Readonly<Record<string, SharedArrayBuffer>>;
-    readonly plan: Plan<S>;
-  },
+  accepted:
+    | {
+        readonly packing: "packed";
+        readonly sab: SharedArrayBuffer;
+        readonly plan: Plan<S>;
+      }
+    | {
+        readonly packing: "partitioned";
+        readonly planes: Readonly<Record<string, SharedArrayBuffer>>;
+        readonly plan: Plan<S>;
+      },
 ): AcceptedHandoff<S> {
-  return accepted as AcceptedHandoff<S>;
+  return brandAcceptedHandoffRuntime(accepted) as AcceptedHandoff<S>;
+}
+
+function invalidPlan(detail: string): never {
+  throw createError(
+    "handoff.invalidArtifact",
+    "Missing or invalid plan in handoff",
+    {
+      where: "handoff.acceptHandoff",
+      detail,
+    },
+  );
+}
+
+function isNonNegativeFiniteInteger(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+  );
+}
+
+function assertPlaneByteLengths(
+  value: unknown,
+): asserts value is PlaneByteLengths {
+  if (!isObject(value)) {
+    invalidPlan("plan.planes");
+  }
+
+  for (const plane of ALL_PLANES) {
+    if (!isNonNegativeFiniteInteger(value[plane])) {
+      invalidPlan(`plan.planes.${plane}`);
+    }
+  }
+}
+
+function assertPlanObjects(plan: Record<string, unknown>): {
+  readonly params: Record<string, unknown>;
+  readonly meters: Record<string, unknown>;
+  readonly locks: Record<string, unknown>;
+} {
+  const params = plan.params;
+  if (!isObject(params)) {
+    invalidPlan("plan.params");
+  }
+
+  const meters = plan.meters;
+  if (!isObject(meters)) {
+    invalidPlan("plan.meters");
+  }
+
+  const locks = plan.locks;
+  if (!isObject(locks)) {
+    invalidPlan("plan.locks");
+  }
+
+  return { params, meters, locks };
+}
+
+function assertLockPair(value: unknown, key: "PU" | "MU"): void {
+  if (!isObject(value)) {
+    invalidPlan(`plan.locks.${key}`);
+  }
+
+  if (!isNonNegativeFiniteInteger(value.lock)) {
+    invalidPlan(`plan.locks.${key}.lock`);
+  }
+
+  if (!isNonNegativeFiniteInteger(value.seq)) {
+    invalidPlan(`plan.locks.${key}.seq`);
+  }
+}
+
+function isStringArray(value: unknown): value is readonly string[] {
+  return (
+    Array.isArray(value) && value.every((entry) => typeof entry === "string")
+  );
+}
+
+function assertParamDefs(
+  value: unknown,
+  params: Record<string, unknown>,
+): asserts value is Readonly<Record<string, ParamDef>> {
+  if (!isObject(value)) {
+    invalidPlan("plan.paramDefs");
+  }
+
+  for (const key of Object.keys(params)) {
+    const def = value[key];
+    if (!isObject(def) || typeof def.kind !== "string") {
+      invalidPlan(`plan.paramDefs.${key}`);
+    }
+
+    if (
+      (def.kind === "enum" || def.kind === "enum.array") &&
+      !isStringArray(def.values)
+    ) {
+      invalidPlan(`plan.paramDefs.${key}.values`);
+    }
+
+    if ("length" in def && !isNonNegativeFiniteInteger(def.length)) {
+      invalidPlan(`plan.paramDefs.${key}.length`);
+    }
+  }
+}
+
+function assertPlanLike<S extends SpecInput>(
+  plan: unknown,
+): asserts plan is Plan<S> {
+  if (!isObject(plan)) {
+    invalidPlan("plan");
+  }
+
+  if (typeof plan.id !== "string") {
+    invalidPlan("plan.id");
+  }
+
+  if (typeof plan.hash !== "string") {
+    invalidPlan("plan.hash");
+  }
+
+  if (!isNonNegativeFiniteInteger(plan.bytesTotal)) {
+    invalidPlan("plan.bytesTotal");
+  }
+
+  if (!isNonNegativeFiniteInteger(plan.lockStrideBytes)) {
+    invalidPlan("plan.lockStrideBytes");
+  }
+
+  assertPlaneByteLengths(plan.planes);
+
+  const { params, locks } = assertPlanObjects(plan);
+  assertParamDefs(plan.paramDefs, params);
+  assertLockPair(locks.PU, "PU");
+  assertLockPair(locks.MU, "MU");
+}
+
+function backingKindDetail(value: unknown): string {
+  if (isObject(value) && typeof value.kind === "string") {
+    return `kind=${value.kind}`;
+  }
+  return "kind=unknown";
 }
 
 /**
@@ -138,9 +245,21 @@ function brandAcceptedHandoff<S extends SpecInput>(
 export function buildHandoff<S extends SpecInput>(
   plan: Plan<S>,
   backing: Backing,
+): Handoff<S>;
+export function buildHandoff<S extends SpecInput>(
+  plan: Plan<S>,
+  backing: unknown,
 ): Handoff<S> {
+  if (!isObject(backing)) {
+    throw createError("handoff.invalidArtifact", "Unsupported backing kind", {
+      where: "handoff.buildHandoff",
+      detail: backingKindDetail(backing),
+    });
+  }
+
   if (backing.kind === "packed") {
-    if (!isSharedArrayBuffer(backing.sab)) {
+    const sab = backing.sab;
+    if (!isSharedArrayBuffer(sab)) {
       throw createError(
         "handoff.invalidArtifact",
         'Handoff requires a SharedArrayBuffer backing for kind="packed"',
@@ -152,7 +271,7 @@ export function buildHandoff<S extends SpecInput>(
     }
 
     const requiredBytes = plan.bytesTotal >>> 0;
-    const actualBytes = backing.sab.byteLength >>> 0;
+    const actualBytes = sab.byteLength >>> 0;
 
     if (actualBytes < requiredBytes) {
       throw createError(
@@ -169,7 +288,7 @@ export function buildHandoff<S extends SpecInput>(
     return brandHandoff({
       version: SUPPORTED_HANDOFF_VERSION,
       packing: "packed",
-      sab: backing.sab,
+      sab,
       plan,
     });
   }
@@ -177,6 +296,19 @@ export function buildHandoff<S extends SpecInput>(
   if (backing.kind === "partitioned") {
     const planeLengths = plan.planes as Record<PlaneKey, number>;
     const planes = backing.planes;
+
+    if (!isObject(planes)) {
+      throw createError(
+        "handoff.invalidArtifact",
+        "Partitioned backing planes must be an object",
+        {
+          where: "handoff.buildHandoff",
+          detail: "backing.planes",
+        },
+      );
+    }
+
+    const planeSabMap: Record<string, SharedArrayBuffer> = {};
 
     for (const plane of ALL_PLANES) {
       const sab = planes[plane];
@@ -207,24 +339,33 @@ export function buildHandoff<S extends SpecInput>(
           },
         );
       }
+
+      planeSabMap[plane] = sab;
     }
 
     return brandHandoff({
       version: SUPPORTED_HANDOFF_VERSION,
       packing: "partitioned",
-      planes,
+      planes: planeSabMap,
       plan,
     });
   }
 
-  throw createError(
-    "handoff.invalidArtifact",
-    "wasm backing is not yet supported by the handoff protocol",
-    {
-      where: "handoff.buildHandoff",
-      detail: "kind=wasm",
-    },
-  );
+  if (backing.kind === "wasm") {
+    throw createError(
+      "handoff.invalidArtifact",
+      "wasm backing is not yet supported by the handoff protocol",
+      {
+        where: "handoff.buildHandoff",
+        detail: "kind=wasm",
+      },
+    );
+  }
+
+  throw createError("handoff.invalidArtifact", "Unsupported backing kind", {
+    where: "handoff.buildHandoff",
+    detail: backingKindDetail(backing),
+  });
 }
 
 /**
@@ -279,17 +420,7 @@ export function acceptHandoff<S extends SpecInput>(
     });
   }
 
-  if (!isPlanLike<S>(hx.plan)) {
-    throw createError(
-      "handoff.invalidArtifact",
-      "Missing or invalid plan in handoff",
-      {
-        where: "handoff.acceptHandoff",
-        detail: "plan",
-      },
-    );
-  }
-
+  assertPlanLike<S>(hx.plan);
   const plan = hx.plan;
 
   if (hx.packing === "packed") {

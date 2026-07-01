@@ -43,7 +43,7 @@ import {
 } from "@exclave/boundary";
 
 const spec = defineSpec((api) => ({
-  id: "quickstart/control" as const,
+  id: "quickstart/control",
   params: {
     runtime: {
       enabled: api.param.bool(),
@@ -74,7 +74,7 @@ controller.params.stage("runtime.window", (view) => {
 });
 
 const savedPreset = controller.params.snapshot({
-  keys: ["runtime.enabled", "runtime.count", "runtime.window"] as const,
+  keys: ["runtime.enabled", "runtime.count", "runtime.window"],
 });
 controller.params.update({ "runtime.count": 0 });
 controller.params.hydrate(savedPreset);
@@ -91,10 +91,10 @@ processor.params.within((params) => {
 });
 
 const reusableLevels = controller.meters.snapshot({
-  keys: ["levels"] as const,
+  keys: ["levels"],
 }).levels;
 const meterSnapshot = controller.meters.snapshot({
-  keys: ["levels"] as const,
+  keys: ["levels"],
   into: { levels: reusableLevels },
 });
 ```

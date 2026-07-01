@@ -32,8 +32,8 @@ describe("allocateWasm: memory constructor failure path", () => {
     }
 
     vi.stubGlobal("WebAssembly", {
-      Memory: ThrowingMemory as unknown as typeof WebAssembly.Memory,
-    } as unknown as typeof WebAssembly);
+      Memory: ThrowingMemory as typeof WebAssembly.Memory,
+    });
 
     // Act/Assert
     try {

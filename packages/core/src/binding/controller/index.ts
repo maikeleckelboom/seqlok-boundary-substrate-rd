@@ -6,8 +6,7 @@
  * - Bridges `defineSpec` + Plan + Backing into a typed `ControllerBinding`.
  * - Matches the explicit golden flow:
  *
- *   defineSpec -> planLayout -> allocatePacked -> buildHandoff ->
- *   acceptHandoff -> bindController / bindProcessor
+ *   defineSpec -> planLayout -> allocatePacked -> bindController
  *
  * - The binding layer does not perform planning; callers are responsible
  *   for computing the Plan via `planLayout(spec)` and allocating a Backing

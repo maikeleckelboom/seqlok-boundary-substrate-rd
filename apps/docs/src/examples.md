@@ -8,7 +8,7 @@ These examples show the public contract in code. The prose names the boundary gu
 import { defineSpec } from "@exclave/boundary";
 
 const spec = defineSpec((api) => ({
-  id: "examples/transport" as const,
+  id: "examples/transport",
   params: {
     transport: {
       enabled: api.param.bool(),
@@ -24,13 +24,9 @@ const spec = defineSpec((api) => ({
     },
   },
 }));
-
-spec.params["transport.mode"];
-
-spec.meters["transport.spectrum"];
 ```
 
-The authored shape is nested, but the canonical spec uses dot keys. Those keys are accepted by controller and observer APIs.
+The authored shape is nested, while controller writes use canonical dot-key strings and processor or observer reads expose nested views.
 
 ## Controller Params
 
@@ -43,7 +39,7 @@ import {
 } from "@exclave/boundary";
 
 const spec = defineSpec((api) => ({
-  id: "examples/controller" as const,
+  id: "examples/controller",
   params: {
     transport: {
       enabled: api.param.bool(),
@@ -82,7 +78,7 @@ import {
 } from "@exclave/boundary";
 
 const spec = defineSpec((api) => ({
-  id: "examples/processor" as const,
+  id: "examples/processor",
   params: {
     transport: {
       enabled: api.param.bool(),
@@ -134,7 +130,7 @@ import {
 } from "@exclave/boundary";
 
 const spec = defineSpec((api) => ({
-  id: "examples/observer" as const,
+  id: "examples/observer",
   params: {
     transport: {
       enabled: api.param.bool(),
@@ -154,16 +150,16 @@ const backing = allocatePacked(plan);
 const handoff = buildHandoff(plan, backing);
 const observer = bindObserver(handoff);
 
-const params = observer.params.snapshot([
-  "transport.enabled",
-  "transport.mode",
-] as const);
-const meters = observer.meters.snapshot("transport.state", "transport.drift");
+observer.params.within((params) => {
+  params.transport.enabled;
+  params.transport.mode;
+});
 
-params["transport.mode"];
-
-meters["transport.state"];
+observer.params.snapshot(["transport.enabled", "transport.mode"]);
+observer.meters.snapshot("transport.state", "transport.drift");
 ```
+
+The observer receives enum param labels in snapshots, including when it binds from a handoff.
 
 ## BoundaryError Narrowing
 

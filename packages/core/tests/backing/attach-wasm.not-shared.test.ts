@@ -28,8 +28,8 @@ describe("allocateWasm: shared memory validation", () => {
     }
 
     vi.stubGlobal("WebAssembly", {
-      Memory: NonSharedMemory as unknown as typeof WebAssembly.Memory,
-    } as unknown as typeof WebAssembly);
+      Memory: NonSharedMemory as typeof WebAssembly.Memory,
+    });
 
     let thrown: unknown;
 

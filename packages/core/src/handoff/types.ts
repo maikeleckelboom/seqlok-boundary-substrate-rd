@@ -13,6 +13,8 @@
  *
  * - `Plan<S>` is the single source of truth for layout and spec metadata.
  * - No duplicated header fields (hash, byte lengths, planes) outside `Plan<S>`.
+ * - Canonical param definitions live on `Plan<S>` so handoff observers can
+ *   decode public param snapshots, including enum labels.
  * - `Handoff<S>` and `AcceptedHandoff<S>` are type-branded, so application code
  *   cannot accidentally use raw structural objects as capabilities.
  */
@@ -186,6 +188,7 @@ interface PartitionedHandoff<S extends SpecInput = SpecInput> {
  *
  * - Layout metadata: `plan.hash`, `plan.bytesTotal`, `plan.planes`.
  * - Spec structure: params/meters as defined by `defineSpec`.
+ * - Param definitions for observer snapshot decoding.
  * - Memory offsets and alignment: plane-relative byte layouts.
  *
  * Consumers should not construct this type manually; use `buildHandoff(...)`.

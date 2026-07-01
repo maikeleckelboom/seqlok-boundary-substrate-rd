@@ -83,7 +83,7 @@ function normalizeFromAccepted<const S extends SpecInput>(
   return {
     plan: accepted.plan,
     backing: backingFromAccepted(accepted),
-    defs: EMPTY_PARAM_DEFS,
+    defs: accepted.plan.paramDefs,
   };
 }
 

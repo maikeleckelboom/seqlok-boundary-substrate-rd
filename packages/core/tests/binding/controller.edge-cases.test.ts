@@ -186,8 +186,9 @@ describe("Controller: Edge Cases & Validation", () => {
     const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
 
-    // Writing index 1 ('square') directly
-    ctl.params.set("waveform", 1 as unknown as never);
+    // Writing index 1 ('square') directly through the runtime call path.
+    const setParam = ctl.params.set.bind(ctl.params);
+    Reflect.apply(setParam, undefined, ["waveform", 1]);
 
     const snap = ctl.params.snapshot();
     // Snapshot returns the string representation, or at least validates the update occurred

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
+import { allocatePacked } from "../../src/backing/allocate-packed";
 import {
   claimBinding,
   clearBindingRegistry,
@@ -7,19 +8,30 @@ import {
   noteBinding,
   releaseBinding,
 } from "../../src/binding/common/registry";
+import { bindController } from "../../src/binding/controller";
+import { bindObserver } from "../../src/binding/observer";
+import { bindProcessor } from "../../src/binding/processor";
+import { buildHandoff } from "../../src/handoff/handoff";
+import { planLayout } from "../../src/plan/layout";
+import { defineSpec } from "../../src/spec/define";
 
 import type { Backing } from "../../src/backing/types";
 
 /**
  * Creates a minimal Backing stub for registry identity testing.
- * The registry relies on object identity, so full structural compliance is not required.
  */
-function backingStub(label: string): Backing {
+function backingStub(): Backing {
   return {
     kind: "packed",
     sab: new SharedArrayBuffer(8),
-    label,
-  } as unknown as Backing;
+  };
+}
+
+function packedBackingFromBuffer(sab: SharedArrayBuffer): Backing {
+  return {
+    kind: "packed",
+    sab,
+  };
 }
 
 /**
@@ -29,12 +41,22 @@ function backingStub(label: string): Backing {
  * Verifies role-based access control and lifecycle management of bindings.
  */
 describe("Binding Registry: Global State Management", () => {
+  const spec = defineSpec(({ param, meter }) => ({
+    id: "binding-registry",
+    params: {
+      rate: param.f32({ min: 0, max: 2 }),
+    },
+    meters: {
+      peak: meter.f32(),
+    },
+  }));
+
   beforeEach(() => {
     clearBindingRegistry();
   });
 
   it("manages role lifecycle with note/release operations", () => {
-    const backing = backingStub("lifecycle-test");
+    const backing = backingStub();
 
     expect(getBindingState(backing)).toBeUndefined();
 
@@ -74,7 +96,7 @@ describe("Binding Registry: Global State Management", () => {
   });
 
   it("enforces role exclusivity while allowing cross-role bindings", () => {
-    const backing = backingStub("exclusivity-test");
+    const backing = backingStub();
 
     // First claim should succeed
     claimBinding(backing, "controller");
@@ -107,7 +129,7 @@ describe("Binding Registry: Global State Management", () => {
   });
 
   it("gracefully handles idempotent releases and unknown backings", () => {
-    const backing = backingStub("idempotency-test");
+    const backing = backingStub();
 
     // Releases on non-existent binding are safe
     releaseBinding(backing, "controller");
@@ -135,5 +157,83 @@ describe("Binding Registry: Global State Management", () => {
     releaseBinding(backing, "processor");
     releaseBinding(backing, "observer");
     expect(getBindingState(backing)).toBeUndefined();
+  });
+
+  it("keys packed bindings by their SharedArrayBuffer identity", () => {
+    const sab = new SharedArrayBuffer(8);
+    const firstWrapper = packedBackingFromBuffer(sab);
+    const secondWrapper = packedBackingFromBuffer(sab);
+
+    claimBinding(firstWrapper, "processor");
+
+    expect(getBindingState(secondWrapper)).toEqual({
+      roles: { controller: false, processor: true, observer: false },
+    });
+    expect(() => {
+      claimBinding(secondWrapper, "processor");
+    }).toThrow(/exclusive binding already exists/i);
+  });
+
+  it("rejects double processor binding for the same explicit backing", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const processor = bindProcessor(plan, backing);
+
+    expect(() => {
+      bindProcessor(plan, backing);
+    }).toThrow(/exclusive binding already exists/i);
+
+    processor.dispose();
+  });
+
+  it("rejects double processor binding through the same handoff", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const handoff = buildHandoff(plan, backing);
+    const processor = bindProcessor(handoff);
+
+    expect(() => {
+      bindProcessor(handoff);
+    }).toThrow(/exclusive binding already exists/i);
+
+    processor.dispose();
+  });
+
+  it("rejects double controller binding for packed backing", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const controller = bindController(spec, plan, backing);
+
+    expect(() => {
+      bindController(spec, plan, backing);
+    }).toThrow(/exclusive binding already exists/i);
+
+    controller.dispose();
+  });
+
+  it("allows one controller and one processor on the same backing", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const controller = bindController(spec, plan, backing);
+    const processor = bindProcessor(plan, backing);
+
+    expect(controller.params.version()).toBe(0);
+    expect(processor.params.version()).toBe(0);
+
+    processor.dispose();
+    controller.dispose();
+  });
+
+  it("keeps observer bindings non-exclusive", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const first = bindObserver(spec, plan, backing);
+    const second = bindObserver(spec, plan, backing);
+
+    expect(first.params.version()).toBe(0);
+    expect(second.params.version()).toBe(0);
+
+    second.dispose();
+    first.dispose();
   });
 });

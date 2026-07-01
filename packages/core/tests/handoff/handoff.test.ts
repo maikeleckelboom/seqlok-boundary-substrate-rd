@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { allocatePacked } from "../../src/backing/allocate-packed";
 import { allocatePartitioned } from "../../src/backing/allocate-partitioned";
+import { bindController } from "../../src/binding/controller";
 import { bindObserver } from "../../src/binding/observer";
 import { bindProcessor } from "../../src/binding/processor";
 import { isBoundaryError } from "../../src/errors/error";
@@ -13,10 +14,28 @@ import {
 import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
 
-import type {
-  PartitionedBacking,
-  WasmBacking,
-} from "../../src/backing/types";
+import type { PartitionedBacking, WasmBacking } from "../../src/backing/types";
+
+function expectBoundaryError(
+  action: () => void,
+  code: string,
+  detail?: string,
+): void {
+  let thrown: unknown;
+  try {
+    action();
+  } catch (error) {
+    thrown = error;
+  }
+
+  expect(isBoundaryError(thrown)).toBe(true);
+  if (isBoundaryError(thrown)) {
+    expect(thrown.code).toBe(code);
+    if (detail !== undefined) {
+      expect(thrown.details.detail).toBe(detail);
+    }
+  }
+}
 
 describe("Handoff Mechanisms (packed backing)", () => {
   const spec = defineSpec(({ param, meter }) => ({
@@ -156,6 +175,148 @@ describe("Handoff Mechanisms (packed backing)", () => {
     observer.dispose();
     processor.dispose();
   });
+
+  it("brands accepted handoffs as processor and observer capabilities", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const handoff = buildHandoff(plan, backing);
+    const accepted = acceptHandoff(handoff);
+
+    const processor = bindProcessor(accepted);
+    const observer = bindObserver(accepted);
+
+    expect(processor.params.version()).toBe(0);
+    expect(observer.params.version()).toBe(0);
+
+    observer.dispose();
+    processor.dispose();
+  });
+
+  it("rejects unbranded accepted-shaped runtime objects in bindings", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const acceptedShape = {
+      packing: "packed",
+      plan,
+      sab: backing.sab,
+    };
+
+    expectBoundaryError(() => {
+      Reflect.apply(bindProcessor, undefined, [acceptedShape]);
+    }, "binding.invalidArgs");
+    expectBoundaryError(() => {
+      Reflect.apply(bindObserver, undefined, [acceptedShape]);
+    }, "binding.invalidArgs");
+  });
+
+  it("decodes enum labels for observer handoff sources", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const controller = bindController(spec, plan, backing);
+    const handoff = buildHandoff(plan, backing);
+    const accepted = acceptHandoff(handoff);
+
+    controller.params.set("mode", "b");
+
+    const handoffObserver = bindObserver(handoff);
+    const acceptedObserver = bindObserver(accepted);
+
+    const handoffParams = handoffObserver.params.snapshot(["mode"]);
+    const acceptedParams = acceptedObserver.params.snapshot(["mode"]);
+
+    expect(handoffParams.mode).toBe("b");
+    expect(acceptedParams.mode).toBe("b");
+
+    acceptedObserver.dispose();
+    handoffObserver.dispose();
+    controller.dispose();
+  });
+
+  it("rejects malformed accepted plan metadata before binding", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const handoff = buildHandoff(plan, backing);
+
+    const planesWithoutPf32 = {
+      PI32: plan.planes.PI32,
+      PB: plan.planes.PB,
+      PU: plan.planes.PU,
+      MF32: plan.planes.MF32,
+      MF64: plan.planes.MF64,
+      MU32: plan.planes.MU32,
+      MU: plan.planes.MU,
+    };
+
+    expectBoundaryError(
+      () => {
+        acceptHandoff({
+          ...handoff,
+          plan: {
+            ...plan,
+            planes: planesWithoutPf32,
+          },
+        });
+      },
+      "handoff.invalidArtifact",
+      "plan.planes.PF32",
+    );
+
+    expectBoundaryError(
+      () => {
+        acceptHandoff({
+          ...handoff,
+          plan: {
+            ...plan,
+            locks: undefined,
+          },
+        });
+      },
+      "handoff.invalidArtifact",
+      "plan.locks",
+    );
+
+    expectBoundaryError(
+      () => {
+        acceptHandoff({
+          ...handoff,
+          plan: {
+            ...plan,
+            params: undefined,
+          },
+        });
+      },
+      "handoff.invalidArtifact",
+      "plan.params",
+    );
+
+    expectBoundaryError(
+      () => {
+        acceptHandoff({
+          ...handoff,
+          plan: {
+            ...plan,
+            meters: undefined,
+          },
+        });
+      },
+      "handoff.invalidArtifact",
+      "plan.meters",
+    );
+
+    expectBoundaryError(
+      () => {
+        acceptHandoff({
+          ...handoff,
+          plan: {
+            ...plan,
+            bytesTotal: plan.bytesTotal + 0.5,
+          },
+        });
+      },
+      "handoff.invalidArtifact",
+      "plan.bytesTotal",
+    );
+  });
 });
 
 describe("Handoff Mechanisms (partitioned backing)", () => {
@@ -179,9 +340,7 @@ describe("Handoff Mechanisms (partitioned backing)", () => {
     const accepted = acceptHandoff(env);
 
     if (accepted.packing !== "partitioned") {
-      throw new Error(
-        'Expected packing "partitioned" for partitioned backing',
-      );
+      throw new Error('Expected packing "partitioned" for partitioned backing');
     }
 
     expect(accepted.plan.id).toBe("handoff-partitioned");
@@ -253,5 +412,20 @@ describe("Handoff Mechanisms (wasm backing)", () => {
       expect(error.code).toBe("handoff.invalidArtifact");
       expect(error.details.detail).toBe("kind=wasm");
     }
+  });
+
+  it("reports malformed backing kind distinctly from wasm", () => {
+    const plan = planLayout(spec);
+    const malformedBacking = {
+      kind: "mystery",
+    };
+
+    expectBoundaryError(
+      () => {
+        Reflect.apply(buildHandoff, undefined, [plan, malformedBacking]);
+      },
+      "handoff.invalidArtifact",
+      "kind=mystery",
+    );
   });
 });

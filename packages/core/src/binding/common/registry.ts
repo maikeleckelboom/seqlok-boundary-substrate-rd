@@ -15,6 +15,7 @@
 import { invariant } from "../../errors/invariant";
 
 import type { Backing } from "../../backing/types";
+import type { PlaneKey } from "../../primitives/planes";
 
 /**
  * Supported binding roles.
@@ -44,7 +45,28 @@ interface BindingStateView {
  *
  * Registry is per-module; tests can reset it via clearBindingRegistry().
  */
-let BOUND = new WeakMap<Backing, BindSlots>();
+let BOUND = new WeakMap<object, BindSlots>();
+
+function identityForBacking(backing: Backing): object {
+  switch (backing.kind) {
+    case "packed":
+      return backing.sab;
+    case "wasm":
+      return backing.memory;
+    case "partitioned": {
+      const planes: Readonly<Partial<Record<PlaneKey, SharedArrayBuffer>>> =
+        backing.planes;
+      const identity = planes.PU ?? planes.MU;
+      invariant(
+        identity !== undefined,
+        "internal.assertionFailed",
+        "Partitioned backing registry identity missing",
+        { where: "binding.registry", detail: "partitioned.PU" },
+      );
+      return identity;
+    }
+  }
+}
 
 export function clearBindingRegistry(): void {
   BOUND = new WeakMap();
@@ -59,13 +81,14 @@ export function clearBindingRegistry(): void {
  * exclusivity should use claimBinding() instead.
  */
 export function noteBinding(backing: Backing, role: BindRole): void {
-  const current = BOUND.get(backing);
+  const identity = identityForBacking(backing);
+  const current = BOUND.get(identity);
   if (!current) {
-    BOUND.set(backing, { [role]: true });
+    BOUND.set(identity, { [role]: true });
     return;
   }
 
-  BOUND.set(backing, { ...current, [role]: true });
+  BOUND.set(identity, { ...current, [role]: true });
 }
 
 /**
@@ -76,19 +99,20 @@ export function noteBinding(backing: Backing, role: BindRole): void {
  * one binding would violate ownership expectations.
  */
 export function claimBinding(backing: Backing, role: BindRole): void {
-  const current = BOUND.get(backing);
+  const identity = identityForBacking(backing);
+  const current = BOUND.get(identity);
 
   invariant(
     !current?.[role],
     "internal.assertionFailed",
     "Exclusive binding already exists for this backing and role",
-    { where: `binding.${role}`, detail: "double-bind on Backing instance" },
+    { where: `binding.${role}`, detail: "double-bind on backing identity" },
   );
 
   if (!current) {
-    BOUND.set(backing, { [role]: true });
+    BOUND.set(identity, { [role]: true });
   } else {
-    BOUND.set(backing, { ...current, [role]: true });
+    BOUND.set(identity, { ...current, [role]: true });
   }
 }
 
@@ -99,7 +123,8 @@ export function claimBinding(backing: Backing, role: BindRole): void {
  * Releasing a role that is not currently registered is a no-op.
  */
 export function releaseBinding(backing: Backing, role: BindRole): void {
-  const current = BOUND.get(backing);
+  const identity = identityForBacking(backing);
+  const current = BOUND.get(identity);
   if (!current?.[role]) {
     return;
   }
@@ -111,9 +136,9 @@ export function releaseBinding(backing: Backing, role: BindRole): void {
   };
 
   if (!next.controller && !next.processor && !next.observer) {
-    BOUND.delete(backing);
+    BOUND.delete(identity);
   } else {
-    BOUND.set(backing, next);
+    BOUND.set(identity, next);
   }
 }
 
@@ -126,7 +151,7 @@ export function releaseBinding(backing: Backing, role: BindRole): void {
 export function getBindingState(
   backing: Backing,
 ): BindingStateView | undefined {
-  const slots = BOUND.get(backing);
+  const slots = BOUND.get(identityForBacking(backing));
   if (!slots) {
     return undefined;
   }

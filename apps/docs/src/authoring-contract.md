@@ -47,7 +47,7 @@ Use canonical dot keys for controller writes, snapshot key lists, diagnostics, g
 import { defineSpec, type ParamValues } from "@exclave/boundary";
 
 const spec = defineSpec((api) => ({
-  id: "authoring/filter" as const,
+  id: "authoring/filter",
   params: {
     filter: {
       cutoff: api.param.f32({ min: 20, max: 20_000 }),

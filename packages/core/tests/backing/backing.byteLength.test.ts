@@ -7,7 +7,7 @@ describe("Backing Byte Length: Buffer Size Resolution", () => {
     const size = 256;
     const sab = new SharedArrayBuffer(size);
 
-    const len = backingByteLength({ kind: "packed", sab } as const);
+    const len = backingByteLength({ kind: "packed", sab });
 
     expect(len).toBe(size);
   });
@@ -20,7 +20,7 @@ describe("Backing Byte Length: Buffer Size Resolution", () => {
       maximum: 1,
     });
 
-    const len = backingByteLength({ kind: "wasm", memory } as const);
+    const len = backingByteLength({ kind: "wasm", memory });
 
     // Expect exact match with the underlying buffer
     expect(len).toBe(memory.buffer.byteLength);

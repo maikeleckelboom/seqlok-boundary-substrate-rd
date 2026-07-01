@@ -12,8 +12,7 @@ describe("Environment Diagnostics & Compatibility", () => {
     // Mock a Node.js environment with SAB support
     const env = summarizeEnv({
       process: { versions: { node: "20.0.0" } },
-      SharedArrayBuffer: (() =>
-        undefined) as unknown as typeof SharedArrayBuffer,
+      SharedArrayBuffer,
     } as EnvGlobal);
 
     expect(env.kind).toBe("node");
@@ -27,8 +26,7 @@ describe("Environment Diagnostics & Compatibility", () => {
     const env = summarizeEnv({
       document: {},
       crossOriginIsolated: true,
-      SharedArrayBuffer: (() =>
-        undefined) as unknown as typeof SharedArrayBuffer,
+      SharedArrayBuffer,
     } as EnvGlobal);
 
     expect(env.kind).toBe("browser");
@@ -65,8 +63,7 @@ describe("Environment Diagnostics & Compatibility", () => {
     const summary = summarizeEnv({
       document: {},
       crossOriginIsolated: false,
-      SharedArrayBuffer: (() =>
-        undefined) as unknown as typeof SharedArrayBuffer,
+      SharedArrayBuffer,
     } as EnvGlobal);
 
     expect(summary.kind).toBe("browser");

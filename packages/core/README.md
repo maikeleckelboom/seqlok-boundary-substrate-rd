@@ -18,10 +18,13 @@ pnpm add @exclave/boundary
 defineSpec
   -> planLayout
   -> allocatePacked / allocatePartitioned / allocateWasm
-  -> buildHandoff
-  -> acceptHandoff
-  -> bindController / bindProcessor / bindObserver
+  -> bindController(spec, plan, backing)
+  -> buildHandoff(plan, backing)
+  -> bindProcessor / bindObserver
 ```
+
+Use `acceptHandoff(...)` when the inbound handoff value is `unknown`, such as
+data received through `postMessage`.
 
 ## Example
 

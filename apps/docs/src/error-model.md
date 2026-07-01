@@ -7,7 +7,7 @@ import { getErrorMeta, interpretHealth, isBoundaryError } from "@exclave/boundar
 
 export function classify(error: unknown) {
   if (!isBoundaryError(error)) {
-    return { status: "unknown" as const };
+    return { status: "unknown" };
   }
 
   error.code;

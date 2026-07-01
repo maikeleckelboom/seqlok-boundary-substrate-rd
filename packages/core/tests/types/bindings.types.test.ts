@@ -28,9 +28,7 @@ describe("Backing Union Type Guards (Signatures)", () => {
   });
 
   it("isPartitionedBacking(b: Backing): b is PartitionedBacking", () => {
-    expectTypeOf(isPartitionedBacking)
-      .parameter(0)
-      .toEqualTypeOf<Backing>();
+    expectTypeOf(isPartitionedBacking).parameter(0).toEqualTypeOf<Backing>();
     expectTypeOf(
       isPartitionedBacking,
     ).guards.toEqualTypeOf<PartitionedBacking>();
@@ -84,7 +82,7 @@ describe("Control-Flow Narrowing: Real-Value Runtime Checks", () => {
           maximum: 1,
         }),
       },
-    ] as const;
+    ];
 
     for (const b of cases) {
       if (isPackedBacking(b)) {

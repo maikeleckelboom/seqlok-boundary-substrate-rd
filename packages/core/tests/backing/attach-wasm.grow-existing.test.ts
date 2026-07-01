@@ -69,7 +69,7 @@ describe("allocateWasm: existing memory growth", () => {
     const undersizedBytes = Math.max(1, plan.bytesTotal - WASM_PAGE_SIZE / 2);
 
     const fake = new GrowingFakeMemory(undersizedBytes);
-    const memory = fake as unknown as WebAssembly.Memory;
+    const memory = fake as WebAssembly.Memory;
 
     const backing = allocateWasm(plan, memory);
 
@@ -100,7 +100,7 @@ describe("allocateWasm: existing memory growth", () => {
     const undersizedBytes = Math.max(1, plan.bytesTotal - WASM_PAGE_SIZE / 2);
 
     const failing = new FailingGrowFakeMemory(undersizedBytes);
-    const memory = failing as unknown as WebAssembly.Memory;
+    const memory = failing as WebAssembly.Memory;
 
     let thrown: unknown;
 

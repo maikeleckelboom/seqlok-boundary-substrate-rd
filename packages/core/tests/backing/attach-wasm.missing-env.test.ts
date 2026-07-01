@@ -32,8 +32,8 @@ describe("allocateWasm: constructor failure handling", () => {
     }
 
     vi.stubGlobal("WebAssembly", {
-      Memory: ThrowingMemory as unknown as typeof WebAssembly.Memory,
-    } as unknown as typeof WebAssembly);
+      Memory: ThrowingMemory as typeof WebAssembly.Memory,
+    });
 
     let thrown: unknown;
 

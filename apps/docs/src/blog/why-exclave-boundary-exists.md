@@ -7,7 +7,7 @@ Timing-sensitive systems often split into two worlds. One side owns UI, orchestr
 The package flow is deliberately plain:
 
 ```text
-defineSpec -> planLayout -> allocatePacked -> buildHandoff -> acceptHandoff -> bind roles
+defineSpec -> planLayout -> allocatePacked -> bind controller + build handoff -> bind runtime roles
 ```
 
 The important choice is that the layout is planned once and then carried through a handoff. The runtime side should not reconstruct layout from ambient state or a parallel copy of configuration.

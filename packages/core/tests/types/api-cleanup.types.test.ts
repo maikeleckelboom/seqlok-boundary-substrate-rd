@@ -21,18 +21,42 @@ describe("unreleased API cleanup type contracts", () => {
   const plan = boundary.planLayout(spec);
   const backing = boundary.allocatePacked(plan);
   const handoff = boundary.buildHandoff(plan, backing);
-  const accepted = boundary.acceptHandoff(handoff);
+
+  function makeHandoffSource() {
+    const sourceBacking = boundary.allocatePacked(plan);
+    const sourceHandoff = boundary.buildHandoff(plan, sourceBacking);
+    return {
+      sourceBacking,
+      sourceHandoff,
+      sourceAccepted: boundary.acceptHandoff(sourceHandoff),
+    };
+  }
 
   it("bindProcessor accepts handoff, accepted handoff, and explicit plan/backing", () => {
-    expectTypeOf(boundary.bindProcessor(handoff)).toEqualTypeOf<
+    const handoffSource = makeHandoffSource();
+    const handoffProcessor = boundary.bindProcessor(
+      handoffSource.sourceHandoff,
+    );
+    expectTypeOf(handoffProcessor).toEqualTypeOf<
       boundary.ProcessorBinding<typeof spec>
     >();
-    expectTypeOf(boundary.bindProcessor(accepted)).toEqualTypeOf<
+    handoffProcessor.dispose();
+
+    const acceptedSource = makeHandoffSource();
+    const acceptedProcessor = boundary.bindProcessor(
+      acceptedSource.sourceAccepted,
+    );
+    expectTypeOf(acceptedProcessor).toEqualTypeOf<
       boundary.ProcessorBinding<typeof spec>
     >();
-    expectTypeOf(boundary.bindProcessor(plan, backing)).toEqualTypeOf<
+    acceptedProcessor.dispose();
+
+    const explicitBacking = boundary.allocatePacked(plan);
+    const explicitProcessor = boundary.bindProcessor(plan, explicitBacking);
+    expectTypeOf(explicitProcessor).toEqualTypeOf<
       boundary.ProcessorBinding<typeof spec>
     >();
+    explicitProcessor.dispose();
   });
 
   it("bindProcessor no longer accepts spec triples or unknown transport values", () => {
@@ -88,11 +112,9 @@ describe("unreleased API cleanup type contracts", () => {
     type OldPartitionedKind = Join<Join<"shared", "-">, "partitioned">;
     type OldWasmKind = Join<Join<"wasm", "-">, "shared">;
     const oldPackedKindValue = ("sh" + "ared") as OldPackedKind;
-    const oldPartitionedKindValue = (
-      "shared" +
+    const oldPartitionedKindValue = ("shared" +
       "-" +
-      "partitioned"
-    ) as OldPartitionedKind;
+      "partitioned") as OldPartitionedKind;
     const oldWasmKindValue = ("wasm" + "-" + "shared") as OldWasmKind;
 
     // @ts-expect-error old backing kind was removed.

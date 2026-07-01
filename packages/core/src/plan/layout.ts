@@ -119,6 +119,9 @@ export function planLayout<S extends SpecInput>(
     params: paramSlots as Readonly<{
       [K in keyof S["params"]]: EntrySlot;
     }>,
+    paramDefs: paramsObj as Readonly<{
+      [K in keyof S["params"]]: ParamDef;
+    }>,
     meters: meterSlots as Readonly<{
       [K in keyof S["meters"]]: EntrySlot;
     }>,

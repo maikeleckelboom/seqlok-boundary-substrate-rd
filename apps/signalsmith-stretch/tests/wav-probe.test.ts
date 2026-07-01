@@ -7,7 +7,9 @@ interface RangeRead {
   readonly start: number | undefined;
 }
 
-class VirtualProbeWavFile {
+type FileSliceSource = Pick<File, "name" | "size" | "slice">;
+
+class VirtualProbeWavFile implements FileSliceSource {
   readonly name = "probe.wav";
   readonly ranges: RangeRead[] = [];
   readonly size: number;
@@ -77,10 +79,14 @@ class VirtualProbeWavFile {
   }
 }
 
+function asFile(file: FileSliceSource): File {
+  return file as File;
+}
+
 describe("probeWavFile", () => {
   it("reads only header and chunk ranges for a large WAV", async () => {
     const file = new VirtualProbeWavFile();
-    const probe = await probeWavFile(file as unknown as File);
+    const probe = await probeWavFile(asFile(file));
 
     expect(probe).toMatchObject({
       audioFormat: 1,
@@ -114,7 +120,7 @@ describe("probeWavFile", () => {
       },
     };
 
-    await expect(probeWavFile(file as unknown as File)).resolves.toEqual({
+    await expect(probeWavFile(asFile(file))).resolves.toEqual({
       isWav: false,
     });
     expect(file.ranges).toEqual([{ end: 12, start: 0 }]);

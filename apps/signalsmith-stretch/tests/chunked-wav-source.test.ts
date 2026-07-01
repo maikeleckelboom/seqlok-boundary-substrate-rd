@@ -12,6 +12,8 @@ interface RangeRead {
   readonly start: number | undefined;
 }
 
+type FileSliceSource = Pick<File, "name" | "size" | "slice">;
+
 interface VirtualWavOptions {
   readonly audioFormat?: 1 | 3;
   readonly bitsPerSample?: 8 | 16 | 24 | 32;
@@ -40,7 +42,7 @@ interface ResolvedVirtualWavOptions {
   readonly unknownChunk: boolean | undefined;
 }
 
-class VirtualWavFile {
+class VirtualWavFile implements FileSliceSource {
   readonly name: string;
   readonly ranges: RangeRead[] = [];
   readonly size: number;
@@ -185,10 +187,14 @@ class VirtualWavFile {
   }
 }
 
+function asFile(file: FileSliceSource): File {
+  return file as File;
+}
+
 describe("ChunkedWavSource", () => {
   it("opens a synthetic large WAV-like File without reading the whole file", async () => {
     const file = new VirtualWavFile({ frameCount: 60 * 60 * 48_000 });
-    const source = await ChunkedWavSource.open(file as unknown as File);
+    const source = await ChunkedWavSource.open(asFile(file));
 
     expect(source.info.frameCount).toBe(60 * 60 * 48_000);
     expect(
@@ -198,7 +204,7 @@ describe("ChunkedWavSource", () => {
 
   it("readFrames reads only the expected byte range", async () => {
     const file = new VirtualWavFile({ channelCount: 2, frameCount: 10_000 });
-    const source = await ChunkedWavSource.open(file as unknown as File);
+    const source = await ChunkedWavSource.open(asFile(file));
     file.ranges.length = 0;
 
     await source.readFrames(1_000, 4);
@@ -216,7 +222,7 @@ describe("ChunkedWavSource", () => {
 
   it("decodes a frame range from the middle of the file", async () => {
     const file = new VirtualWavFile({ channelCount: 1, frameCount: 10_000 });
-    const source = await ChunkedWavSource.open(file as unknown as File);
+    const source = await ChunkedWavSource.open(asFile(file));
     const chunk = await source.readFrames(123, 3);
 
     expect(chunk.startFrame).toBe(123);
@@ -229,7 +235,7 @@ describe("ChunkedWavSource", () => {
 
   it("decodes a seek target without decoding earlier frames", async () => {
     const file = new VirtualWavFile({ frameCount: 20_000 });
-    const source = await ChunkedWavSource.open(file as unknown as File);
+    const source = await ChunkedWavSource.open(asFile(file));
     file.ranges.length = 0;
 
     const chunk = await source.readFrames(12_000, 2);
@@ -243,7 +249,7 @@ describe("ChunkedWavSource", () => {
 
   it("keeps host prefetch cache below the configured byte ceiling", async () => {
     const source = await ChunkedWavSource.open(
-      new VirtualWavFile({ frameCount: 100_000 }) as unknown as File,
+      asFile(new VirtualWavFile({ frameCount: 100_000 })),
     );
     const prefetch = new SourcePrefetch(source, {
       maxCachedBytes: 32,
@@ -260,7 +266,7 @@ describe("ChunkedWavSource", () => {
 
   it("keeps host prefetch ready after an EOF read", async () => {
     const source = await ChunkedWavSource.open(
-      new VirtualWavFile({ frameCount: 96_000 }) as unknown as File,
+      asFile(new VirtualWavFile({ frameCount: 96_000 })),
     );
     const prefetch = new SourcePrefetch(source, { windowFrames: 8 });
 
@@ -275,7 +281,7 @@ describe("ChunkedWavSource", () => {
 
   it("generates waveform peaks from actual bounded WAV chunks", async () => {
     const file = new VirtualWavFile({ frameCount: 128 });
-    const source = await ChunkedWavSource.open(file as unknown as File);
+    const source = await ChunkedWavSource.open(asFile(file));
     file.ranges.length = 0;
 
     const waveform = await computeChunkedWaveformPeaks(source, {
@@ -297,7 +303,7 @@ describe("ChunkedWavSource", () => {
 
   it("generates large-file coarse waveform peaks without whole-file reads", async () => {
     const file = new VirtualWavFile({ frameCount: 60 * 60 * 48_000 });
-    const source = await ChunkedWavSource.open(file as unknown as File);
+    const source = await ChunkedWavSource.open(asFile(file));
     file.ranges.length = 0;
 
     const waveform = await computeChunkedWaveformPeaks(source, {
@@ -322,7 +328,7 @@ describe("ChunkedWavSource", () => {
 
   it("skips unknown chunks", async () => {
     const source = await ChunkedWavSource.open(
-      new VirtualWavFile({ unknownChunk: true }) as unknown as File,
+      asFile(new VirtualWavFile({ unknownChunk: true })),
     );
 
     expect(source.info.dataOffset).toBeGreaterThan(12);
@@ -330,10 +336,10 @@ describe("ChunkedWavSource", () => {
 
   it("decodes mono and stereo 16-bit WAV ranges", async () => {
     const mono = await ChunkedWavSource.open(
-      new VirtualWavFile({ channelCount: 1 }) as unknown as File,
+      asFile(new VirtualWavFile({ channelCount: 1 })),
     );
     const stereo = await ChunkedWavSource.open(
-      new VirtualWavFile({ channelCount: 2 }) as unknown as File,
+      asFile(new VirtualWavFile({ channelCount: 2 })),
     );
 
     expect((await mono.readFrames(10, 1)).channels).toHaveLength(1);
@@ -342,7 +348,7 @@ describe("ChunkedWavSource", () => {
 
   it("decodes 24-bit WAV ranges", async () => {
     const source = await ChunkedWavSource.open(
-      new VirtualWavFile({ bitsPerSample: 24 }) as unknown as File,
+      asFile(new VirtualWavFile({ bitsPerSample: 24 })),
     );
 
     expect((await source.readFrames(20, 1)).channels[0]?.[0]).toBeCloseTo(
@@ -352,10 +358,12 @@ describe("ChunkedWavSource", () => {
 
   it("decodes 32-bit float WAV ranges", async () => {
     const source = await ChunkedWavSource.open(
-      new VirtualWavFile({
-        audioFormat: 3,
-        bitsPerSample: 32,
-      }) as unknown as File,
+      asFile(
+        new VirtualWavFile({
+          audioFormat: 3,
+          bitsPerSample: 32,
+        }),
+      ),
     );
 
     expect((await source.readFrames(25, 1)).channels[0]?.[0]).toBeCloseTo(0.25);
@@ -363,37 +371,31 @@ describe("ChunkedWavSource", () => {
 
   it("rejects unsupported channel counts", async () => {
     await expect(
-      ChunkedWavSource.open(
-        new VirtualWavFile({ channelCount: 3 }) as unknown as File,
-      ),
+      ChunkedWavSource.open(asFile(new VirtualWavFile({ channelCount: 3 }))),
     ).rejects.toThrow(ChunkedWavSourceError);
   });
 
   it("rejects missing fmt and data chunks", async () => {
     await expect(
-      ChunkedWavSource.open(
-        new VirtualWavFile({ includeFmt: false }) as unknown as File,
-      ),
+      ChunkedWavSource.open(asFile(new VirtualWavFile({ includeFmt: false }))),
     ).rejects.toThrow(/Missing fmt/u);
 
     await expect(
-      ChunkedWavSource.open(
-        new VirtualWavFile({ includeData: false }) as unknown as File,
-      ),
+      ChunkedWavSource.open(asFile(new VirtualWavFile({ includeData: false }))),
     ).rejects.toThrow(/Missing data/u);
   });
 
   it("rejects invalid blockAlign", async () => {
     await expect(
       ChunkedWavSource.open(
-        new VirtualWavFile({ invalidBlockAlign: true }) as unknown as File,
+        asFile(new VirtualWavFile({ invalidBlockAlign: true })),
       ),
     ).rejects.toThrow(/blockAlign/u);
   });
 
   it("handles sample-rate mismatch explicitly", async () => {
     await expect(
-      ChunkedWavSource.open(new VirtualWavFile() as unknown as File, {
+      ChunkedWavSource.open(asFile(new VirtualWavFile()), {
         expectedSampleRate: 44_100,
       }),
     ).rejects.toThrow(/sample rate/u);
