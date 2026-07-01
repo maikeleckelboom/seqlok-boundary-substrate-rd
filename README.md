@@ -59,7 +59,7 @@ const handoff = buildHandoff(plan, backing);
 
 const controller = bindController(spec, plan, backing);
 const processor = bindProcessor(handoff);
-const state = 1;
+const runtimeState = 1;
 
 controller.params.set("runtime.enabled", true);
 controller.params.set("runtime.count", 42);
@@ -70,7 +70,7 @@ controller.params.stage("runtime.payload", (payload) => {
 processor.params.within((params) => {
   if (params.runtime.enabled) {
     processor.meters.publish((writer) => {
-      writer.set("runtime.state", state);
+      writer.set("runtime.state", runtimeState);
       writer.set("runtime.delta", -1);
     });
   }
@@ -96,7 +96,7 @@ Use `writer.setGroup()` when a group object belongs inside one larger coherent p
 ```ts
 processor.meters.publish((writer) => {
   writer.setGroup("runtime", {
-    state,
+    state: runtimeState,
     delta: -1,
   });
 });
@@ -106,7 +106,7 @@ Use `publishGroup()` when you already have one complete typed group object:
 
 ```ts
 processor.meters.publishGroup("runtime", {
-  state,
+  state: runtimeState,
   delta: -1,
 });
 ```
