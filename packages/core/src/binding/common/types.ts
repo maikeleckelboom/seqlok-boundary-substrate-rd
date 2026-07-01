@@ -962,12 +962,12 @@ export type MeterWriter<S extends SpecInput> = {
   set<K extends ScalarMeterKeys<S>>(key: K, value: MeterScalarFor<S, K>): void;
 
   /**
-   * Publish all values for a schema meter group using unprefixed group keys.
+   * Publish all values for an exact schema meter group using unprefixed group keys.
    *
    * @remarks
    * - `group` is restricted to namespace groups present in the spec meters.
-   * - `values` must use keys that belong to that group, without the group
-   *   prefix.
+   * - `values` must contain every key that belongs to that group, without the
+   *   group prefix.
    * - Scalar entries delegate to `set(...)`; array entries use the same staged
    *   array path as `stage(...)`.
    *
@@ -1034,16 +1034,11 @@ export interface ProcessorMeters<S extends SpecInput> {
   publish<T>(callback: (writer: MeterWriter<S>) => T): T;
 
   /**
-   * Convenience wrapper for publishing one schema meter group atomically.
+   * Convenience wrapper for publishing one exact schema meter group under one
+   * coherent meter publish section.
    *
    * @remarks
-   * Equivalent to:
-   *
-   * ```ts
-   * meters.publish((writer) => {
-   *   writer.setGroup(group, values);
-   * });
-   * ```
+   * Benchmark this convenience path before using it in a hard hot path.
    */
   publishGroup<
     const G extends MeterGroup<S>,

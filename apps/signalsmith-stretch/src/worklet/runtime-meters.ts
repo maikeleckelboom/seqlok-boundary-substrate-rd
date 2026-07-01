@@ -111,7 +111,73 @@ export function publishRuntimeMeters(
   runtime: ProcessorBinding<typeof signalsmithStretchSpec>,
   input: RuntimeMeterInput,
 ): void {
-  runtime.meters.publishGroup("runtime", runtimeMeterValues(input));
+  const frame = splitU64(input.audioWorkletFrame);
+  const sampleRate = Math.max(
+    1,
+    input.durationSeconds > 0
+      ? input.durationFrames / input.durationSeconds
+      : 48_000,
+  );
+  const adapterMode = enumIndex(ADAPTER_MODES, "real-worklet");
+  const inputLatencySeconds = input.inputLatencyFrames / sampleRate;
+  const outputLatencySeconds = input.outputLatencyFrames / sampleRate;
+  const state = enumIndex(RUNTIME_STATES, input.state);
+
+  runtime.meters.publish((writer) => {
+    writer.set("runtime.adapterMode", adapterMode);
+    writer.set("runtime.audioWorkletFrameHi", frame.hi);
+    writer.set("runtime.audioWorkletFrameLo", frame.lo);
+    writer.set("runtime.audioWorkletTimeSeconds", input.audioWorkletTimeSeconds);
+    writer.set("runtime.blockSamples", input.blockSamples);
+    writer.set("runtime.bufferLengthFrames", input.bufferLengthFrames);
+    writer.set("runtime.bufferReadyFrames", input.bufferReadyFrames);
+    writer.set("runtime.commandDroppedTotal", input.commandDroppedTotal);
+    writer.set("runtime.durationFrames", input.durationFrames);
+    writer.set("runtime.durationSeconds", input.durationSeconds);
+    writer.set("runtime.effectiveRate", input.effectiveRate);
+    writer.set("runtime.heapGeneration", input.heapGeneration);
+    writer.set("runtime.inputLatencyFrames", input.inputLatencyFrames);
+    writer.set("runtime.inputLatencySeconds", inputLatencySeconds);
+    writer.set("runtime.intervalSamples", input.intervalSamples);
+    writer.set("runtime.invalidSampleTotal", input.invalidSampleTotal);
+    writer.set("runtime.invalidTransitionTotal", input.invalidTransitionTotal);
+    writer.set(
+      "runtime.lastAppliedCommandSequence",
+      input.lastAppliedCommandSequence,
+    );
+    writer.set(
+      "runtime.lastAppliedConfigSequence",
+      input.lastAppliedConfigSequence,
+    );
+    writer.set(
+      "runtime.lastAppliedDesiredSequence",
+      input.lastAppliedDesiredSequence,
+    );
+    writer.set("runtime.lastErrorCode", input.lastErrorCode);
+    writer.set("runtime.loopEnabled", input.loopEnabled);
+    writer.set("runtime.loopEndFrame", input.loopEndFrame);
+    writer.set("runtime.loopRevision", input.loopRevision);
+    writer.set("runtime.loopStartFrame", input.loopStartFrame);
+    writer.set("runtime.maxObservedRenderQuantum", input.maxObservedRenderQuantum);
+    writer.set("runtime.outputFrame", input.outputFrame);
+    writer.set("runtime.outputLatencyFrames", input.outputLatencyFrames);
+    writer.set("runtime.outputLatencySeconds", outputLatencySeconds);
+    writer.set("runtime.processingCenterFrame", input.processingCenterFrame);
+    writer.set(
+      "runtime.scheduledCommandDroppedTotal",
+      input.scheduledCommandDroppedTotal,
+    );
+    writer.set(
+      "runtime.scheduledCommandQueueSize",
+      input.scheduledCommandQueueSize,
+    );
+    writer.set("runtime.sessionId", input.sessionId);
+    writer.set("runtime.sourceFrame", input.sourceFrame);
+    writer.set("runtime.staleReadTotal", input.staleReadTotal);
+    writer.set("runtime.state", state);
+    writer.set("runtime.underrunTotal", input.underrunTotal);
+    writer.set("runtime.workletGeneration", input.workletGeneration);
+  });
 }
 
 function splitU64(value: number): { readonly hi: number; readonly lo: number } {

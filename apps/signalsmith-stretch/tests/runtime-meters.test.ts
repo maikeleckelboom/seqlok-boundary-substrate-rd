@@ -28,7 +28,7 @@ describe("Signalsmith runtime meter publishing", () => {
     expect(values.state).toBe(enumIndex(RUNTIME_STATES, "playing"));
   });
 
-  it("publishes runtime values through one typed schema group", () => {
+  it("publishes runtime values through one coherent meter publish section", () => {
     const plan = planLayout(signalsmithStretchSpec);
     const backing = allocateShared(plan);
     const controller = bindController(signalsmithStretchSpec, plan, backing);

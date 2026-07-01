@@ -3,8 +3,6 @@ import { describe, expect, it } from "vitest";
 import { defineSpec } from "../../src";
 import { bindingsFromSpec } from "../helpers/binding";
 
-import type { MeterGroupValues } from "../../src";
-
 describe("ProcessorMeters grouped publishing", () => {
   const spec = defineSpec(({ meter }) => ({
     id: "group-runtime",
@@ -81,50 +79,65 @@ describe("ProcessorMeters grouped publishing", () => {
     expect(meters["runtime.peak"]).toBeCloseTo(0.125);
   });
 
-  it("keeps runtime validation for unknown grouped keys", () => {
-    const { proc } = bindingsFromSpec(spec);
-    const invalidValues = {
-      active: true,
-      count: 1,
-      extra: 1,
-      peak: 0.25,
-    };
+  it("rejects writer.setGroup array values with the wrong length before writing the group", () => {
+    const { ctl, proc } = bindingsFromSpec(spec);
 
-    expect(() => {
-      proc.meters.publish((writer) => {
-        writer.setGroup(
-          "runtime",
-          invalidValues as unknown as MeterGroupValues<typeof spec, "runtime">,
-        );
-      });
-    }).toThrow(/unknown/i);
-  });
-
-  it("validates group names even when the values object is empty", () => {
-    const { proc } = bindingsFromSpec(spec);
-
-    expect(() => {
-      proc.meters.publish((writer) => {
-        (
-          writer as unknown as {
-            setGroup(group: string, values: unknown): void;
-          }
-        ).setGroup("missing", {});
-      });
-    }).toThrow(/unknown/i);
-  });
-
-  it("rejects array group values with the wrong length", () => {
-    const { proc } = bindingsFromSpec(spec);
+    proc.meters.publishGroup("levels", {
+      flags: Uint32Array.from([1, 2, 3]),
+      hold: 2,
+      spectrum: Float32Array.from([0, 0.25, 0.5, 1]),
+    });
 
     expect(() => {
       proc.meters.publish((writer) => {
         writer.setGroup("levels", {
-          flags: Uint32Array.from([1, 2, 3]),
-          hold: 1,
+          flags: Uint32Array.from([4, 5, 6]),
+          hold: 9,
           spectrum: Float32Array.from([1, 2]),
         });
       });
     }).toThrow(/length/i);
+
+    const meters = ctl.meters.snapshot(
+      "levels.flags",
+      "levels.hold",
+      "levels.spectrum",
+    );
+
+    expect(Array.from(meters["levels.flags"])).toEqual([1, 2, 3]);
+    expect(meters["levels.hold"]).toBe(2);
+    expect(Array.from(meters["levels.spectrum"])).toEqual([0, 0.25, 0.5, 1]);
+  });
+
+  it("rejects publishGroup array values with the wrong length without bumping MU", () => {
+    const { ctl, proc } = bindingsFromSpec(spec);
+
+    proc.meters.publishGroup("levels", {
+      flags: Uint32Array.from([1, 2, 3]),
+      hold: 2,
+      spectrum: Float32Array.from([0, 0.25, 0.5, 1]),
+    });
+
+    const startVersion = ctl.meters.version();
+
+    expect(() => {
+      proc.meters.publishGroup("levels", {
+        flags: Uint32Array.from([4, 5, 6]),
+        hold: 9,
+        spectrum: Float32Array.from([1, 2]),
+      });
+    }).toThrow(/length/i);
+
+    expect(ctl.meters.version()).toBe(startVersion);
+
+    const meters = ctl.meters.snapshot(
+      "levels.flags",
+      "levels.hold",
+      "levels.spectrum",
+    );
+
+    expect(Array.from(meters["levels.flags"])).toEqual([1, 2, 3]);
+    expect(meters["levels.hold"]).toBe(2);
+    expect(Array.from(meters["levels.spectrum"])).toEqual([0, 0.25, 0.5, 1]);
   });
 });

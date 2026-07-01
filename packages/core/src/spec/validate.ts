@@ -1,4 +1,5 @@
 import { createError } from "../errors/error";
+import { isPlainObject } from "../internal/is-plain-object";
 
 import type { SpecAstInput } from "./types";
 
@@ -108,12 +109,6 @@ export function parseArrayLen(
   }
 
   return value;
-}
-
-export function isPlainObject(
-  value: unknown,
-): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export function asNonEmpty<const V extends readonly string[]>(

@@ -80,11 +80,11 @@ Role-specific public types include `ControllerBinding`, `ProcessorBinding`, `Obs
 
 | Member | Contract |
 | --- | --- |
-| `publish(callback)` | Publish one atomic meter transaction. |
-| `publishGroup(group, values)` | Publish one schema meter group with unprefixed group keys. |
+| `publish(callback)` | Run one coherent meter publish section. |
+| `publishGroup(group, values)` | Publish one exact schema meter group with unprefixed group keys. |
 | `version()` | Return the current meter update sequence. |
 
-Inside `publish(...)`, `writer.set(key, value)` still accepts fully qualified scalar meter keys such as `"runtime.blockSamples"`. `writer.setGroup(group, values)` accepts the same group value shape used by `publishGroup(...)` and keeps the write inside the enclosing transaction.
+Inside `publish(...)`, `writer.set(key, value)` still accepts fully qualified scalar meter keys such as `"runtime.blockSamples"`. `writer.setGroup(group, values)` accepts the same group value shape used by `publishGroup(...)` and keeps the write inside the enclosing coherent meter publish section.
 
 ```ts twoslash
 import { defineSpec, type MeterGroupValues } from "@exclave/boundary";
@@ -118,7 +118,7 @@ processor.meters.publish((writer) => {
 });
 ```
 
-Grouped publishing is for schema groups: `publishGroup("runtime", values)` maps unprefixed keys in `values` to canonical meter keys under `runtime.*`. It is not arbitrary object flattening. Derived values, such as enum indices or split frame counters, should still be constructed explicitly before publishing.
+Grouped publishing is for exact schema groups: `publishGroup("runtime", values)` maps every unprefixed key in `values` to canonical meter keys under `runtime.*`. It is not arbitrary object flattening. Derived values, such as enum indices or split frame counters, should still be constructed explicitly before publishing. `publishGroup(...)` is convenience-oriented; benchmark it before using it in a hard hot path.
 
 ## Handoff
 

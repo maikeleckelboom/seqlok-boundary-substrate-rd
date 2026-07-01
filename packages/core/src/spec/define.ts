@@ -1,5 +1,6 @@
 import { canonicalizeSpecAst } from "./canonicalize";
-import { asNonEmpty, isPlainObject, parseArrayLen } from "./validate";
+import { asNonEmpty, parseArrayLen } from "./validate";
+import { isPlainObject } from "../internal/is-plain-object";
 
 import type { CanonicalSpecFromAst, ScalarRange, SpecAstInput } from "./types";
 

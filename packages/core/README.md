@@ -84,9 +84,9 @@ Anonymous specs receive deterministic `anon_<hash>` ids derived from canonical c
 
 ## Grouped Meter Publishing
 
-Use `processor.meters.publishGroup("runtime", values)` when a processor already has a typed object for one schema meter group. Inside a larger atomic publish block, use `writer.setGroup("runtime", values)` alongside direct `writer.set("runtime.key", value)` calls or staged array writes.
+Use `processor.meters.publishGroup("runtime", values)` when a processor already has a typed object for one exact schema meter group. Inside a larger coherent meter publish section, use `writer.setGroup("runtime", values)` alongside direct `writer.set("runtime.key", value)` calls or staged array writes.
 
-Grouped publishing maps unprefixed keys under one schema group; it is not arbitrary object flattening. Build derived values such as enum indices, split frame counters, and latency seconds explicitly before publishing the group.
+Grouped publishing maps unprefixed keys under one exact schema group; it is not arbitrary object flattening. Build derived values such as enum indices, split frame counters, and latency seconds explicitly before publishing the group. `publishGroup(...)` is convenience-oriented, so benchmark it before using it in a hard hot path.
 
 ## Package Boundary
 

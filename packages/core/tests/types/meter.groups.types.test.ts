@@ -96,6 +96,9 @@ function assertGroupedPublishingTypes(
     writer.set("runtime.blockSamples", 128);
     writer.setGroup("runtime", validRuntimeValues);
     writer.setGroup("levels", validLevelsValues);
+
+    // @ts-expect-error Invalid group name should fail for writer.setGroup.
+    writer.setGroup("missing", validRuntimeValues);
   });
 
   // @ts-expect-error Invalid group name should fail.
@@ -110,6 +113,9 @@ function assertGroupedPublishingTypes(
   meters.publishGroup("runtime", runtimeValuesWithExtraKey);
 
   meters.publish((writer) => {
+    // @ts-expect-error Unknown group key should fail for writer.setGroup variables too.
+    writer.setGroup("runtime", runtimeValuesWithExtraKey);
+
     // @ts-expect-error writer.set still requires fully qualified meter keys.
     writer.set("blockSamples", 128);
   });

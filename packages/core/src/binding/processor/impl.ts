@@ -15,8 +15,14 @@ import {
   type ParamPlaneViews,
 } from "../../backing/map-views";
 import { invariant } from "../../errors/invariant";
+import { isPlainObject } from "../../internal/is-plain-object";
 import { publish } from "../../primitives/seqlock";
-import { paramArrayView } from "../common/array-views";
+import {
+  meterArrayValueCtor,
+  meterArrayView,
+  paramArrayView,
+  typedArrayName,
+} from "../common/array-views";
 import { makeWithin } from "../common/coherent";
 import { claimBinding, releaseBinding } from "../common/registry";
 import { throwUnknownKey } from "../common/validate";
@@ -24,7 +30,12 @@ import { throwUnknownKey } from "../common/validate";
 import type { Backing } from "../../backing/types";
 import type { Plan } from "../../plan/types";
 import type { SpecInput } from "../../spec/types";
-import type { ParamArray } from "../common/array-views";
+import type {
+  MeterArray,
+  MeterArraySlot,
+  MeterArrayValue,
+  ParamArray,
+} from "../common/array-views";
 import type {
   ExactMeterGroupValues,
   Ephemeral,
@@ -161,17 +172,13 @@ function assignNestedValue(
       return;
     }
     const existing = cursor[part];
-    if (
-      typeof existing !== "object" ||
-      existing === null ||
-      Array.isArray(existing)
-    ) {
+    if (!isPlainObject(existing)) {
       const next: Record<string, unknown> = {};
       cursor[part] = next;
       cursor = next;
       continue;
     }
-    cursor = existing as Record<string, unknown>;
+    cursor = existing;
   }
 
   const leaf = parts[parts.length - 1];
@@ -259,7 +266,7 @@ function meterArrayViewFor(
     plane: MeterPlane;
     length: number;
   },
-): Ephemeral<Float32Array> | Ephemeral<Float64Array> | Ephemeral<Uint32Array> {
+): Ephemeral<MeterArray> {
   invariant(
     slot.length > 1,
     "internal.assertionFailed",
@@ -269,25 +276,22 @@ function meterArrayViewFor(
       detail: slot.plane,
     },
   );
-  const start = (slot.offset / slot.bytesPerElement) | 0;
-  const end = start + slot.length;
-  switch (slot.plane) {
-    case "MF32":
-      return ensurePlane(views.MF32, "meter.array", "MF32").subarray(
-        start,
-        end,
-      ) as Ephemeral<Float32Array>;
-    case "MF64":
-      return ensurePlane(views.MF64, "meter.array", "MF64").subarray(
-        start,
-        end,
-      ) as Ephemeral<Float64Array>;
-    case "MU32":
-      return ensurePlane(views.MU32, "meter.array", "MU32").subarray(
-        start,
-        end,
-      ) as Ephemeral<Uint32Array>;
-  }
+  return meterArrayView(views, meterArraySlotFor(slot)) as Ephemeral<MeterArray>;
+}
+
+function meterArraySlotFor(
+  slot: MeterSlot & {
+    plane: MeterPlane;
+    length: number;
+  },
+): MeterArraySlot {
+  return {
+    ...(slot.kind !== undefined ? { kind: slot.kind } : {}),
+    plane: slot.plane,
+    index: elementIndex(slot),
+    length: slot.length,
+    bytesPerElement: slot.bytesPerElement,
+  };
 }
 
 /**
@@ -327,48 +331,49 @@ function makeScalarWriter(
   };
 }
 
-type MeterArrayDestination =
-  | Ephemeral<Float32Array>
-  | Ephemeral<Float64Array>
-  | Ephemeral<Uint32Array>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isNumberArrayLike(value: unknown): value is ArrayLike<number> {
+function receivedConstructorName(value: unknown): string {
   if (typeof value !== "object" || value === null) {
-    return false;
+    return typeof value;
   }
 
-  return typeof (value as { readonly length?: unknown }).length === "number";
+  const constructor = (value as { readonly constructor?: { name?: string } })
+    .constructor;
+  return constructor?.name ?? "Unknown";
 }
 
-function copyMeterArrayValue(
-  destination: MeterArrayDestination,
+function validateMeterArrayValue(
+  slot: MeterSlot & {
+    plane: MeterPlane;
+    length: number;
+  },
   value: unknown,
   key: string,
-): void {
+): MeterArrayValue {
+  const expectedCtor = meterArrayValueCtor(meterArraySlotFor(slot));
+  const expectedName = typedArrayName(expectedCtor);
+
   invariant(
-    isNumberArrayLike(value),
+    value instanceof expectedCtor,
     "internal.assertionFailed",
-    "array-like meter value expected",
+    "meter array value type mismatch",
     {
       where: "meter.setGroup",
-      detail: key,
+      detail: `${key}:${expectedName}/${receivedConstructorName(value)}`,
     },
   );
+
+  const source = value as MeterArrayValue;
   invariant(
-    value.length === destination.length,
+    source.length === slot.length,
     "internal.assertionFailed",
     "meter array value length mismatch",
     {
       where: "meter.setGroup",
-      detail: `${key}:${String(value.length)}/${String(destination.length)}`,
+      detail: `${key}:${String(source.length)}/${String(slot.length)}`,
     },
   );
 
-  destination.set(value);
+  return source;
 }
 
 /**
@@ -495,10 +500,15 @@ export function processorImpl<const S extends SpecInput>(
 
     const scalarWriters: Record<string, (value: unknown) => void> = {};
     const meterGroups = new Set<string>();
+    const meterGroupKeys = new Map<string, string[]>();
     for (const key of Object.keys(meterSlots)) {
       const groupEnd = key.indexOf(".");
       if (groupEnd > 0) {
-        meterGroups.add(key.slice(0, groupEnd));
+        const group = key.slice(0, groupEnd);
+        meterGroups.add(group);
+        const keys = meterGroupKeys.get(group) ?? [];
+        keys.push(key.slice(groupEnd + 1));
+        meterGroupKeys.set(group, keys);
       }
 
       const slot0 = meterSlots[key];
@@ -555,10 +565,126 @@ export function processorImpl<const S extends SpecInput>(
       seqIndex: plan.locks.MU.seq,
     };
 
-    type EM =
-      | Ephemeral<Float32Array>
-      | Ephemeral<Float64Array>
-      | Ephemeral<Uint32Array>;
+    type MeterGroupWriteOp =
+      | Readonly<{
+          kind: "scalar";
+          key: string;
+          value: unknown;
+          write: (value: unknown) => void;
+        }>
+      | Readonly<{
+          kind: "array";
+          key: string;
+          slot: MeterSlot & {
+            plane: MeterPlane;
+            length: number;
+          };
+          source: MeterArrayValue;
+        }>;
+
+    function assertGroupValuePresent(
+      values: Record<string, unknown>,
+      group: string,
+      key: string,
+    ): void {
+      invariant(
+        Object.hasOwn(values, key),
+        "internal.assertionFailed",
+        "meter group value missing",
+        {
+          where: "meter.setGroup",
+          detail: `${group}.${key}`,
+        },
+      );
+    }
+
+    function prepareMeterGroupWrites(
+      group: string,
+      values: unknown,
+    ): MeterGroupWriteOp[] {
+      if (!meterGroups.has(group)) {
+        throwUnknownKey("meters", group, Array.from(meterGroups));
+      }
+
+      invariant(
+        isPlainObject(values),
+        "internal.assertionFailed",
+        "meter group values object expected",
+        {
+          where: "meter.setGroup",
+          detail: group,
+        },
+      );
+
+      const expectedKeys = meterGroupKeys.get(group) ?? [];
+      for (const expectedKey of expectedKeys) {
+        assertGroupValuePresent(values, group, expectedKey);
+      }
+
+      const ops: MeterGroupWriteOp[] = [];
+      for (const unprefixedKey of Object.keys(values)) {
+        const key = `${group}.${unprefixedKey}`;
+        const value = values[unprefixedKey];
+        const scalarWriter = scalarWriters[key];
+        if (scalarWriter) {
+          ops.push({
+            kind: "scalar",
+            key,
+            value,
+            write: scalarWriter,
+          });
+          continue;
+        }
+
+        const slot0 = meterSlots[key];
+        if (!slot0) {
+          throwUnknownKey("meters", key, Object.keys(meterSlots));
+        }
+        invariant(
+          slot0.length > 1,
+          "internal.assertionFailed",
+          "array meter expected",
+          {
+            where: "meter.setGroup",
+            detail: key,
+          },
+        );
+        invariant(
+          isMeterDataPlane(slot0.plane),
+          "internal.assertionFailed",
+          "unexpected meter plane",
+          {
+            where: "meter.setGroup",
+            detail: slot0.plane,
+          },
+        );
+
+        const slot = {
+          ...slot0,
+          plane: slot0.plane,
+        };
+        ops.push({
+          kind: "array",
+          key,
+          slot,
+          source: validateMeterArrayValue(slot, value, key),
+        });
+      }
+
+      return ops;
+    }
+
+    function writeMeterGroupOps(ops: readonly MeterGroupWriteOp[]): void {
+      for (const op of ops) {
+        if (op.kind === "scalar") {
+          op.write(op.value);
+          continue;
+        }
+
+        const destination = meterArrayViewFor(mapped.meters, op.slot);
+        destination.set(op.source as ArrayLike<number>);
+      }
+    }
 
     const meters: ProcessorMeters<S> = {
       /**
@@ -579,7 +705,10 @@ export function processorImpl<const S extends SpecInput>(
           w[key] = scalarWriters[key];
         }
 
-        function stage(key: string, cb2: (dst: EM) => void): void {
+        function stage(
+          key: string,
+          cb2: (dst: Ephemeral<MeterArray>) => void,
+        ): void {
           const slot0 = meterSlots[key];
           if (!slot0) {
             throwUnknownKey("meters", key, Object.keys(meterSlots));
@@ -618,47 +747,8 @@ export function processorImpl<const S extends SpecInput>(
         }
 
         function setGroup(group: string, values: unknown): void {
-          if (!meterGroups.has(group)) {
-            throwUnknownKey("meters", group, Array.from(meterGroups));
-          }
-
-          invariant(
-            isRecord(values),
-            "internal.assertionFailed",
-            "meter group values object expected",
-            {
-              where: "meter.setGroup",
-              detail: group,
-            },
-          );
-
-          for (const unprefixedKey of Object.keys(values)) {
-            const key = `${group}.${unprefixedKey}`;
-            const value = values[unprefixedKey];
-            const scalarWriter = scalarWriters[key];
-            if (scalarWriter) {
-              scalarWriter(value);
-              continue;
-            }
-
-            const slot0 = meterSlots[key];
-            if (!slot0) {
-              throwUnknownKey("meters", key, Object.keys(meterSlots));
-            }
-            invariant(
-              slot0.length > 1,
-              "internal.assertionFailed",
-              "array meter expected",
-              {
-                where: "meter.setGroup",
-                detail: key,
-              },
-            );
-
-            stage(key, (destination) => {
-              copyMeterArrayValue(destination, value, key);
-            });
-          }
+          const ops = prepareMeterGroupWrites(group, values);
+          writeMeterGroupOps(ops);
         }
 
         w.stage = stage;
@@ -673,8 +763,9 @@ export function processorImpl<const S extends SpecInput>(
         const V extends MeterGroupValues<S, G>,
       >(group: G, values: ExactMeterGroupValues<S, G, V>): void {
         assertNotDisposed(disposed, "processor.meters.publishGroup");
-        meters.publish((writer) => {
-          writer.setGroup(group, values);
+        const ops = prepareMeterGroupWrites(group, values);
+        publish(mu, () => {
+          writeMeterGroupOps(ops);
         });
       },
 

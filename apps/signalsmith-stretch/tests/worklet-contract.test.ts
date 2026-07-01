@@ -122,8 +122,9 @@ describe("Signalsmith real Worklet contract", () => {
       "utf8",
     );
 
+    expect(runtimeMeters).toContain("runtime.meters.publish((writer) => {");
     expect(runtimeMeters).toContain(
-      'publishGroup("runtime", runtimeMeterValues(input))',
+      'writer.set("runtime.blockSamples", input.blockSamples)',
     );
 
     for (const key of [

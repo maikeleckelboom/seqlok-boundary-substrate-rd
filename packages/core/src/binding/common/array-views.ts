@@ -11,6 +11,11 @@ export type ParamArray =
   | Uint16Array;
 
 export type MeterArray = Float32Array | Float64Array | Uint32Array;
+export type MeterArrayValue =
+  | Float32Array
+  | Float64Array
+  | Uint32Array
+  | Uint8Array;
 
 export interface ParamArraySlot {
   readonly kind?: string;
@@ -42,6 +47,8 @@ type MeterArrayCtor =
   | Float64ArrayConstructor
   | Uint32ArrayConstructor;
 
+type MeterArrayValueCtor = MeterArrayCtor | Uint8ArrayConstructor;
+
 export function paramArrayCtor(slot: ParamArraySlot): ParamArrayCtor {
   switch (slot.kind) {
     case "f32.array":
@@ -72,6 +79,23 @@ export function meterArrayCtor(slot: MeterArraySlot): MeterArrayCtor {
       return Float64Array;
     case "MU32":
       return Uint32Array;
+  }
+}
+
+export function meterArrayValueCtor(
+  slot: MeterArraySlot,
+): MeterArrayValueCtor {
+  switch (slot.kind) {
+    case "f32.array":
+      return Float32Array;
+    case "f64.array":
+      return Float64Array;
+    case "bool.array":
+      return Uint8Array;
+    case "u32.array":
+      return Uint32Array;
+    default:
+      return meterArrayCtor(slot);
   }
 }
 

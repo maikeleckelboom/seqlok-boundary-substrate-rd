@@ -1,4 +1,5 @@
 import { createError } from "../errors/error";
+import { isPlainObject } from "../internal/is-plain-object";
 
 import type { SpecNamespace } from "./types";
 
@@ -128,7 +129,7 @@ function registerLeafNode<TLeaf>(
 export function isNamespaceObject(
   value: unknown,
 ): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return isPlainObject(value);
 }
 
 export function isLeafDef(value: unknown): value is { kind: string } {
