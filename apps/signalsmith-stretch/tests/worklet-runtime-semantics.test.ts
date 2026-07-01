@@ -269,8 +269,19 @@ describe("Signalsmith Worklet runtime semantics", () => {
     const source = readFileSync(MAIN, "utf8");
     const animateBody = constFunctionBody(source, "animate");
 
+    expect(calledFunctions(animateBody)).toEqual([
+      "syncMonitorGains",
+      "clearAppliedSeekGhost",
+      "render",
+      "window.requestAnimationFrame",
+    ]);
     expect(animateBody).not.toContain("engine.tick");
     expect(animateBody).not.toContain("prefetch");
+    expect(animateBody).not.toContain("scheduleTransportRefill");
+    expect(animateBody).not.toContain("postTransportRefill");
+    expect(animateBody).not.toContain("realRuntime");
+    expect(animateBody).not.toContain("referenceMonitor");
+    expect(animateBody).not.toContain("sourceStatus");
     expect(animateBody).not.toContain("updateReferencePreview");
     expect(source).toContain("window.setInterval(");
     expect(source).toContain('runTransportPump("interval")');
@@ -422,4 +433,18 @@ function constFunctionBody(source: string, constName: string): string {
   }
 
   throw new Error(`Missing body for const function ${constName}.`);
+}
+
+function calledFunctions(body: string): string[] {
+  const calls: string[] = [];
+  const callPattern = /\b((?:window\.)?[A-Za-z][A-Za-z0-9_]*)\s*\(/gu;
+
+  for (const match of body.matchAll(callPattern)) {
+    const call = match[1];
+    if (call && call !== "if") {
+      calls.push(call);
+    }
+  }
+
+  return calls;
 }

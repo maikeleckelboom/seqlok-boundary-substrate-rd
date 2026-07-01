@@ -1,6 +1,48 @@
 import type { PlanarFrameChunk } from "./chunked-wav-source";
 import type { ChunkedWavPcmSource } from "./pcm-source";
 
+export interface SourceReferenceAudioContext {
+  readonly currentTime: number;
+  readonly destination: unknown;
+  readonly sampleRate: number;
+  createBuffer(
+    numberOfChannels: number,
+    length: number,
+    sampleRate: number,
+  ): SourceReferenceAudioBuffer;
+  createBufferSource(): SourceReferenceSourceNode;
+  createGain(): SourceReferenceGainNode;
+}
+
+interface SourceReferenceAudioBuffer {
+  getChannelData(channel: number): Float32Array;
+}
+
+interface SourceReferenceAudioParam {
+  setValueAtTime(value: number, startTime: number): unknown;
+}
+
+interface SourceReferenceGainParam {
+  value: number;
+  setTargetAtTime(value: number, startTime: number, timeConstant: number): unknown;
+}
+
+interface SourceReferenceGainNode {
+  readonly gain: SourceReferenceGainParam;
+  connect(destination: unknown): unknown;
+  disconnect(): void;
+}
+
+export interface SourceReferenceSourceNode {
+  buffer: SourceReferenceAudioBuffer | null;
+  onended: ((event: Event) => void) | null;
+  readonly playbackRate: SourceReferenceAudioParam;
+  connect(destination: unknown): unknown;
+  disconnect(): void;
+  start(when?: number): void;
+  stop(when?: number): void;
+}
+
 export interface SourceReferenceMonitorStatus {
   readonly active: boolean;
   readonly currentTimeSeconds: number;
@@ -35,12 +77,13 @@ const PREVIEW_RATE_TOLERANCE = 0.005;
 const PREVIEW_START_DELAY_SECONDS = 0.04;
 
 export class SourceReferenceMonitor {
-  private readonly gain: GainNode;
+  private readonly gain: SourceReferenceGainNode;
 
-  private readonly scheduledSources: AudioBufferSourceNode[] = [];
+  private readonly scheduledSources: SourceReferenceSourceNode[] = [];
 
   private anchorContextTime = 0;
   private anchorFrame = 0;
+  private activeSourceSampleRate = 1;
   private driftFrames = 0;
   private lastFrame = -1;
   private lastRevision = 0;
@@ -50,7 +93,7 @@ export class SourceReferenceMonitor {
   private requestId = 0;
   private scheduledUntilFrame = 0;
 
-  constructor(private readonly audioContext: AudioContext) {
+  constructor(private readonly audioContext: SourceReferenceAudioContext) {
     this.gain = audioContext.createGain();
     this.gain.gain.value = 0;
     this.gain.connect(audioContext.destination);
@@ -144,6 +187,7 @@ export class SourceReferenceMonitor {
     this.anchorFrame = startFrame;
     this.anchorContextTime =
       this.audioContext.currentTime + PREVIEW_START_DELAY_SECONDS;
+    this.activeSourceSampleRate = Math.max(1, Math.floor(source.sampleRate));
     this.lastFrame = startFrame;
     this.lastRevision = source.sourceRevision;
     this.playbackRate = playbackRate;
@@ -260,7 +304,7 @@ export class SourceReferenceMonitor {
     );
     next.connect(this.gain);
     next.onended = () => {
-      this.removeScheduledSource(next);
+      this.settleScheduledSource(next);
     };
 
     this.scheduledSources.push(next);
@@ -276,15 +320,28 @@ export class SourceReferenceMonitor {
       this.anchorFrame +
       Math.max(0, contextTime - this.anchorContextTime) *
         this.playbackRate *
-        Math.max(1, this.audioContext.sampleRate)
+        this.activeSourceSampleRate
     );
   }
 
-  private removeScheduledSource(source: AudioBufferSourceNode): void {
+  private removeScheduledSource(source: SourceReferenceSourceNode): void {
     const index = this.scheduledSources.indexOf(source);
 
     if (index >= 0) {
       this.scheduledSources.splice(index, 1);
+    }
+  }
+
+  private settleScheduledSource(source: SourceReferenceSourceNode): void {
+    this.removeScheduledSource(source);
+    this.disconnectScheduledSource(source);
+  }
+
+  private disconnectScheduledSource(source: SourceReferenceSourceNode): void {
+    try {
+      source.disconnect();
+    } catch {
+      // Disconnection can race with an ended or already-disconnected node.
     }
   }
 
@@ -299,7 +356,7 @@ export class SourceReferenceMonitor {
       } catch {
         // A source node can only be stopped after it has been started.
       }
-      source.disconnect();
+      this.disconnectScheduledSource(source);
     }
 
     this.scheduledSources.length = 0;

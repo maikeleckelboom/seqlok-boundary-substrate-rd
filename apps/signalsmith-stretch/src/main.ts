@@ -22,6 +22,12 @@ import { StretchWorkletRuntime } from "./audio/stretch-node";
 import { selectStretchRuntimeMode } from "./audio/stretch-runtime";
 import {
   chooseTransportRefill,
+  emptyTransportBufferExpectation,
+  noteTransportChunkPosted,
+  reconcileTransportBufferExpectation,
+  speculativeTransportBufferEndFrame,
+  type TransportBufferExpectation,
+  type TransportBufferExpectationState,
   type TransportRefillDecision,
   type TransportRefillReason,
 } from "./audio/transport-refill";
@@ -149,6 +155,9 @@ interface AudioTransportDiagnostics {
   audioContextState: AudioContextState | "none";
   documentVisibility: DocumentVisibilityState;
   expectedBufferEndFrame: number;
+  expectedBufferObservedEndFrame: number;
+  expectedBufferState: TransportBufferExpectationState;
+  expectedBufferUnconfirmedPumpCount: number;
   hiddenTransitionCount: number;
   lastAheadFrames: number;
   lastInputWindowEndFrame: number;
@@ -266,8 +275,7 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
     let realRuntime: StretchWorkletRuntime | null = null;
     let referenceMonitor: SourceReferenceMonitor | null = null;
     let transportRefillInFlight = false;
-    let expectedTransportBufferEndFrame = 0;
-    let expectedTransportSourceRevision = 0;
+    let transportBufferExpectation = emptyTransportBufferExpectation();
     const transportDiagnostics = createAudioTransportDiagnostics();
     let qualityPreset: QualityPreset = "balanced";
     let rangeMode: RangeMode = "musical";
@@ -1004,11 +1012,13 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
       referenceMonitor ??= new SourceReferenceMonitor(context);
       syncMonitorGains();
       prefetch = nextPrefetch;
-      expectedTransportSourceRevision = loaded.sourceRevision;
-      expectedTransportBufferEndFrame =
-        initialChunk.startFrame + initialChunk.frameCount;
-      transportDiagnostics.expectedBufferEndFrame =
-        expectedTransportBufferEndFrame;
+      transportBufferExpectation = noteTransportChunkPosted({
+        current: transportBufferExpectation,
+        endFrame: initialChunk.startFrame + initialChunk.frameCount,
+        sourceFrameCount: loaded.durationFrames,
+        sourceRevision: loaded.sourceRevision,
+      });
+      syncTransportBufferExpectationDiagnostics();
 
       if (!signalsmithAssets.generatedModuleUrl) {
         return false;
@@ -1185,16 +1195,21 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
         return;
       }
 
-      if (expectedTransportSourceRevision !== acceptedSource.sourceRevision) {
-        resetTransportBufferExpectation();
-        expectedTransportSourceRevision = acceptedSource.sourceRevision;
-      }
-
       const runtime = readRuntimeStatus(session);
       const sourceStatus = readSourceStatus(session);
+      transportBufferExpectation = reconcileTransportBufferExpectation({
+        current: transportBufferExpectation,
+        sourceFrameCount: acceptedSource.durationFrames,
+        sourceRevision: acceptedSource.sourceRevision,
+        sourceStatus,
+      });
+      syncTransportBufferExpectationDiagnostics(sourceStatus);
+
       const decision = chooseTransportRefill({
         active: true,
-        expectedBufferEndFrame: expectedTransportBufferEndFrame,
+        expectedBufferEndFrame: speculativeTransportBufferEndFrame(
+          transportBufferExpectation,
+        ),
         runtime,
         sourceFrameCount: acceptedSource.durationFrames,
         sourceSampleRate: acceptedSource.sampleRate,
@@ -1234,13 +1249,13 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
           }
 
           realRuntime?.postChunk(sourceForPost.sourceRevision, chunk);
-          expectedTransportSourceRevision = sourceForPost.sourceRevision;
-          expectedTransportBufferEndFrame = Math.max(
-            expectedTransportBufferEndFrame,
-            chunk.startFrame + chunk.frameCount,
-          );
-          transportDiagnostics.expectedBufferEndFrame =
-            expectedTransportBufferEndFrame;
+          transportBufferExpectation = noteTransportChunkPosted({
+            current: transportBufferExpectation,
+            endFrame: chunk.startFrame + chunk.frameCount,
+            sourceFrameCount: sourceForPost.durationFrames,
+            sourceRevision: sourceForPost.sourceRevision,
+          });
+          syncTransportBufferExpectationDiagnostics();
         })
         .catch(() => {
           prefetcher.markUnderrun();
@@ -1818,9 +1833,18 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
     }
 
     function resetTransportBufferExpectation(): void {
-      expectedTransportBufferEndFrame = 0;
-      expectedTransportSourceRevision = 0;
-      transportDiagnostics.expectedBufferEndFrame = 0;
+      transportBufferExpectation = emptyTransportBufferExpectation();
+      syncTransportBufferExpectationDiagnostics();
+    }
+
+    function syncTransportBufferExpectationDiagnostics(
+      sourceStatus?: SourceStatusSnapshot,
+    ): void {
+      writeTransportBufferExpectationDiagnostics(
+        transportDiagnostics,
+        transportBufferExpectation,
+        sourceStatus,
+      );
     }
   } catch (error) {
     renderUnsupported(appRoot, describeBoundaryError(error));
@@ -1832,6 +1856,9 @@ function createAudioTransportDiagnostics(): AudioTransportDiagnostics {
     audioContextState: "none",
     documentVisibility: document.visibilityState,
     expectedBufferEndFrame: 0,
+    expectedBufferObservedEndFrame: 0,
+    expectedBufferState: "none",
+    expectedBufferUnconfirmedPumpCount: 0,
     hiddenTransitionCount: 0,
     lastAheadFrames: 0,
     lastInputWindowEndFrame: 0,
@@ -2408,12 +2435,24 @@ function transportPumpFact(diagnostics: AudioTransportDiagnostics): string {
 
 function transportRefillFact(diagnostics: AudioTransportDiagnostics): string {
   if (diagnostics.refillSequence === 0) {
-    return "none";
+    return `none; expected ${diagnostics.expectedBufferState} end ${formatFrame(diagnostics.expectedBufferEndFrame)} observed ${formatFrame(diagnostics.expectedBufferObservedEndFrame)} wait ${diagnostics.expectedBufferUnconfirmedPumpCount.toString()}`;
   }
 
   const busy = diagnostics.refillInFlight ? "busy" : "idle";
 
-  return `${busy}; seq ${diagnostics.refillSequence.toString()} ${diagnostics.lastRefillReason} at ${Math.round(diagnostics.lastRefillAtMs).toString()} ms; input end ${formatFrame(diagnostics.lastInputWindowEndFrame)}; start ${formatFrame(diagnostics.lastRefillStartFrame)} count ${formatFrame(diagnostics.lastRefillFrameCount)}; ahead ${formatFrame(diagnostics.lastAheadFrames)} floor ${formatFrame(diagnostics.lastSafeFloorFrames)} target ${formatFrame(diagnostics.lastTargetAheadFrames)}; expected end ${formatFrame(diagnostics.expectedBufferEndFrame)}`;
+  return `${busy}; seq ${diagnostics.refillSequence.toString()} ${diagnostics.lastRefillReason} at ${Math.round(diagnostics.lastRefillAtMs).toString()} ms; input end ${formatFrame(diagnostics.lastInputWindowEndFrame)}; start ${formatFrame(diagnostics.lastRefillStartFrame)} count ${formatFrame(diagnostics.lastRefillFrameCount)}; ahead ${formatFrame(diagnostics.lastAheadFrames)} floor ${formatFrame(diagnostics.lastSafeFloorFrames)} target ${formatFrame(diagnostics.lastTargetAheadFrames)}; expected ${diagnostics.expectedBufferState} end ${formatFrame(diagnostics.expectedBufferEndFrame)} observed ${formatFrame(diagnostics.expectedBufferObservedEndFrame)} wait ${diagnostics.expectedBufferUnconfirmedPumpCount.toString()}`;
+}
+
+function writeTransportBufferExpectationDiagnostics(
+  diagnostics: AudioTransportDiagnostics,
+  expectation: TransportBufferExpectation,
+  sourceStatus?: SourceStatusSnapshot,
+): void {
+  diagnostics.expectedBufferEndFrame = expectation.endFrame;
+  diagnostics.expectedBufferObservedEndFrame = sourceStatus?.bufferEndFrame ?? 0;
+  diagnostics.expectedBufferState = expectation.state;
+  diagnostics.expectedBufferUnconfirmedPumpCount =
+    expectation.unconfirmedPumpCount;
 }
 
 function referencePreviewFact(

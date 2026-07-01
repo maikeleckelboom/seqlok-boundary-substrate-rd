@@ -128,6 +128,34 @@ Root `pnpm verify` includes `pnpm signalsmith:check`, so the proof app's lint,
 typecheck, and unit tests are part of root validation. Browser smoke remains a
 separate gate because it requires Chrome and browser audio/Worklet conditions.
 
+### 0.5 Manual hidden-tab transport proof
+
+Use this checklist before calling the real browser proof stable. Keep audio
+playing; do not pause or reset playback on `visibilitychange`.
+
+1. Foreground baseline: load the default WAV in real-adapter mode, press Play,
+   leave the tab foregrounded for at least 30 seconds, and confirm processed RMS
+   or peak is finite, `underruns` stays stable at zero, `commandDroppedTotal`
+   stays zero, and the Transport refill row reports either `expected confirmed`
+   or short-lived `expected speculative` states that return to confirmed/none.
+2. Hidden 30 seconds: switch to another tab or window for 30 seconds, return,
+   and check Browser visibility hidden/visible counters, Transport pump ticks,
+   Transport refill expected state, Worklet source cache, Runtime buffer ready,
+   `underruns`, and `commandDroppedTotal`.
+3. Hidden 60 seconds: repeat with the tab hidden for 60 seconds. Pass means the
+   non-visual pump kept filling or resumed promptly, no current-window-missing
+   gap persisted, and speculative expected buffer end did not mask missing
+   observed Worklet coverage.
+4. Optional hidden 120 seconds: repeat with the tab hidden for 120 seconds when
+   validating a release candidate or browser-specific timer behavior.
+
+Pass: audio is still playing after each return, Transport pump ticks advanced or
+resume immediately, speculative expected buffer state clears or confirms within
+bounded pump cycles, `underruns` and command drops do not increase, and source
+cache counters remain coherent. Fail: audible dropout, rising underruns or
+command drops, stuck `expected speculative`, stale pump ticks after return, or a
+current-window-missing refill that does not recover.
+
 Raw upstream mirrors under `apps/signalsmith-stretch/vendor/**` and mirrored
 third-party README files under `apps/signalsmith-stretch/third_party/**` keep
 their upstream whitespace. The repository records that policy in

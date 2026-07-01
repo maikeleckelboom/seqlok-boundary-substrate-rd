@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { chooseReferencePreviewSyncAction } from "../src/audio/source-reference-monitor";
-import { chooseTransportRefill } from "../src/audio/transport-refill";
+import {
+  chooseTransportRefill,
+  emptyTransportBufferExpectation,
+  noteTransportChunkPosted,
+  reconcileTransportBufferExpectation,
+  speculativeTransportBufferEndFrame,
+} from "../src/audio/transport-refill";
 
 import type {
   RuntimeStatusSnapshot,
@@ -63,6 +69,118 @@ describe("audio transport scheduling", () => {
     expect(decision?.reason).toBe("current-window-missing");
     expect(decision?.startFrame).toBeGreaterThan(SAMPLE_RATE * 29);
     expect(decision?.startFrame).toBeLessThan(SAMPLE_RATE * 31);
+  });
+
+  it("repairs the current Worklet input window even with an optimistic expected buffer end", () => {
+    const decision = chooseTransportRefill({
+      active: true,
+      expectedBufferEndFrame: SAMPLE_RATE * 80,
+      runtime: runtimeStatus({
+        sourceFrame: SAMPLE_RATE * 30,
+      }),
+      sourceFrameCount: SAMPLE_RATE * 120,
+      sourceSampleRate: SAMPLE_RATE,
+      sourceStatus: sourceStatus({
+        bufferEndFrame: SAMPLE_RATE * 5,
+      }),
+    });
+
+    expect(decision?.reason).toBe("current-window-missing");
+    expect(decision?.startFrame).toBeGreaterThan(SAMPLE_RATE * 29);
+    expect(decision?.startFrame).toBeLessThan(SAMPLE_RATE * 31);
+  });
+
+  it("treats posted Worklet buffer end as speculative until source status confirms it", () => {
+    let expectation = noteTransportChunkPosted({
+      current: emptyTransportBufferExpectation(),
+      endFrame: SAMPLE_RATE * 40,
+      sourceFrameCount: SAMPLE_RATE * 120,
+      sourceRevision: 1,
+    });
+
+    expect(expectation.state).toBe("speculative");
+    expect(speculativeTransportBufferEndFrame(expectation)).toBe(
+      SAMPLE_RATE * 40,
+    );
+
+    expect(
+      chooseTransportRefill({
+        active: true,
+        expectedBufferEndFrame: speculativeTransportBufferEndFrame(expectation),
+        runtime: runtimeStatus({
+          sourceFrame: SAMPLE_RATE,
+        }),
+        sourceFrameCount: SAMPLE_RATE * 120,
+        sourceSampleRate: SAMPLE_RATE,
+        sourceStatus: sourceStatus({
+          bufferEndFrame: SAMPLE_RATE * 4,
+        }),
+      }),
+    ).toBeNull();
+
+    for (let cycle = 0; cycle < 3; cycle += 1) {
+      expectation = reconcileTransportBufferExpectation({
+        current: expectation,
+        sourceFrameCount: SAMPLE_RATE * 120,
+        sourceRevision: 1,
+        sourceStatus: sourceStatus({
+          bufferEndFrame: SAMPLE_RATE * 4,
+        }),
+      });
+    }
+
+    expect(expectation.state).toBe("speculative");
+
+    expectation = reconcileTransportBufferExpectation({
+      current: expectation,
+      sourceFrameCount: SAMPLE_RATE * 120,
+      sourceRevision: 1,
+      sourceStatus: sourceStatus({
+        bufferEndFrame: SAMPLE_RATE * 4,
+      }),
+    });
+
+    expect(expectation.state).toBe("none");
+    expect(speculativeTransportBufferEndFrame(expectation)).toBe(0);
+
+    const resumedDecision = chooseTransportRefill({
+      active: true,
+      expectedBufferEndFrame: speculativeTransportBufferEndFrame(expectation),
+      runtime: runtimeStatus({
+        sourceFrame: SAMPLE_RATE,
+      }),
+      sourceFrameCount: SAMPLE_RATE * 120,
+      sourceSampleRate: SAMPLE_RATE,
+      sourceStatus: sourceStatus({
+        bufferEndFrame: SAMPLE_RATE * 4,
+      }),
+    });
+
+    expect(resumedDecision?.reason).toBe("ahead-low");
+    expect(resumedDecision?.startFrame).toBe(SAMPLE_RATE * 4);
+  });
+
+  it("confirms a speculative Worklet buffer end after observed status catches up", () => {
+    const expectation = reconcileTransportBufferExpectation({
+      current: noteTransportChunkPosted({
+        current: emptyTransportBufferExpectation(),
+        endFrame: SAMPLE_RATE * 40,
+        sourceFrameCount: SAMPLE_RATE * 120,
+        sourceRevision: 1,
+      }),
+      sourceFrameCount: SAMPLE_RATE * 120,
+      sourceRevision: 1,
+      sourceStatus: sourceStatus({
+        bufferEndFrame: SAMPLE_RATE * 40,
+      }),
+    });
+
+    expect(expectation).toMatchObject({
+      endFrame: SAMPLE_RATE * 40,
+      state: "confirmed",
+      unconfirmedPumpCount: 0,
+    });
+    expect(speculativeTransportBufferEndFrame(expectation)).toBe(0);
   });
 
   it("keeps the original-preview scheduler running under normal clock drift", () => {

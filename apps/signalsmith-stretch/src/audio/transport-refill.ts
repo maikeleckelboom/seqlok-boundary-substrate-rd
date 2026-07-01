@@ -3,6 +3,17 @@ import { calculateSignalsmithSourceWindow } from "../worklet/source-window-posit
 import type { RuntimeStatusSnapshot, SourceStatusSnapshot } from "../types";
 
 export type TransportRefillReason = "ahead-low" | "current-window-missing";
+export type TransportBufferExpectationState =
+  | "confirmed"
+  | "none"
+  | "speculative";
+
+export interface TransportBufferExpectation {
+  readonly endFrame: number;
+  readonly sourceRevision: number;
+  readonly state: TransportBufferExpectationState;
+  readonly unconfirmedPumpCount: number;
+}
 
 export interface TransportRefillDecision {
   readonly aheadFrames: number;
@@ -25,9 +36,97 @@ export interface TransportRefillInput {
 }
 
 const CURRENT_WINDOW_OVERLAP_FRAMES = 512;
+const MAX_SPECULATIVE_EXPECTATION_PUMPS = 3;
 const MIN_CHUNK_SECONDS = 4;
 const MIN_SAFE_FLOOR_SECONDS = 8;
 const TARGET_AHEAD_SECONDS = 24;
+
+export function emptyTransportBufferExpectation(): TransportBufferExpectation {
+  return {
+    endFrame: 0,
+    sourceRevision: 0,
+    state: "none",
+    unconfirmedPumpCount: 0,
+  };
+}
+
+export function noteTransportChunkPosted(input: {
+  readonly current: TransportBufferExpectation;
+  readonly endFrame: number;
+  readonly sourceFrameCount: number;
+  readonly sourceRevision: number;
+}): TransportBufferExpectation {
+  return {
+    endFrame: Math.max(
+      clampFrame(input.current.endFrame, 0, input.sourceFrameCount),
+      clampFrame(input.endFrame, 0, input.sourceFrameCount),
+    ),
+    sourceRevision: input.sourceRevision,
+    state: "speculative",
+    unconfirmedPumpCount: 0,
+  };
+}
+
+export function reconcileTransportBufferExpectation(input: {
+  readonly current: TransportBufferExpectation;
+  readonly maxUnconfirmedPumpCount?: number;
+  readonly sourceFrameCount: number;
+  readonly sourceRevision: number;
+  readonly sourceStatus: SourceStatusSnapshot;
+}): TransportBufferExpectation {
+  if (
+    input.current.state === "none" ||
+    input.current.sourceRevision !== input.sourceRevision ||
+    input.sourceStatus.sourceRevision !== input.sourceRevision
+  ) {
+    return emptyTransportBufferExpectation();
+  }
+
+  const expectedEndFrame = clampFrame(
+    input.current.endFrame,
+    0,
+    input.sourceFrameCount,
+  );
+  const observedEndFrame = clampFrame(
+    input.sourceStatus.bufferEndFrame,
+    0,
+    input.sourceFrameCount,
+  );
+
+  if (observedEndFrame >= expectedEndFrame) {
+    return {
+      endFrame: expectedEndFrame,
+      sourceRevision: input.sourceRevision,
+      state: "confirmed",
+      unconfirmedPumpCount: 0,
+    };
+  }
+
+  if (input.current.state === "confirmed") {
+    return emptyTransportBufferExpectation();
+  }
+
+  const unconfirmedPumpCount = input.current.unconfirmedPumpCount + 1;
+  const maxUnconfirmedPumpCount =
+    input.maxUnconfirmedPumpCount ?? MAX_SPECULATIVE_EXPECTATION_PUMPS;
+
+  if (unconfirmedPumpCount > maxUnconfirmedPumpCount) {
+    return emptyTransportBufferExpectation();
+  }
+
+  return {
+    endFrame: expectedEndFrame,
+    sourceRevision: input.sourceRevision,
+    state: "speculative",
+    unconfirmedPumpCount,
+  };
+}
+
+export function speculativeTransportBufferEndFrame(
+  expectation: TransportBufferExpectation,
+): number {
+  return expectation.state === "speculative" ? expectation.endFrame : 0;
+}
 
 export function chooseTransportRefill(
   input: TransportRefillInput,
@@ -69,8 +168,13 @@ export function chooseTransportRefill(
     0,
     sourceFrameCount,
   );
-  const observedBufferEndFrame = Math.max(
-    clampFrame(input.sourceStatus.bufferEndFrame, 0, sourceFrameCount),
+  const observedBufferEndFrame = clampFrame(
+    input.sourceStatus.bufferEndFrame,
+    0,
+    sourceFrameCount,
+  );
+  const effectiveBufferEndFrame = Math.max(
+    observedBufferEndFrame,
     clampFrame(input.expectedBufferEndFrame ?? 0, 0, sourceFrameCount),
   );
   const safeFloorFrames = calculateSafeFloorFrames(input.runtime, sampleRate);
@@ -78,14 +182,21 @@ export function chooseTransportRefill(
     safeFloorFrames * 2,
     Math.floor(sampleRate * TARGET_AHEAD_SECONDS),
   );
-  const aheadFrames = Math.max(0, observedBufferEndFrame - inputWindowEndFrame);
+  const observedAheadFrames = Math.max(
+    0,
+    observedBufferEndFrame - inputWindowEndFrame,
+  );
+  const effectiveAheadFrames = Math.max(
+    0,
+    effectiveBufferEndFrame - inputWindowEndFrame,
+  );
 
   if (
     observedBufferStartFrame > inputWindowStartFrame ||
     observedBufferEndFrame < inputWindowEndFrame
   ) {
     return createDecision({
-      aheadFrames,
+      aheadFrames: observedAheadFrames,
       inputWindowEndFrame,
       inputWindowStartFrame,
       reason: "current-window-missing",
@@ -98,16 +209,16 @@ export function chooseTransportRefill(
     });
   }
 
-  if (aheadFrames < targetAheadFrames) {
+  if (effectiveAheadFrames < targetAheadFrames) {
     return createDecision({
-      aheadFrames,
+      aheadFrames: effectiveAheadFrames,
       inputWindowEndFrame,
       inputWindowStartFrame,
       reason: "ahead-low",
       safeFloorFrames,
       sourceFrameCount,
       sourceSampleRate: sampleRate,
-      startFrame: observedBufferEndFrame,
+      startFrame: effectiveBufferEndFrame,
       targetAheadFrames,
       runtime: input.runtime,
     });
