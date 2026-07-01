@@ -53,6 +53,28 @@ describe("audio transport scheduling", () => {
     expect(decision).toBeNull();
   });
 
+  it("does not request source data beyond EOF at the playable end", () => {
+    const sourceFrameCount = SAMPLE_RATE * 2;
+    const playableEndFrame =
+      sourceFrameCount - (5_760 + 1_440);
+    const decision = chooseTransportRefill({
+      active: true,
+      runtime: runtimeStatus({
+        durationFrames: sourceFrameCount,
+        playableEndFrame,
+        sourceFrame: playableEndFrame,
+      }),
+      sourceFrameCount,
+      sourceSampleRate: SAMPLE_RATE,
+      sourceStatus: sourceStatus({
+        bufferEndFrame: sourceFrameCount,
+        durationFrames: sourceFrameCount,
+      }),
+    });
+
+    expect(decision).toBeNull();
+  });
+
   it("repairs the current Worklet input window after a seek beyond cached frames", () => {
     const decision = chooseTransportRefill({
       active: true,
@@ -325,6 +347,7 @@ function runtimeStatus(
     outputFrame: 0,
     outputLatencyFrames: 1_440,
     outputLatencySeconds: 0.03,
+    playableEndFrame: SAMPLE_RATE * 120,
     processingCenterFrame: 0,
     scheduledCommandDroppedTotal: 0,
     scheduledCommandQueueSize: 0,

@@ -80,6 +80,7 @@ const RUNTIME_METER_KEYS = [
   "runtime.outputFrame",
   "runtime.outputLatencyFrames",
   "runtime.outputLatencySeconds",
+  "runtime.playableEndFrame",
   "runtime.processingCenterFrame",
   "runtime.scheduledCommandDroppedTotal",
   "runtime.scheduledCommandQueueSize",

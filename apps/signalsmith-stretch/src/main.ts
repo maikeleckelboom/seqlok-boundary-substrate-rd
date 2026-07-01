@@ -636,8 +636,9 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
     }
 
     function commitSeek(value: number): void {
-      const frame = clamp(value, 0, source.frames);
       const runtime = readRuntimeStatus(session);
+      const seekEndFrame = seekEndFrameForRuntime(runtime, source);
+      const frame = clamp(value, 0, seekEndFrame);
       const targetFrame = normalizeSeekFrameForRuntime(frame, runtime);
       requestedSeekFrame = frame;
       requestedSeekTargetFrame = targetFrame;
@@ -1343,17 +1344,18 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
     }
 
     function updateSourceLimits(): void {
-      for (const input of [
-        elements.seekRange,
-        elements.seekFrame,
-        elements.loopStart,
-        elements.loopEnd,
-      ]) {
-        input.max = String(source.frames);
-      }
+      syncSeekLimits(source.frames);
+      elements.loopStart.max = String(source.frames);
+      elements.loopEnd.max = String(source.frames);
       elements.seekRange.value = "0";
       elements.seekFrame.value = "0";
       syncLoopDraftInputs();
+    }
+
+    function syncSeekLimits(seekEndFrame: number): void {
+      const max = String(clamp(seekEndFrame, 0, source.frames));
+      elements.seekRange.max = max;
+      elements.seekFrame.max = max;
     }
 
     function updateControlOutputs(): void {
@@ -1516,6 +1518,8 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
       const clipRight = levels.fullScaleRightTotal - clipBaselineRight;
       const loopStatus = validateLoopDraft(runtime);
       const loopReady = loopStatus.complete && loopStatus.validation.valid;
+      const timelineEndFrame = playbackTimelineEndFrame(runtime, source);
+      const seekEndFrame = seekEndFrameForRuntime(runtime, source);
       const appliedLoopText = runtime.loopEnabled
         ? `${formatFrame(runtime.loopStartFrame)} to ${formatFrame(runtime.loopEndFrame)} rev ${runtime.loopRevision.toString()}`
         : "inactive";
@@ -1525,6 +1529,7 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
         runtimeMode: runtimeSelection.mode,
       });
       syncMonitorGains();
+      syncSeekLimits(seekEndFrame);
       syncProductState(hasLoadedSource);
       elements.transportState.textContent = runtime.state;
       elements.appliedSequence.textContent = `${runtime.lastAppliedDesiredSequence.toString()} desired, ${runtime.lastAppliedConfigSequence.toString()} config, ${runtime.lastAppliedCommandSequence.toString()} command`;
@@ -1563,11 +1568,15 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
       elements.setLoopButton.disabled = !hasLoadedSource || !loopReady;
       elements.playLoopButton.disabled = !hasLoadedSource || !loopReady;
       elements.playhead.textContent = hasLoadedSource
-        ? `${formatTime(runtime.sourceFrame, source.sampleRate)} / ${formatTime(source.frames, source.sampleRate)}`
+        ? formatPlayhead(runtime.sourceFrame, timelineEndFrame, source)
         : "";
-      elements.seekRange.value = String(Math.floor(runtime.sourceFrame));
+      elements.seekRange.value = String(
+        Math.floor(clamp(runtime.sourceFrame, 0, seekEndFrame)),
+      );
       if (requestedSeekFrame === null) {
-        elements.seekFrame.value = String(Math.floor(runtime.sourceFrame));
+        elements.seekFrame.value = String(
+          Math.floor(clamp(runtime.sourceFrame, 0, seekEndFrame)),
+        );
       }
 
       renderSourceWell(hasLoadedSource);
@@ -1611,6 +1620,7 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
             startFrame: loopDraft.startFrame,
           },
           levels: levels.historyPeak,
+          timelineEndFrame,
           requestedSeekFrame,
           runtime,
           source,
@@ -1748,6 +1758,7 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
       hasLoadedSource: boolean,
     ): void {
       const referenceStatus = referenceMonitor?.status ?? null;
+      const timelineEndFrame = playbackTimelineEndFrame(runtime, source);
 
       renderKeyValues(elements.inspector, [
         ["Signalsmith Stretch branch", SIGNALSMITH_STRETCH_SOURCE_BRANCH],
@@ -1830,13 +1841,14 @@ function startSignalsmithStretch(appRoot: HTMLElement): void {
         ],
         ["Processing center frame", formatFrame(runtime.processingCenterFrame)],
         ["Audible source frame", formatFrame(runtime.sourceFrame)],
+        ["Playable end frame", formatFrame(timelineEndFrame)],
         ["Loop source frame", formatLoopSourceFrame(runtime)],
         ["Loop cache coverage", formatLoopCacheCoverage(runtime)],
         ["Output frame", formatFrame(runtime.outputFrame)],
         [
           "Duration",
           hasLoadedSource
-            ? formatTime(runtime.durationFrames, source.sampleRate)
+            ? formatDurationFact(runtime, source)
             : "No source loaded",
         ],
         ["Source state", sourceStatus.state],
@@ -2088,6 +2100,59 @@ function formatLoopCacheCoverage(runtime: RuntimeStatusSnapshot): string {
   }
 
   return `current window ${formatFrame(runtime.inputWindowMissingFrames)} missing; start window ${formatFrame(runtime.loopStartMissingFrames)}; end window ${formatFrame(runtime.loopEndMissingFrames)}`;
+}
+
+function seekEndFrameForRuntime(
+  runtime: RuntimeStatusSnapshot,
+  source: SimulatedSource,
+): number {
+  return runtime.loopEnabled
+    ? source.frames
+    : playbackTimelineEndFrame(runtime, source);
+}
+
+function playbackTimelineEndFrame(
+  runtime: RuntimeStatusSnapshot,
+  source: SimulatedSource,
+): number {
+  const playableEndFrame =
+    Number.isFinite(runtime.playableEndFrame) && runtime.durationFrames > 0
+      ? runtime.playableEndFrame
+      : source.frames;
+
+  return clamp(playableEndFrame, 0, source.frames);
+}
+
+function formatPlayhead(
+  sourceFrame: number,
+  timelineEndFrame: number,
+  source: SimulatedSource,
+): string {
+  const current = formatTime(
+    clamp(sourceFrame, 0, timelineEndFrame),
+    source.sampleRate,
+  );
+  const playable = formatTime(timelineEndFrame, source.sampleRate);
+
+  if (timelineEndFrame >= source.frames) {
+    return `${current} / ${playable}`;
+  }
+
+  return `${current} / ${playable} playable (${formatTime(source.frames, source.sampleRate)} source)`;
+}
+
+function formatDurationFact(
+  runtime: RuntimeStatusSnapshot,
+  source: SimulatedSource,
+): string {
+  const timelineEndFrame = playbackTimelineEndFrame(runtime, source);
+  const sourceDuration = formatTime(source.frames, source.sampleRate);
+
+  if (timelineEndFrame >= source.frames) {
+    return sourceDuration;
+  }
+
+  return `${formatTime(timelineEndFrame, source.sampleRate)} playable; ${sourceDuration} source`;
 }
 
 function loopCacheMissingFrames(runtime: RuntimeStatusSnapshot): number {

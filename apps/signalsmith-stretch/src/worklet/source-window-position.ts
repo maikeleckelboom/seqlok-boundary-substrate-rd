@@ -13,6 +13,13 @@ export interface SignalsmithSourceWindow {
   readonly processingCenterFrame: number;
 }
 
+export interface SignalsmithPlayableEndInput {
+  readonly effectiveRate: number;
+  readonly inputLatencyFrames: number;
+  readonly outputLatencyFrames: number;
+  readonly sourceFrameCount: number;
+}
+
 export function calculateSignalsmithSourceWindow(
   input: SignalsmithSourceWindowInput,
 ): SignalsmithSourceWindow {
@@ -43,6 +50,40 @@ export function calculateSignalsmithSourceWindow(
     inputWindowStartFrame: inputWindowEndFrame - bufferLengthFrames,
     processingCenterFrame,
   };
+}
+
+export function calculateSignalsmithPlayableEndFrame(
+  input: SignalsmithPlayableEndInput,
+): number {
+  const sourceFrameCount = Math.max(
+    0,
+    Math.floor(finiteOrZero(input.sourceFrameCount)),
+  );
+  const lookaheadFrames = calculateSignalsmithLookaheadFrames(input);
+
+  return Math.min(
+    sourceFrameCount,
+    Math.max(0, sourceFrameCount - lookaheadFrames),
+  );
+}
+
+export function calculateSignalsmithLookaheadFrames(
+  input: Pick<
+    SignalsmithPlayableEndInput,
+    "effectiveRate" | "inputLatencyFrames" | "outputLatencyFrames"
+  >,
+): number {
+  const effectiveRate = Math.max(0.05, finiteOrZero(input.effectiveRate));
+  const inputLatencyFrames = Math.max(
+    0,
+    Math.floor(finiteOrZero(input.inputLatencyFrames)),
+  );
+  const outputLatencyFrames = Math.max(
+    0,
+    Math.floor(finiteOrZero(input.outputLatencyFrames)),
+  );
+
+  return Math.ceil(inputLatencyFrames + outputLatencyFrames * effectiveRate);
 }
 
 function finiteOrZero(value: number): number {

@@ -126,6 +126,7 @@ export interface RuntimeStatusSnapshot {
   readonly outputLatencyFrames: number;
   readonly outputLatencySeconds: number;
   readonly outputFrame: number;
+  readonly playableEndFrame: number;
   readonly processingCenterFrame: number;
   readonly scheduledCommandDroppedTotal: number;
   readonly scheduledCommandQueueSize: number;

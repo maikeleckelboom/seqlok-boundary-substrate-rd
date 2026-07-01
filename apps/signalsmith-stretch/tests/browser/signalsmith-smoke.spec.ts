@@ -580,8 +580,14 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
   await expect.poll(() => runtimeFact(page, "Loop")).toBe("inactive");
   await expect(page.locator("#loopDraft")).toHaveText("none");
 
+  const playableEndFrame = await numericRuntimeFact(page, "Playable end frame");
   await setSeekFrame(page, "96000");
-  await expect.poll(() => sourceFrameNear(page, 96_000, 2_048)).toBe(true);
+  await expect
+    .poll(() => sourceFrameNear(page, playableEndFrame, 2_048))
+    .toBe(true);
+  await expect
+    .poll(async () => Number(await page.locator("#seekFrame").inputValue()))
+    .toBe(playableEndFrame);
   await page.locator("#playButton").click();
   await expect.poll(() => runtimeFact(page, "State")).toBe("playing");
   await expect
@@ -590,6 +596,62 @@ test("real Worklet runtime handles chunked WAV transport controls", async ({
 
   await page.locator("#pauseButton").click();
   await expect.poll(() => runtimeFact(page, "State")).toBe("ready-paused");
+});
+
+test("real Worklet short WAV keeps seek and EOF on the playable timeline", async ({
+  page,
+}, testInfo) => {
+  test.skip(
+    !isRealAdapterRun(testInfo),
+    "Real Worklet EOF smoke requires pnpm signalsmith:prepare and pnpm signalsmith:test:browser:real.",
+  );
+
+  await page.goto("/");
+  await expectRealAdapterAssetsAvailable(page);
+
+  const seconds = 0.5;
+  const frames = SAMPLE_RATE * seconds;
+  const wavPath = testInfo.outputPath("signalsmith-short-eof.wav");
+  writeFileSync(wavPath, createSmokeWav(SAMPLE_RATE, seconds));
+
+  await page.locator("#fileInput").setInputFiles(wavPath);
+  await expect(page.locator("#sourcePrimary")).toHaveText(
+    "signalsmith-short-eof.wav",
+  );
+  await expect(page.locator("#runtimeModeBadge")).toHaveText(
+    "Real Worklet active",
+  );
+  await expect.poll(() => runtimeFact(page, "Worklet mode")).toBe("real");
+
+  await expect
+    .poll(() => numericRuntimeFact(page, "Playable end frame"))
+    .toBeGreaterThan(0);
+  const playableEndFrame = await numericRuntimeFact(page, "Playable end frame");
+  expect(playableEndFrame).toBeLessThan(frames);
+  await expect
+    .poll(async () =>
+      Number(await page.locator("#seekFrame").getAttribute("max")),
+    )
+    .toBe(playableEndFrame);
+  await expect
+    .poll(() => page.locator("#playhead").textContent())
+    .toContain("playable");
+
+  await setSeekFrame(page, String(frames - 512));
+  await expect
+    .poll(async () => Number(await page.locator("#seekFrame").inputValue()))
+    .toBe(playableEndFrame);
+  await expect
+    .poll(() => numericRuntimeFact(page, "Audible source frame"))
+    .toBe(playableEndFrame);
+  await expect.poll(() => runtimeFact(page, "Level probe")).toContain("ready");
+
+  await page.locator("#playButton").click();
+  await expect.poll(() => runtimeFact(page, "State")).toBe("playing");
+  await expect
+    .poll(() => numericRuntimeFact(page, "Audible source frame"))
+    .toBeLessThan(8_000);
+  await expect.poll(() => runtimeFact(page, "Level probe")).toContain("active");
 });
 
 function isRealAdapterRun(testInfo: TestInfo): boolean {

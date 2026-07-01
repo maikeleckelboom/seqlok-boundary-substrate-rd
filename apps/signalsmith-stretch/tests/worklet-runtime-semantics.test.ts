@@ -7,7 +7,11 @@ import { describe, expect, it } from "vitest";
 import { LatestPrefetchGate } from "../src/audio/latest-prefetch-gate";
 import { ScheduledCommandQueue } from "../src/worklet/scheduled-commands";
 import { SourceWindow } from "../src/worklet/source-window";
-import { calculateSignalsmithSourceWindow } from "../src/worklet/source-window-position";
+import {
+  calculateSignalsmithLookaheadFrames,
+  calculateSignalsmithPlayableEndFrame,
+  calculateSignalsmithSourceWindow,
+} from "../src/worklet/source-window-position";
 
 import type {
   ChunkedWavSourceInfo,
@@ -173,6 +177,44 @@ describe("Signalsmith Worklet runtime semantics", () => {
         outputLatencyFrames: 1_440,
       }).inputWindowStartFrame,
     ).toBe(48_128);
+  });
+
+  it("derives the non-loop playable end from the full Signalsmith lookahead window", () => {
+    const timeline = {
+      effectiveRate: 1,
+      inputLatencyFrames: 5_760,
+      outputLatencyFrames: 1_440,
+      sourceFrameCount: 96_000,
+    };
+    const playableEndFrame = calculateSignalsmithPlayableEndFrame(timeline);
+
+    expect(calculateSignalsmithLookaheadFrames(timeline)).toBe(7_200);
+    expect(playableEndFrame).toBe(88_800);
+    expect(
+      calculateSignalsmithSourceWindow({
+        ...timeline,
+        audibleSourceFrame: playableEndFrame,
+        bufferLengthFrames: 7_200,
+      }).inputWindowEndFrame,
+    ).toBe(96_000);
+    expect(
+      calculateSignalsmithSourceWindow({
+        ...timeline,
+        audibleSourceFrame: 95_000,
+        bufferLengthFrames: 7_200,
+      }).inputWindowEndFrame,
+    ).toBeGreaterThan(timeline.sourceFrameCount);
+  });
+
+  it("scales the playable end by playback rate instead of source duration labels", () => {
+    expect(
+      calculateSignalsmithPlayableEndFrame({
+        effectiveRate: 0.5,
+        inputLatencyFrames: 5_760,
+        outputLatencyFrames: 1_440,
+        sourceFrameCount: 96_000,
+      }),
+    ).toBe(89_520);
   });
 
   it("wraps source-window fills across loopEnd to loopStart", () => {
@@ -368,7 +410,7 @@ describe("Signalsmith Worklet runtime semantics", () => {
     const source = readFileSync(WORKLET_PROCESSOR, "utf8");
     const playBody = methodBody(source, "play");
 
-    expect(playBody).toContain("this.sourceFrame >= durationFrames");
+    expect(playBody).toContain("this.sourceFrame >= endFrame");
     expect(playBody).toContain(
       "this.repositionToSourceFrame(this.sourceFrame)",
     );
@@ -383,6 +425,7 @@ describe("Signalsmith Worklet runtime semantics", () => {
     const playBody = methodBody(source, "play");
     const wrapBody = methodBody(source, "wrapLoopIfNeeded");
 
+    expect(repositionBody).toContain("this.seekEndFrame()");
     expect(repositionBody).toContain("normalizeSeekFrameIntoLoopRange");
     expect(repositionBody).toContain("this.loopEnabled");
     expect(playBody).toContain(
@@ -391,6 +434,24 @@ describe("Signalsmith Worklet runtime semantics", () => {
     expect(wrapBody).toContain("sourceFrameInsideLoopRange");
     expect(wrapBody).toContain(
       "this.repositionToSourceFrame(this.sourceFrame)",
+    );
+  });
+
+  it("keeps non-loop Worklet EOF on the playable timeline while loops use source duration", () => {
+    const source = readFileSync(WORKLET_PROCESSOR, "utf8");
+    const renderBody = methodBody(source, "renderQuantum");
+    const playableBody = methodBody(source, "playableEndFrame");
+    const playbackEndBody = methodBody(source, "playbackEndFrame");
+    const publishBody = methodBody(source, "publishRuntimeStatus");
+
+    expect(playableBody).toContain("calculateSignalsmithPlayableEndFrame");
+    expect(playbackEndBody).toContain("this.loopEnabled");
+    expect(playbackEndBody).toContain("this.durationFrames()");
+    expect(playbackEndBody).toContain("this.playableEndFrame()");
+    expect(renderBody).toContain("const endFrame = this.playbackEndFrame()");
+    expect(renderBody).toContain("this.sourceFrame = endFrame");
+    expect(publishBody).toContain(
+      "playableEndFrame: this.playableEndFrameForPublish()",
     );
   });
 

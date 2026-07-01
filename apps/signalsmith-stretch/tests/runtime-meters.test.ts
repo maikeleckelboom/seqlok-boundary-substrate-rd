@@ -54,6 +54,7 @@ describe("Signalsmith runtime meter publishing", () => {
       "runtime.loopStartMissingFrames",
       "runtime.loopEndMissingFrames",
       "runtime.outputLatencySeconds",
+      "runtime.playableEndFrame",
       "runtime.state",
     );
 
@@ -69,6 +70,7 @@ describe("Signalsmith runtime meter publishing", () => {
     expect(meters["runtime.loopStartMissingFrames"]).toBe(23);
     expect(meters["runtime.loopEndMissingFrames"]).toBe(29);
     expect(meters["runtime.outputLatencySeconds"]).toBeCloseTo(0.025);
+    expect(meters["runtime.playableEndFrame"]).toBe(46_500);
     expect(meters["runtime.state"]).toBe(enumIndex(RUNTIME_STATES, "playing"));
   });
 });
@@ -104,6 +106,7 @@ function runtimeInput(): RuntimeMeterInput {
     maxObservedRenderQuantum: 128,
     outputFrame: 12_345,
     outputLatencyFrames: 1_200,
+    playableEndFrame: 46_500,
     processingCenterFrame: 13_545,
     scheduledCommandDroppedTotal: 10,
     scheduledCommandQueueSize: 2,

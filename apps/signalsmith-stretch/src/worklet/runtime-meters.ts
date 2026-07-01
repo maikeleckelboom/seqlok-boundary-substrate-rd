@@ -38,6 +38,7 @@ export interface RuntimeMeterInput {
   readonly maxObservedRenderQuantum: number;
   readonly outputFrame: number;
   readonly outputLatencyFrames: number;
+  readonly playableEndFrame: number;
   readonly processingCenterFrame: number;
   readonly scheduledCommandDroppedTotal: number;
   readonly scheduledCommandQueueSize: number;
@@ -103,6 +104,7 @@ export function runtimeMeterValues(
     outputFrame: input.outputFrame,
     outputLatencyFrames: input.outputLatencyFrames,
     outputLatencySeconds,
+    playableEndFrame: input.playableEndFrame,
     processingCenterFrame: input.processingCenterFrame,
     scheduledCommandDroppedTotal: input.scheduledCommandDroppedTotal,
     scheduledCommandQueueSize: input.scheduledCommandQueueSize,
@@ -177,6 +179,7 @@ export function publishRuntimeMeters(
     writer.set("runtime.outputFrame", input.outputFrame);
     writer.set("runtime.outputLatencyFrames", input.outputLatencyFrames);
     writer.set("runtime.outputLatencySeconds", outputLatencySeconds);
+    writer.set("runtime.playableEndFrame", input.playableEndFrame);
     writer.set("runtime.processingCenterFrame", input.processingCenterFrame);
     writer.set(
       "runtime.scheduledCommandDroppedTotal",

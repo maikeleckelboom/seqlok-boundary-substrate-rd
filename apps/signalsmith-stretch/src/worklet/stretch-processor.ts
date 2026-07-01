@@ -28,6 +28,7 @@ import { ScheduledCommandQueue } from "./scheduled-commands";
 import { loadSignalsmithStretchModule } from "./signalsmith-module";
 import { SourceWindow } from "./source-window";
 import {
+  calculateSignalsmithPlayableEndFrame,
   calculateSignalsmithSourceWindow,
   type SignalsmithSourceWindow,
 } from "./source-window-position";
@@ -339,8 +340,9 @@ class SignalsmithStretchProcessor extends AudioWorkletProcessor {
     this.outputFrame += outputFrameCount;
     this.sourceFrame += outputFrameCount * this.effectiveRate;
 
-    if (!this.loopEnabled && this.sourceFrame >= info.frameCount) {
-      this.sourceFrame = info.frameCount;
+    const endFrame = this.playbackEndFrame();
+    if (!this.loopEnabled && this.sourceFrame >= endFrame) {
+      this.sourceFrame = endFrame;
       this.runtimeState = "ended";
       this.active = false;
     }
@@ -468,6 +470,7 @@ class SignalsmithStretchProcessor extends AudioWorkletProcessor {
         this.tonalityHz = params.control.tonalityHz;
         this.lastAppliedDesiredSequence = params.control.desiredSequence;
         this.applyDesiredControls();
+        this.clampSourceFrameToPlaybackEnd();
       }
 
       if (params.config.configSequence !== this.lastAppliedConfigSequence) {
@@ -481,6 +484,7 @@ class SignalsmithStretchProcessor extends AudioWorkletProcessor {
         this.splitComputation = params.config.splitComputation;
         this.lastAppliedConfigSequence = params.config.configSequence;
         this.applyConfigControls();
+        this.clampSourceFrameToPlaybackEnd();
       }
     });
   }
@@ -508,11 +512,11 @@ class SignalsmithStretchProcessor extends AudioWorkletProcessor {
   }
 
   private play(): void {
-    const durationFrames = this.durationFrames();
+    const endFrame = this.playbackEndFrame();
 
     if (this.loopEnabled && this.loopEndFrame > this.loopStartFrame) {
       this.repositionToSourceFrame(this.sourceFrame);
-    } else if (this.sourceFrame >= durationFrames) {
+    } else if (this.sourceFrame >= endFrame) {
       this.repositionToSourceFrame(0);
     }
 
@@ -521,8 +525,7 @@ class SignalsmithStretchProcessor extends AudioWorkletProcessor {
   }
 
   private repositionToSourceFrame(sourceFrame: number): void {
-    const durationFrames = this.durationFrames();
-    const clampedFrame = clamp(sourceFrame, 0, durationFrames);
+    const clampedFrame = clamp(sourceFrame, 0, this.seekEndFrame());
     this.sourceFrame = this.loopEnabled
       ? normalizeSeekFrameIntoLoopRange(clampedFrame, {
           endFrame: this.loopEndFrame,
@@ -649,6 +652,7 @@ class SignalsmithStretchProcessor extends AudioWorkletProcessor {
     this.bindHeapViews(module);
     this.heapGeneration += 1;
     this.updateLoopCacheCoverage();
+    this.clampSourceFrameToPlaybackEnd();
   }
 
   private checkHeapViews(): void {
@@ -747,6 +751,7 @@ class SignalsmithStretchProcessor extends AudioWorkletProcessor {
       maxObservedRenderQuantum: this.maxObservedRenderQuantum,
       outputFrame: this.outputFrame,
       outputLatencyFrames: this.outputLatencyFrames,
+      playableEndFrame: this.playableEndFrameForPublish(),
       processingCenterFrame: this.processingCenterFrameForPublish(),
       scheduledCommandDroppedTotal: this.scheduledCommands.dropped,
       scheduledCommandQueueSize: this.scheduledCommands.size,
@@ -803,9 +808,36 @@ class SignalsmithStretchProcessor extends AudioWorkletProcessor {
     });
   }
 
+  private playbackEndFrame(): number {
+    return this.loopEnabled ? this.durationFrames() : this.playableEndFrame();
+  }
+
+  private playableEndFrame(): number {
+    return calculateSignalsmithPlayableEndFrame({
+      effectiveRate: this.effectiveRate,
+      inputLatencyFrames: this.inputLatencyFrames,
+      outputLatencyFrames: this.outputLatencyFrames,
+      sourceFrameCount: this.durationFrames(),
+    });
+  }
+
+  private playableEndFrameForPublish(): number {
+    return this.loopEnabled ? this.durationFrames() : this.playableEndFrame();
+  }
+
+  private clampSourceFrameToPlaybackEnd(): void {
+    if (!this.loopEnabled) {
+      this.sourceFrame = clamp(this.sourceFrame, 0, this.playbackEndFrame());
+    }
+  }
+
   private processingCenterFrameForPublish(): number {
     return this.sourceWindowForAudibleFrame(this.sourceFrame)
       .processingCenterFrame;
+  }
+
+  private seekEndFrame(): number {
+    return this.loopEnabled ? this.durationFrames() : this.playableEndFrame();
   }
 
   private wrapLoopIfNeeded(): void {

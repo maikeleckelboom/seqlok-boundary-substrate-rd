@@ -65,6 +65,7 @@ export const signalsmithStretchSpec = defineSpec(({ param, meter }) => ({
       bufferLengthFrames: meter.u32(),
       durationFrames: meter.f64(),
       durationSeconds: meter.f64(),
+      playableEndFrame: meter.f64(),
       audioWorkletTimeSeconds: meter.f64(),
       audioWorkletFrameLo: meter.u32(),
       audioWorkletFrameHi: meter.u32(),

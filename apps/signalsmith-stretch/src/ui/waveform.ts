@@ -11,6 +11,7 @@ export interface WaveformState {
   readonly requestedSeekFrame: number | null;
   readonly runtime: RuntimeStatusSnapshot;
   readonly source: SimulatedSource;
+  readonly timelineEndFrame: number;
 }
 
 export function drawWaveform(
@@ -48,6 +49,13 @@ export function drawWaveform(
     style: "applied",
   });
   drawPeaks(context, width, height, peaks);
+  drawPlayableTail(
+    context,
+    width,
+    height,
+    state.timelineEndFrame,
+    state.source.frames,
+  );
   drawMarker(
     context,
     width,
@@ -69,6 +77,30 @@ export function drawWaveform(
       "requested",
     );
   }
+}
+
+function drawPlayableTail(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  timelineEndFrame: number,
+  sourceFrames: number,
+): void {
+  if (timelineEndFrame >= sourceFrames || sourceFrames <= 0) {
+    return;
+  }
+
+  const start = frameToX(timelineEndFrame, sourceFrames, width);
+  context.fillStyle = "rgba(16, 20, 24, 0.72)";
+  context.fillRect(start, 0, width - start, height);
+  context.strokeStyle = "rgba(244, 211, 94, 0.5)";
+  context.lineWidth = 2;
+  context.setLineDash([4, 5]);
+  context.beginPath();
+  context.moveTo(start, 0);
+  context.lineTo(start, height);
+  context.stroke();
+  context.setLineDash([]);
 }
 
 function drawGrid(

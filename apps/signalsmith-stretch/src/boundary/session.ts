@@ -194,6 +194,7 @@ export function readRuntimeStatus(
     outputLatencyFrames: snapshot["runtime.outputLatencyFrames"],
     outputLatencySeconds: snapshot["runtime.outputLatencySeconds"],
     outputFrame: snapshot["runtime.outputFrame"],
+    playableEndFrame: snapshot["runtime.playableEndFrame"],
     processingCenterFrame: snapshot["runtime.processingCenterFrame"],
     sessionId: snapshot["runtime.sessionId"],
     sourceFrame: snapshot["runtime.sourceFrame"],

@@ -462,6 +462,7 @@ export class FakeStretchEngine {
       writer.set("runtime.outputFrame", this.outputFrame);
       writer.set("runtime.outputLatencyFrames", config.outputLatencyFrames);
       writer.set("runtime.outputLatencySeconds", config.outputLatencySeconds);
+      writer.set("runtime.playableEndFrame", this.source.frames);
       writer.set(
         "runtime.processingCenterFrame",
         this.sourceFrame + (renderQuantum * effectiveRate) / 2,
