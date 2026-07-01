@@ -272,7 +272,7 @@ From a consumer's perspective, you only need to rely on the public shape:
 try {
   const spec = defineSpec(/* … */);
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
   const controller = bindController(spec, plan, backing);
 } catch (err) {
   if (isBoundaryError(err)) {
@@ -326,7 +326,7 @@ APIs:
 
 - `defineSpec`
 - `planLayout`
-- `allocateShared`, `allocateWasmShared`
+- `allocatePacked`, `allocateWasm`
 - `buildHandoff`, `acceptHandoff`
 - `bindController`, `bindProcessor`
 - Environment probes (`assertSabSupport`, `probeEnv`)
@@ -396,7 +396,7 @@ If a backing buffer is too small or incorrectly aligned, Seqlok does **not**:
 
 Instead, it throws a `backing.*` error.
 
-Helpers that create backings for you (`allocateShared`, `allocateWasmShared`) are designed so that if they succeed, backing/plan already match. If you provide your own backing, you’re responsible for matching the plan exactly.
+Helpers that create backings for you (`allocatePacked`, `allocateWasm`) are designed so that if they succeed, backing/plan already match. If you provide your own backing, you’re responsible for matching the plan exactly.
 
 ### 6.3 No automatic spec migration
 
@@ -426,7 +426,7 @@ Typical pattern for a device/engine factory:
 import {
   defineSpec,
   planLayout,
-  allocateShared,
+  allocatePacked,
   bindController,
   isBoundaryError,
   interpretHealth,
@@ -437,7 +437,7 @@ function createSeqlokDevice() {
   try {
     const spec = defineSpec(/* … */);
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const controller = bindController(spec, plan, backing);
 
     return { spec, plan, backing, controller };

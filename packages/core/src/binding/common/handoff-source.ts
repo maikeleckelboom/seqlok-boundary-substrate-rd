@@ -29,15 +29,15 @@ export function isAcceptedHandoff<S extends SpecInput>(
 export function backingFromAccepted<S extends SpecInput>(
   accepted: AcceptedHandoff<S>,
 ): Backing {
-  if (accepted.packing === "shared") {
+  if (accepted.packing === "packed") {
     return {
-      kind: "shared",
+      kind: "packed",
       sab: accepted.sab,
     };
   }
 
   return {
-    kind: "shared-partitioned",
+    kind: "partitioned",
     planes: accepted.planes,
   };
 }

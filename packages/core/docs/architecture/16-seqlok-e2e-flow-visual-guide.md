@@ -24,7 +24,7 @@ For deeper dives, see:
 graph TB
   subgraph "Main Thread (Controller)"
     A[Define Spec<br/>defineSpec] --> B[Plan Layout<br/>planLayout]
-    B --> C[Allocate Shared Memory<br/>allocateShared]
+    B --> C[Allocate Shared Memory<br/>allocatePacked]
     C --> D[Bind Controller<br/>bindController]
     B --> E[Create Handoff<br/>buildHandoff]
     E --> F[Send to Worker<br/>postMessage]
@@ -71,7 +71,7 @@ sequenceDiagram
   Note over UI, RT: 1. SETUP PHASE (Main Thread)
   UI ->> UI: defineSpec() → Spec
   UI ->> UI: planLayout(Spec) → Plan
-  UI ->> MEM: allocateShared(Plan) → Backing (SharedArrayBuffer)
+  UI ->> MEM: allocatePacked(Plan) → Backing (SharedArrayBuffer)
   UI ->> CTL: bindController(Spec, Plan, Backing)
   UI ->> UI: buildHandoff(Plan, Backing) → Handoff
   UI ->> PROC: postMessage({ type: 'HANDOFF', handoff })

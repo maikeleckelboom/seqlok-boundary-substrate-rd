@@ -49,8 +49,8 @@ const plan = planLayout(spec);
 
 // 3) Allocate backing memory (SharedArrayBuffer + typed planes).
 // Contiguous golden path:
-const backing = allocateShared(plan);
-// Advanced: per-plane SABs via allocateSharedPartitioned(plan).
+const backing = allocatePacked(plan);
+// Advanced: per-plane SABs via allocatePartitioned(plan).
 
 // 4) Bind the controller role on the owner/main side.
 export const controller = bindController(spec, plan, backing);
@@ -89,7 +89,7 @@ Conceptually:
 
 1. `defineSpec` – describe the **schema** (params + meters).
 2. `planLayout` – derive a **memory layout plan** from the spec.
-3. `allocateShared` / `allocateSharedPartitioned` – allocate the **shared backing** (SAB(s) + planes).
+3. `allocatePacked` / `allocatePartitioned` – allocate the **shared backing** (SAB(s) + planes).
 4. `bindController` – attach the **controller role** to that backing.
 5. `buildHandoff` / `acceptHandoff` – ship layout + backing across a boundary.
 6. `bindProcessor` – attach the **processor role** to the accepted layout.
@@ -140,7 +140,7 @@ Technically this is "please plan this spec", but what we actually care about is:
 ```ts
 const spec = defineSpec(/* … */);
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 ```
 
 Rejected variants:
@@ -155,44 +155,49 @@ Final decision:
 - **Canonical name:** `planLayout`.
 - **Conceptual meaning:** “given this spec, plan a concrete layout across planes and seqlocks.”
 
-### 2.3 `allocateShared` (not `allocateMemory`)
+### 2.3 `allocatePacked` (not `allocateMemory`)
 
 This step:
 
 ```ts
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 ```
 
 does something very specific:
 
-- allocates **shared** memory (`SharedArrayBuffer`), and
-- slices it into typed planes (`PF32`, `PI32`, `PB`, `PU`, `MF32`, `MF64`, `MU32`, `MU`) according to the plan.
+- allocates thread-shareable memory (`SharedArrayBuffer`), and
+- packs typed planes (`PF32`, `PI32`, `PB`, `PU`, `MF32`, `MF64`, `MU32`, `MU`) into one contiguous layout according to the plan.
 
-We wanted that "sharedness" up front.
+The allocator name describes the layout strategy. The memory requirement stays
+explicit in docs and diagnostics as `SharedArrayBuffer`.
 
 Alternatives and why they lost:
 
-- `allocateMemory(plan)` – too generic; misses the key fact that this is SAB + Atomics territory.
-- `allocateBacking(plan)` – call-site stutter: `const backing = allocateBacking(plan);`.
-- `allocateSharedMemory(plan)` – accurate but noisy; the “memory” part isn’t buying much.
-- `createBacking(plan)` – sounds soft; hides the fact this can realistically fail (out of memory / policy).
+- `allocateMemory(plan)` - too generic; misses both layout strategy and the
+  fact that this is `SharedArrayBuffer` + Atomics territory.
+- A generic backing allocator - call-site stutter and weaker layout intent.
+- `allocatePackedMemory(plan)` - accurate but noisy; the "memory" part is not
+  buying much.
+- `createBacking(plan)` - sounds soft; hides the fact this can realistically
+  fail (out of memory / policy).
 
-We kept **`allocateShared`** to:
+We kept **`allocatePacked`** to:
 
-- highlight shared memory,
+- name the packed layout directly,
 - keep call sites short,
-- leave room for a hypothetical `allocateLocal(plan)` story later (SSR / non-SAB simulations).
+- keep `SharedArrayBuffer` as a factual storage requirement rather than a
+  layout discriminant.
 
 With v0.2.0, we add a sibling:
 
 ```ts
-const backing = allocateSharedPartitioned(plan);
+const backing = allocatePartitioned(plan);
 ```
 
 for per-plane SABs. Naming stays parallel:
 
-- `allocateShared` – golden-path single SAB.
-- `allocateSharedPartitioned` – first-class alternative for per-plane SAB packing.
+- `allocatePacked` – golden-path single SAB.
+- `allocatePartitioned` – first-class alternative for per-plane SAB packing.
 
 Both are driven by the same `planLayout(spec)`; only the backing strategy changes.
 
@@ -562,7 +567,7 @@ The public API encodes a sharp distinction:
 
   - `defineSpec`
   - `planLayout`
-  - `allocateShared` / `allocateSharedPartitioned`
+  - `allocatePacked` / `allocatePartitioned`
   - `buildHandoff`
   - `bindController(spec, plan, backing, ...)`
 
@@ -632,7 +637,7 @@ The v2 golden flow is:
 
 - main side:
 
-  - `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff`
+  - `defineSpec` → `planLayout` → `allocatePacked` → `buildHandoff`
 
 - processor side:
 
@@ -673,7 +678,7 @@ Naming rationale:
 
   - `spec.*` – DSL issues.
   - `plan.*` – planning/layout issues.
-  - `backing.*` – `allocateShared` / SAB / planes issues.
+  - `backing.*` – `allocatePacked` / SAB / planes issues.
   - `handoff.*` – build/receive/verify issues.
   - `binding.*` – controller/processor/observer binding issues.
   - `params.*`, `meters.*` – runtime value issues.
@@ -865,7 +870,7 @@ controller binding (for example, small helpers that delegate to `params.set` / `
 
 - Pipeline verbs and roles:
 
-  - `defineSpec` → `planLayout` → `allocateShared` / `allocateSharedPartitioned`
+  - `defineSpec` → `planLayout` → `allocatePacked` / `allocatePartitioned`
     → `buildHandoff` → `acceptHandoff` → `bindController` / `bindProcessor` / `bindObserver`.
 
 - Controller vs processor vs observer split and their responsibilities.

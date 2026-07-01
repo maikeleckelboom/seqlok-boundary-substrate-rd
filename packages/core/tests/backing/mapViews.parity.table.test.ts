@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { allocateSharedPartitioned } from "../../src/backing/allocate-shared-partitioned";
+import { allocatePartitioned } from "../../src/backing/allocate-partitioned";
 import { mapViews } from "../../src/backing/map-views";
 import { planLayout } from "../../src/plan/layout";
 import { specFromPlaneBytes } from "../helpers/spec-from-bytes";
 
-import type { SharedBacking } from "../../src/backing/types";
+import type { PackedBacking } from "../../src/backing/types";
 import type { PlaneByteLengths } from "../../src/plan/types";
 
 const BYTES_F32 = 4;
@@ -56,12 +56,12 @@ describe("Map Views: Parity & Layout Consistency", () => {
       const plan = planLayout(specFromPlaneBytes(req));
 
       // 1. Partitioned Allocation (Split Backing)
-      const splitBacking = allocateSharedPartitioned(plan);
+      const splitBacking = allocatePartitioned(plan);
       const vSplit = mapViews(plan, splitBacking);
 
-      // 2. Contiguous Allocation (Single SAB)
-      const contiguousBacking: SharedBacking = {
-        kind: "shared",
+      // 2. Packed allocation (single SharedArrayBuffer)
+      const contiguousBacking: PackedBacking = {
+        kind: "packed",
         sab: new SharedArrayBuffer(plan.bytesTotal),
       };
       const vContiguous = mapViews(plan, contiguousBacking);

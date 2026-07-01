@@ -19,13 +19,20 @@ import { createError } from "../errors/error";
 import type { Backing } from "./types";
 import type { PlaneKey } from "../primitives/planes";
 
+function isSharedArrayBuffer(value: unknown): value is SharedArrayBuffer {
+  return (
+    typeof SharedArrayBuffer !== "undefined" &&
+    value instanceof SharedArrayBuffer
+  );
+}
+
 /**
  * Gets the single SharedArrayBuffer for a non-partitioned backing.
  *
  * @remarks
- * - `shared`: Returns the contiguous SAB
- * - `wasm-shared`: Returns the WebAssembly.Memory buffer
- * - `shared-partitioned`: Throws (use {@link getPlaneBuffer} instead)
+ * - `packed`: Returns the contiguous SharedArrayBuffer
+ * - `wasm`: Returns the WebAssembly.Memory buffer
+ * - `partitioned`: Throws (use {@link getPlaneBuffer} instead)
  *
  * @throws {BoundaryError<'internal.assertionFailed'>}
  * If called with a partitioned backing
@@ -41,15 +48,25 @@ import type { PlaneKey } from "../primitives/planes";
  */
 export function getBackingBuffer(backing: Backing): SharedArrayBuffer {
   switch (backing.kind) {
-    case "shared":
+    case "packed":
       return backing.sab;
 
-    case "wasm-shared":
-      // `allocateWasmShared` ensures this is a SharedArrayBuffer.
+    case "wasm":
+      // `allocateWasm` ensures this is a SharedArrayBuffer.
       // We rely on that invariant here to keep this helper hot-path friendly.
-      return backing.memory.buffer as unknown as SharedArrayBuffer;
+      if (isSharedArrayBuffer(backing.memory.buffer)) {
+        return backing.memory.buffer;
+      }
+      throw createError(
+        "internal.assertionFailed",
+        "getBackingBuffer(backing): wasm backing buffer is not a SharedArrayBuffer.",
+        {
+          where: "backing.getBackingBuffer",
+          detail: "wasm",
+        },
+      );
 
-    case "shared-partitioned":
+    case "partitioned":
       break;
 
     default: {
@@ -65,7 +82,7 @@ export function getBackingBuffer(backing: Backing): SharedArrayBuffer {
     "getBackingBuffer(backing): partitioned backing has no single SharedArrayBuffer; use getPlaneBuffer instead.",
     {
       where: "backing.getBackingBuffer",
-      detail: "shared-partitioned",
+      detail: "partitioned",
     },
   );
 }
@@ -74,8 +91,8 @@ export function getBackingBuffer(backing: Backing): SharedArrayBuffer {
  * Gets the buffer for a specific plane, handling all backing types.
  *
  * @remarks
- * - `shared-partitioned`: Returns the plane's dedicated SAB
- * - `shared`/`wasm-shared`: Returns the main buffer (offsets handled by mappers)
+ * - `partitioned`: Returns the plane's dedicated SharedArrayBuffer
+ * - `packed`/`wasm`: Returns the main buffer (offsets handled by mappers)
  *
  * @example
  * ```typescript
@@ -90,7 +107,7 @@ export function getPlaneBuffer(
   backing: Backing,
   plane: PlaneKey,
 ): SharedArrayBuffer {
-  if (backing.kind === "shared-partitioned") {
+  if (backing.kind === "partitioned") {
     return backing.planes[plane];
   }
   return getBackingBuffer(backing);

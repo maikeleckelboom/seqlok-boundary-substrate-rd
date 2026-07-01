@@ -2,7 +2,7 @@ import { bench, describe } from "vitest";
 
 import {
   acceptHandoff,
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -35,7 +35,7 @@ describe("Meter group publishing", () => {
   }));
 
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
   const controller = bindController(spec, plan, backing);
   const handoff = buildHandoff(plan, backing);
   const accepted = acceptHandoff(handoff);

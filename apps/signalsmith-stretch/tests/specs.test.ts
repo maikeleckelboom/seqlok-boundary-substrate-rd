@@ -1,6 +1,6 @@
 import {
   acceptHandoff,
-  allocateShared,
+  allocatePacked,
   buildHandoff,
   planLayout,
   verifyHandoff,
@@ -238,12 +238,12 @@ describe("Signalsmith Stretch boundary spec", () => {
 
   it("builds, verifies, and accepts one handoff metadata path", () => {
     const plan = planLayout(signalsmithStretchSpec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const handoff = buildHandoff(plan, backing);
     const accepted = acceptHandoff(handoff);
 
     expect(handoff.version).toBe(1);
-    expect(handoff.packing).toBe("shared");
+    expect(handoff.packing).toBe("packed");
     expect(accepted.plan.id).toBe(signalsmithStretchSpec.id);
     expect(() => {
       verifyHandoff(plan, accepted.plan);

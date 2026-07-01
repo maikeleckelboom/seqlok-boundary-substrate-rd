@@ -30,9 +30,9 @@ export type {
 export { planLayout } from "./plan/layout";
 
 // BACKING
-export { allocateShared } from "./backing/allocate-shared";
-export { allocateSharedPartitioned } from "./backing/allocate-shared-partitioned";
-export { allocateWasmShared } from "./backing/allocate-wasm-shared";
+export { allocatePacked } from "./backing/allocate-packed";
+export { allocatePartitioned } from "./backing/allocate-partitioned";
+export { allocateWasm } from "./backing/allocate-wasm";
 
 // BINDING
 export { bindController } from "./binding/controller";
@@ -132,7 +132,3 @@ export type {
   SwsrRingConsumer,
   SwsrRingStats,
 } from "./primitives/swsr-ring";
-
-// CONTEXT
-export type { SharedContext } from "./context/types";
-export { createSharedContext } from "./context/create";

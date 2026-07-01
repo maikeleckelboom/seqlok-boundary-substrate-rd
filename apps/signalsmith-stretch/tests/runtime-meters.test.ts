@@ -1,6 +1,6 @@
 import {
   acceptHandoff,
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -30,7 +30,7 @@ describe("Signalsmith runtime meter publishing", () => {
 
   it("publishes runtime values through one coherent meter publish section", () => {
     const plan = planLayout(signalsmithStretchSpec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const controller = bindController(signalsmithStretchSpec, plan, backing);
     const processor = bindProcessor(acceptHandoff(buildHandoff(plan, backing)));
     const startVersion = controller.meters.version();

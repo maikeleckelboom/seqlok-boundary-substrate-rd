@@ -19,7 +19,7 @@ Allocation consumes a plan:
 
 ```ts
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 ```
 
 The binding layer does not silently re-plan. Passing a plan and backing that do not describe the same memory is a contract error.
@@ -70,11 +70,11 @@ This is the mechanism behind coherent param reads and meter snapshots. High-leve
 
 | Allocation | Use |
 | --- | --- |
-| `allocateShared(plan)` | One contiguous `SharedArrayBuffer`; the simplest handoff shape. |
-| `allocateSharedPartitioned(plan)` | Separate buffers per plane; useful when host integration wants plane-level separation. |
-| `allocateWasmShared(plan, memory)` | Attach compatible shared `WebAssembly.Memory`; useful for WASM-oriented runtimes. |
+| `allocatePacked(plan)` | One contiguous `SharedArrayBuffer`; the simplest handoff shape. |
+| `allocatePartitioned(plan)` | Separate buffers per plane; useful when host integration wants plane-level separation. |
+| `allocateWasm(plan, memory)` | Attach compatible shared `WebAssembly.Memory`; useful for WASM-oriented runtimes. |
 
-Only `shared` and `shared-partitioned` backing are currently represented by the handoff protocol.
+Only `packed` and `partitioned` backing are currently represented by the handoff protocol.
 
 ## Callback-Scoped Views
 

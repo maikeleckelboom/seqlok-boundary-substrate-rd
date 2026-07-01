@@ -1,9 +1,10 @@
 /**
  * @fileoverview
- * Allocates shared WebAssembly memory backings for a plan.
+ * Allocates WebAssembly memory backings for a plan.
  *
  * @remarks
- * - Uses `WebAssembly.Memory` with `shared: true` for WASM-based runtimes.
+ * - Uses `WebAssembly.Memory` with `shared: true` for WebAssembly-based
+ *   runtimes.
  * - Derives byte requirements from the Plan.
  * - Bootstrapping growth:
  *   - If an existing `WebAssembly.Memory` is provided, it will be grown
@@ -17,7 +18,7 @@
 import { createError } from "../errors/error";
 import { throwEnvUnsupported } from "../errors/helpers";
 
-import type { WasmSharedBacking } from "./types";
+import type { WasmBacking } from "./types";
 import type { Plan } from "../plan/types";
 import type { SpecInput } from "../spec/types";
 
@@ -96,10 +97,10 @@ function ensureWasmCapacity(
  *   - Allocates a new `WebAssembly.Memory` with
  *     `initial = maximum = ceil(bytesTotal / pageSize)`.
  */
-export function allocateWasmShared<S extends SpecInput>(
+export function allocateWasm<S extends SpecInput>(
   plan: Plan<S>,
   existingMemory?: WebAssembly.Memory,
-): WasmSharedBacking {
+): WasmBacking {
   if (
     typeof WebAssembly === "undefined" ||
     typeof WebAssembly.Memory === "undefined"
@@ -116,9 +117,9 @@ export function allocateWasmShared<S extends SpecInput>(
     // Integrated mode: reuse the module’s memory.
     memory = existingMemory;
     // Keep error surface stable: all wasmMemoryNotShared from this helper
-    // report `where: 'allocateWasmShared'`.
-    toSharedBuffer(memory.buffer, "allocateWasmShared");
-    ensureWasmCapacity(plan.bytesTotal, memory, "allocateWasmShared.grow");
+    // report `where: 'allocateWasm'`.
+    toSharedBuffer(memory.buffer, "allocateWasm");
+    ensureWasmCapacity(plan.bytesTotal, memory, "allocateWasm.grow");
   } else {
     // Decoupled mode: allocate a dedicated shared memory region.
     const requiredPages = Math.max(
@@ -140,7 +141,7 @@ export function allocateWasmShared<S extends SpecInput>(
         {
           plane: "wasm",
           shared: false,
-          where: "allocateWasmShared",
+          where: "allocateWasm",
         },
         cause,
       );
@@ -149,7 +150,7 @@ export function allocateWasmShared<S extends SpecInput>(
 
   // Final sanity check: backing buffer must be large enough for the plan
   // *and* actually be shared.
-  const sharedBuf = toSharedBuffer(memory.buffer, "allocateWasmShared");
+  const sharedBuf = toSharedBuffer(memory.buffer, "allocateWasm");
 
   if (sharedBuf.byteLength < plan.bytesTotal) {
     // This should be unreachable if ensureWasmCapacity / page math is correct,
@@ -161,10 +162,10 @@ export function allocateWasmShared<S extends SpecInput>(
         plane: "all",
         requestedBytes: plan.bytesTotal,
         allocatedBytes: sharedBuf.byteLength,
-        where: "allocateWasmShared",
+        where: "allocateWasm",
       },
     );
   }
 
-  return { kind: "wasm-shared", memory };
+  return { kind: "wasm", memory };
 }

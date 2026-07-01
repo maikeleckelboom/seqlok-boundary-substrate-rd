@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { allocateShared } from "../../src/backing/allocate-shared";
+import { allocatePacked } from "../../src/backing/allocate-packed";
 import { snapshotWithPolicy } from "../../src/binding/common/coherent";
 import { buildHandoff, acceptHandoff } from "../../src/handoff/handoff";
 import { planLayout } from "../../src/plan/layout";
@@ -29,7 +29,7 @@ describe("V0.1.0 Regression Hardening Checks", () => {
   it("accepts plain handoff-shaped objects (postMessage-style)", () => {
     const spec = defineSpec(({ param }) => ({ params: { a: param.f32() } }));
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const original = buildHandoff(plan, backing);
 
     // Simulate structured clone / JSON transport (strips brands/prototypes)

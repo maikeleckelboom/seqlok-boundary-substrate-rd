@@ -1,6 +1,6 @@
 # Exclave Boundary
 
-This repository contains `@exclave/boundary`, a typed shared-memory boundary substrate for coherent state, deterministic layout, explicit handoff, and timing-sensitive runtimes. It demonstrates authored contracts, deterministic layout planning, shared backing allocation, explicit handoff artifacts, role-specific bindings, diagnostics, tests, benchmarks, and release smoke checks.
+This repository contains `@exclave/boundary`, a typed shared-memory boundary substrate for coherent state, deterministic layout, explicit handoff, and timing-sensitive runtimes. It demonstrates authored contracts, deterministic layout planning, backing allocation, explicit handoff artifacts, role-specific bindings, diagnostics, tests, benchmarks, and release smoke checks.
 
 Exclave Boundary is the public package. Integration code should import `@exclave/boundary`.
 
@@ -29,8 +29,7 @@ pnpm add @exclave/boundary
 
 ```ts
 import {
-  acceptHandoff,
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -55,11 +54,11 @@ const spec = defineSpec(({ param, meter }) => ({
 }));
 
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const handoff = buildHandoff(plan, backing);
 
 const controller = bindController(spec, plan, backing);
-const processor = bindProcessor(acceptHandoff(handoff));
+const processor = bindProcessor(handoff);
 
 controller.params.set("runtime.enabled", true);
 controller.params.set("runtime.count", 42);

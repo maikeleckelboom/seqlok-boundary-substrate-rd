@@ -1,5 +1,4 @@
 import { processorImpl } from "./impl";
-import { isSharedContext } from "../../context/guard";
 import { acceptHandoff } from "../../handoff/handoff";
 import { throwInvalidBindingArgs } from "../common/arg-errors";
 import {
@@ -9,7 +8,6 @@ import {
 } from "../common/handoff-source";
 
 import type { Backing } from "../../backing/types";
-import type { SharedContext } from "../../context/types";
 import type { Handoff, AcceptedHandoff } from "../../handoff/types";
 import type { Plan } from "../../plan/types";
 import type { SpecInput } from "../../spec/types";
@@ -21,32 +19,29 @@ interface NormalizedProcessorSource<S extends SpecInput> {
 }
 
 export function bindProcessor<const S extends SpecInput>(
-  source: Handoff<S> | AcceptedHandoff<S> | SharedContext<S>,
+  source: Handoff<S> | AcceptedHandoff<S>,
   options?: ProcessorOptions,
 ): ProcessorBinding<S>;
 
 export function bindProcessor<const S extends SpecInput>(
-  spec: S,
   plan: Plan<S>,
   backing: Backing,
   options?: ProcessorOptions,
 ): ProcessorBinding<S>;
 
 export function bindProcessor<const S extends SpecInput>(
-  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
-  arg2?: ProcessorOptions | Plan<S>,
-  arg3?: Backing,
-  arg4?: ProcessorOptions,
+  arg1: Handoff<S> | AcceptedHandoff<S> | Plan<S>,
+  arg2?: ProcessorOptions | Backing,
+  arg3?: ProcessorOptions,
 ): ProcessorBinding<S> {
-  const { plan, backing } = normalizeSource(arg1, arg2, arg3);
-  const options = getOptions(arg1, arg2, arg4) ?? {};
+  const { plan, backing } = normalizeSource(arg1, arg2);
+  const options = getOptions(arg1, arg2, arg3) ?? {};
   return processorImpl(plan, backing, options);
 }
 
 function normalizeSource<const S extends SpecInput>(
-  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
-  arg2?: ProcessorOptions | Plan<S>,
-  arg3?: Backing,
+  arg1: Handoff<S> | AcceptedHandoff<S> | Plan<S>,
+  arg2?: ProcessorOptions | Backing,
 ): NormalizedProcessorSource<S> {
   if (isHandoff<S>(arg1)) {
     return normalizeFromAccepted(acceptHandoff(arg1));
@@ -56,26 +51,23 @@ function normalizeSource<const S extends SpecInput>(
     return normalizeFromAccepted(arg1);
   }
 
-  if (isSharedContext<S>(arg1)) {
-    return {
-      plan: arg1.plan,
-      backing: arg1.backing,
-    };
-  }
-
-  const plan = arg2 as Plan<S> | undefined;
-  if (plan === undefined) {
-    throwInvalidBindingArgs("bindProcessor", "missingPlan");
-  }
-
-  if (arg3 === undefined) {
+  if (!isBacking(arg2)) {
     throwInvalidBindingArgs("bindProcessor", "missingBacking");
   }
 
   return {
-    plan,
-    backing: arg3,
+    plan: arg1,
+    backing: arg2,
   };
+}
+
+function isBacking(value: unknown): value is Backing {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const kind = (value as { readonly kind?: unknown }).kind;
+  return kind === "packed" || kind === "partitioned" || kind === "wasm";
 }
 
 function normalizeFromAccepted<const S extends SpecInput>(
@@ -88,17 +80,13 @@ function normalizeFromAccepted<const S extends SpecInput>(
 }
 
 function getOptions<const S extends SpecInput>(
-  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
-  arg2?: ProcessorOptions | Plan<S>,
-  arg4?: ProcessorOptions,
+  arg1: Handoff<S> | AcceptedHandoff<S> | Plan<S>,
+  arg2?: ProcessorOptions | Backing,
+  arg3?: ProcessorOptions,
 ): ProcessorOptions | undefined {
-  if (
-    isHandoff<S>(arg1) ||
-    isAcceptedHandoff<S>(arg1) ||
-    isSharedContext<S>(arg1)
-  ) {
+  if (isHandoff<S>(arg1) || isAcceptedHandoff<S>(arg1)) {
     return arg2 as ProcessorOptions | undefined;
   }
 
-  return arg4;
+  return arg3;
 }

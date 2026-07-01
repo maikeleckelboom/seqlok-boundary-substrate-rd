@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindProcessor,
   buildHandoff,
   defineSpec,
@@ -24,7 +24,7 @@ describe("Processor Params: Coherent Read Transaction", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const handoff = buildHandoff(plan, backing);
     const accepted = acceptHandoff(handoff);
 
@@ -36,7 +36,7 @@ describe("Processor Params: Coherent Read Transaction", () => {
       },
     });
 
-    // Locate the Parameter Update (PU) lock index in the shared backing
+    // Locate the Parameter Update (PU) lock index in the packed backing.
     const mapped = mapViews(plan, backing);
     const lockIndex = plan.locks.PU.lock;
 

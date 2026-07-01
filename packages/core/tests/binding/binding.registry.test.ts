@@ -16,7 +16,7 @@ import type { Backing } from "../../src/backing/types";
  */
 function backingStub(label: string): Backing {
   return {
-    kind: "shared",
+    kind: "packed",
     sab: new SharedArrayBuffer(8),
     label,
   } as unknown as Backing;

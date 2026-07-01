@@ -8,7 +8,7 @@ import {
 
 /**
  * Tests for low-level plane constants and memory alignment utilities.
- * These primitives define the memory layout structure and alignment rules for the shared backing.
+ * These primitives define the memory layout structure and alignment rules for backing storage.
  */
 describe("Planes Primitives: Constants & Alignment", () => {
   it("exposes all plane keys in a stable, expected order", () => {

@@ -89,7 +89,7 @@ try {
     join(consumerRoot, "smoke.mjs"),
     `
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -109,7 +109,7 @@ const spec = defineSpec(({ param, meter }) => ({
   }
 }));
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const controller = bindController(spec, plan, backing);
 const processor = bindProcessor(buildHandoff(plan, backing));
 

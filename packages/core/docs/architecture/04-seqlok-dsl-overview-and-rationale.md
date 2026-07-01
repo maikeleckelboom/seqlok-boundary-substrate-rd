@@ -51,7 +51,7 @@ From here, the rest of the pipeline is:
 ```ts
 // owner / controller side
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const handoff = buildHandoff(plan, backing);
 
 const controller = bindController(spec, plan, backing, {
@@ -137,7 +137,7 @@ const spec = defineSpec(({ param, meter }) => ({
 }));
 
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const controller = bindController(spec, plan, backing);
 
 // TS knows filterType is 'lowpass' | 'highpass' | 'bandpass'
@@ -668,7 +668,7 @@ Spec → Plan → Backing → Handoff → Bindings
   - Computes plane sizes, offsets, seqlock locations.
   - Is pure and deterministic.
 
-- **Backing** (`allocateShared(plan)` / `allocateSharedPartitioned(plan)` / `allocateWasmShared(plan, ...)`)
+- **Backing** (`allocatePacked(plan)` / `allocatePartitioned(plan)` / `allocateWasm(plan, ...)`)
 
   - Allocates `SharedArrayBuffer` or shared `WebAssembly.Memory`.
   - Creates the underlying typed views for the planes.

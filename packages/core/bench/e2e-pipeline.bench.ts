@@ -1,7 +1,7 @@
 import { bench, describe } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -87,7 +87,7 @@ describe("End-to-end pipeline: plan, allocate, handoff, bind", () => {
     "small spec: full setup",
     () => {
       const plan = planLayout(smallSpec);
-      const backing = allocateShared(plan);
+      const backing = allocatePacked(plan);
       const handoff = buildHandoff(plan, backing);
       const accepted = acceptHandoff(handoff);
 
@@ -105,7 +105,7 @@ describe("End-to-end pipeline: plan, allocate, handoff, bind", () => {
     "medium spec: full setup",
     () => {
       const plan = planLayout(mediumSpec);
-      const backing = allocateShared(plan);
+      const backing = allocatePacked(plan);
       const handoff = buildHandoff(plan, backing);
       const accepted = acceptHandoff(handoff);
 
@@ -121,7 +121,7 @@ describe("End-to-end pipeline: plan, allocate, handoff, bind", () => {
     "large spec: full setup",
     () => {
       const plan = planLayout(largeSpec);
-      const backing = allocateShared(plan);
+      const backing = allocatePacked(plan);
       const handoff = buildHandoff(plan, backing);
       const accepted = acceptHandoff(handoff);
 

@@ -1,7 +1,7 @@
 import { bench, describe } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -35,7 +35,7 @@ describe("MeterWriter sugar: set vs stage, direct vs named", () => {
   }));
 
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
   const controller = bindController(spec, plan, backing);
   const handoff = buildHandoff(plan, backing);
   const accepted = acceptHandoff(handoff);

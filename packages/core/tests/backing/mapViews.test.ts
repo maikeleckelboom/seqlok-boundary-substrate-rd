@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { allocateShared } from "../../src/backing/allocate-shared";
+import { allocatePacked } from "../../src/backing/allocate-packed";
 import { mapViews } from "../../src/backing/map-views";
 import { type BoundaryError } from "../../src/errors/error";
 import { planLayout } from "../../src/plan/layout";
@@ -36,7 +36,7 @@ describe("Map Views: Runtime Behavior & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const views = mapViews(plan, backing);
 
     // Verify that views are instantiated as the correct TypedArray subclasses
@@ -63,7 +63,7 @@ describe("Map Views: Runtime Behavior & Validation", () => {
 
     // Create a buffer that is intentionally too small (short by 8 bytes)
     const sab = new SharedArrayBuffer(Math.max(0, plan.bytesTotal - 8));
-    const backing = { kind: "shared" as const, sab };
+    const backing = { kind: "packed" as const, sab };
 
     let thrown: unknown;
     try {

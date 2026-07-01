@@ -16,7 +16,7 @@
 import { bench, describe } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindObserver,
   bindProcessor,
@@ -44,7 +44,7 @@ describe("Observer read-path benchmarks", () => {
   }));
 
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
   const handoff = buildHandoff(plan, backing);
   const accepted = acceptHandoff(handoff);
 

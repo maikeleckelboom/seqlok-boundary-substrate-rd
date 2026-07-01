@@ -515,7 +515,7 @@ const spec = defineSpec(({ param, meter }) => ({
 
 // owner / JS side
 const plan = planLayout(spec);
-const backing = allocateWasmShared(plan, { initialPages: 4 });
+const backing = allocateWasm(plan, { initialPages: 4 });
 
 const controller = bindController(spec, backing);
 const handoff = buildHandoff(plan, backing);

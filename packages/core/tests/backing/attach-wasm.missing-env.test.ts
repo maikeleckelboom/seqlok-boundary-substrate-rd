@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { allocateWasmShared } from "../../src/backing/allocate-wasm-shared";
+import { allocateWasm } from "../../src/backing/allocate-wasm";
 import { isBoundaryError } from "../../src/errors/error";
 import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
@@ -9,7 +9,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Allocate Wasm Shared: Constructor Failure Handling", () => {
+describe("allocateWasm: constructor failure handling", () => {
   it("wraps synchronous WebAssembly.Memory constructor errors into a typed BoundaryError", () => {
     // Define a minimal spec to generate a valid layout plan
     const spec = defineSpec(({ param, meter }) => ({
@@ -38,20 +38,20 @@ describe("Allocate Wasm Shared: Constructor Failure Handling", () => {
     let thrown: unknown;
 
     try {
-      allocateWasmShared(plan);
+      allocateWasm(plan);
     } catch (e) {
       thrown = e;
     }
 
     // Verify the error was caught, wrapped, and typed correctly
     if (!isBoundaryError(thrown)) {
-      throw new Error("Expected allocateWasmShared to throw a BoundaryError");
+      throw new Error("Expected allocateWasm to throw a BoundaryError");
     }
 
     expect(thrown.code).toBe("backing.wasmMemoryNotShared");
     expect(thrown.message).toMatch(
       /Failed to attach shared WebAssembly\.Memory/i,
     );
-    expect(thrown.details.where).toBe("allocateWasmShared");
+    expect(thrown.details.where).toBe("allocateWasm");
   });
 });

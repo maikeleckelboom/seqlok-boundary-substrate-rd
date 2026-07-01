@@ -1,24 +1,24 @@
 import { describe, it, expectTypeOf } from "vitest";
 
 import {
-  isSharedBacking,
-  isSharedPartitionedBacking,
-  isWasmSharedBacking,
+  isPackedBacking,
+  isPartitionedBacking,
+  isWasmBacking,
 } from "../../src/backing/types";
 
 import type {
   Backing,
-  SharedBacking,
-  SharedPartitionedBacking,
-  WasmSharedBacking,
+  PackedBacking,
+  PartitionedBacking,
+  WasmBacking,
 } from "../../src/backing/types";
 
 describe("Backing Types (Compile-Time Contracts)", () => {
   it("discriminated union and guards narrow precisely", () => {
     const cases: Backing[] = [
-      { kind: "shared", sab: new SharedArrayBuffer(8) },
+      { kind: "packed", sab: new SharedArrayBuffer(8) },
       {
-        kind: "shared-partitioned",
+        kind: "partitioned",
         planes: {
           PF32: new SharedArrayBuffer(0),
           PI32: new SharedArrayBuffer(0),
@@ -31,7 +31,7 @@ describe("Backing Types (Compile-Time Contracts)", () => {
         },
       },
       {
-        kind: "wasm-shared",
+        kind: "wasm",
         memory: new WebAssembly.Memory({
           initial: 1,
           maximum: 1,
@@ -41,12 +41,12 @@ describe("Backing Types (Compile-Time Contracts)", () => {
     ];
 
     for (const b of cases) {
-      if (isSharedBacking(b)) {
-        expectTypeOf(b).toExtend<SharedBacking>();
-      } else if (isSharedPartitionedBacking(b)) {
-        expectTypeOf(b).toExtend<SharedPartitionedBacking>();
-      } else if (isWasmSharedBacking(b)) {
-        expectTypeOf(b).toExtend<WasmSharedBacking>();
+      if (isPackedBacking(b)) {
+        expectTypeOf(b).toExtend<PackedBacking>();
+      } else if (isPartitionedBacking(b)) {
+        expectTypeOf(b).toExtend<PartitionedBacking>();
+      } else if (isWasmBacking(b)) {
+        expectTypeOf(b).toExtend<WasmBacking>();
       }
     }
   });

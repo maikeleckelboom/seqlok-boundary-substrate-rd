@@ -27,10 +27,9 @@ The handoff is the boundary artifact:
 
 ```ts
 const handoff = buildHandoff(plan, backing);
-const accepted = acceptHandoff(handoff);
-const processor = bindProcessor(accepted);
+const processor = bindProcessor(handoff);
 ```
 
-`acceptHandoff(...)` is where an inbound artifact becomes a capability. It validates protocol version, plan shape, packing, and backing sizes before the processor interprets shared memory.
+`bindProcessor(handoff)` validates the handoff internally before the processor interprets shared memory. Use `acceptHandoff(...)` explicitly when the inbound value is unknown, such as data from a message event.
 
-That sequence keeps the contract inspectable. A transport may deliver the artifact, but the transport is not the contract. The contract is the spec, the layout derived from it, and the accepted handoff that proves the receiving side is reading the same memory model.
+That sequence keeps the contract inspectable. A transport may deliver the artifact, but the transport is not the contract. The contract is the spec, the layout derived from it, and the handoff validation that proves the receiving side is reading the same memory model.

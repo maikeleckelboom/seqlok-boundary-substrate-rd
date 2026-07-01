@@ -31,14 +31,13 @@ The active release path is:
 ```ts
 import {
   acceptHandoff,
-  allocateShared,
-  allocateSharedPartitioned,
-  allocateWasmShared,
+  allocatePacked,
+  allocatePartitioned,
+  allocateWasm,
   bindController,
   bindObserver,
   bindProcessor,
   buildHandoff,
-  createSharedContext,
   defineSpec,
   planLayout,
   verifyHandoff,
@@ -77,8 +76,8 @@ The following old positions are now superseded:
 
 1. **Do not implement a new public package under the old prototype name.** The package is `@exclave/boundary`.
 2. **Do not implement old prototype package subpaths.** The current package already exposes its chosen surface.
-3. **Do not run the old Stage 0/1A prompt.** It bans `controller`, `processor`, `observer`, `params`, `meters`, `SharedContext`, and `Handoff`, which are current public API concepts.
-4. **Do not use the old export firewall as current authority.** The current package intentionally exports role bindings, params/meters types, handoff, diagnostics, SWSR primitives, and `SharedContext`.
+3. **Do not run the old Stage 0/1A prompt.** It bans `controller`, `processor`, `observer`, `params`, `meters`, and `Handoff`, which are current public API concepts.
+4. **Do not use the old export firewall as current authority.** The current package intentionally exports role bindings, params/meters types, handoff, diagnostics, and SWSR primitives.
 5. **Do not publish a public Signalsmith adapter yet.** The Signalsmith adapter remains demo-private until the proof earns a package boundary.
 6. **Do not claim zero-copy audio.** The proof targets deterministic ownership, bounded control/status, and no per-quantum metadata messaging.
 7. **Do not overfit the name or docs to AudioWorklet.** Audio is the first and clearest proof. Exclave Boundary remains a general typed shared-memory boundary substrate for timing-sensitive systems.
@@ -207,7 +206,7 @@ const spec = defineSpec(({ param, meter }) => ({
 }));
 
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 
 const controller = bindController(spec, plan, backing);
 const handoff = buildHandoff(plan, backing);
@@ -654,7 +653,7 @@ Definition of done:
 1. Scope: add a private demo app, preferably `apps/signalsmith-stretch`. Do not redesign `@exclave/boundary`. Do not rename package APIs. Do not publish a Signalsmith adapter package.
 2. Naming: public/demo language says Exclave Boundary and Signalsmith Stretch. Keep "Seqlok" only in historical migration notes if needed. Keep "seqlock" only as the primitive term.
 3. Demo thesis: build a desktop-first browser demo shell for loading a local track, viewing waveform/navigation state, controlling rate/pitch/tonality/formant-like desired state, seeing pending vs applied state, showing runtime status, and displaying processed-output RMS/peak/full-scale facts. Audio can be simulated in this first slice if full Signalsmith WASM/AudioWorklet integration is too large.
-4. Boundary proof: use real `@exclave/boundary` APIs. Define the four app-private specs: desired stretch state, runtime status, source status, and processed output levels. Use `defineSpec`, `planLayout`, `allocateShared`, `buildHandoff`/`acceptHandoff`, `bindController`, `bindProcessor`, and `bindObserver` where appropriate.
+4. Boundary proof: use real `@exclave/boundary` APIs. Define the four app-private specs: desired stretch state, runtime status, source status, and processed output levels. Use `defineSpec`, `planLayout`, `allocatePacked`, `buildHandoff`/`acceptHandoff`, `bindController`, `bindProcessor`, and `bindObserver` where appropriate.
 5. Engine strategy: implement a demo-private fake/stretch simulator first. The fake engine should model applied sequence, source frame, output frame, rate, pitch, status, levels, clipping counters, stale/pending state, and failure modes. Leave TODO docs for the later custom C++/WASM/AudioWorklet adapter.
 6. UI: make it visually impressive but truthful. Include load/drop surface, waveform panel, transport row, rate and pitch controls, loop region mock/preview, A/B selector mock, processed output level display, status/latency inspector, and persistent error/status area. Prioritize a clean instrument-panel feel, not a generic playground.
 7. Docs integration: add a docs page and blog post for Signalsmith Stretch under the VitePress docs site only when the demo is ready for public proof framing. Explain what the demo proves, what is simulated, what becomes the real custom adapter later, and how `@exclave/boundary` is used.
@@ -864,7 +863,7 @@ The app must visibly exercise the current `@exclave/boundary` surface:
 
 - `defineSpec`;
 - `planLayout`;
-- `allocateShared`;
+- `allocatePacked`;
 - `buildHandoff`;
 - `verifyHandoff`;
 - `acceptHandoff`;
@@ -875,10 +874,10 @@ The app must visibly exercise the current `@exclave/boundary` surface:
 - `allocateSwsrRing`, `bindSwsrRingProducer`, and `bindSwsrRingConsumer` if the
   demo-private command ring is implemented in Stage B.
 
-Use `allocateShared` for the normal Stage B runtime path.
-`allocateSharedPartitioned` may be demonstrated in tests or a debug toggle if
-that stays simple. Do not require `allocateWasmShared` in Stage B because
-wasm-shared handoff is not the first-slice path.
+Use `allocatePacked` for the normal Stage B runtime path.
+`allocatePartitioned` may be demonstrated in tests or a debug toggle if
+that stays simple. Do not require `allocateWasm` in Stage B because
+wasm handoff is not the first-slice path.
 
 Do not create public Signalsmith, Worklet, WASM, audio, or command exports from
 `@exclave/boundary`.

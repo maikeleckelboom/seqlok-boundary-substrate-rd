@@ -181,7 +181,7 @@ function initDevice() {
     // error if headers are missing.
     assertSabSupport("MyDeviceInit");
 
-    // ... proceed to planLayout and allocateShared ...
+    // ... proceed to planLayout and allocatePacked ...
   } catch (error) {
     // See "Troubleshooting with interpretHealth" below
     reportError(error);

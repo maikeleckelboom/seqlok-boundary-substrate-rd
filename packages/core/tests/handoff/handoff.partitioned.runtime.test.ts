@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { allocateSharedPartitioned } from "../../src/backing/allocate-shared-partitioned";
+import { allocatePartitioned } from "../../src/backing/allocate-partitioned";
 import { buildHandoff, acceptHandoff } from "../../src/handoff/handoff";
 import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
 
-describe("handoff v1 – shared-partitioned runtime roundtrip", () => {
+describe("handoff v1 – partitioned runtime roundtrip", () => {
   it("builds and receives a partitioned handoff with matching plan + planes", () => {
     const spec = defineSpec(({ param, meter }) => ({
       params: {
@@ -20,18 +20,18 @@ describe("handoff v1 – shared-partitioned runtime roundtrip", () => {
 
     const plan = planLayout(spec);
 
-    // allocateSharedPartitioned must size each plane according to plan.planes
-    const backing = allocateSharedPartitioned(plan);
+    // allocatePartitioned must size each plane according to plan.planes
+    const backing = allocatePartitioned(plan);
 
     const handoff = buildHandoff(plan, backing);
     const accepted = acceptHandoff(handoff);
 
     // Shape + packing
-    expect(accepted.packing).toBe("shared-partitioned");
+    expect(accepted.packing).toBe("partitioned");
 
     // Narrow to the partitioned variant for the rest of the test
-    if (accepted.packing !== "shared-partitioned") {
-      throw new Error("Test invariant: expected shared-partitioned packing");
+    if (accepted.packing !== "partitioned") {
+      throw new Error("Test invariant: expected partitioned packing");
     }
 
     // Same plan metadata (hash/bytesTotal)

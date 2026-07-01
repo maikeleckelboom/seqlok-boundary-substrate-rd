@@ -279,7 +279,7 @@ const deckSpec = defineSpec({
   /* ... */
 });
 const deckPlan = planLayout(deckSpec);
-const deckBacking = allocateShared(deckPlan);
+const deckBacking = allocatePacked(deckPlan);
 const deckHandoff = buildHandoff(deckPlan, deckBacking);
 
 // ─────────────────────────────────────────────────────────
@@ -374,7 +374,7 @@ function renderParticles() {
 
 **Key properties:**
 
-- **Golden flow**: `defineSpec → planLayout → allocateShared → buildHandoff` (ADR-001)
+- **Golden flow**: `defineSpec → planLayout → allocatePacked → buildHandoff` (ADR-001)
 - **Main, MIDI**: Observers + ring producers (no writes to planes)
 - **Deck worker**: Single controller + ring consumer (only params writer)
 - **AudioWorklet**: Single processor (only meter writer)

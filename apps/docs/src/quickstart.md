@@ -1,24 +1,23 @@
 # Quickstart
 
-This is the smallest complete Exclave Boundary flow: one spec defines the boundary contract, layout is planned once, backing is allocated once, and the runtime side accepts a handoff before binding.
+This is the smallest complete Exclave Boundary flow: one spec defines the boundary contract, layout is planned once, backing is allocated once, and the runtime side binds from a handoff.
 
 ## Boundary Flow
 
-`defineSpec`, `planLayout`, `allocateShared`, and `buildHandoff` happen before the runtime side binds. The controller can already exist on the main side while a handoff is accepted in a worker, an AudioWorklet, or another timing-sensitive runtime.
+`defineSpec`, `planLayout`, `allocatePacked`, and `buildHandoff` happen before the runtime side binds. The controller can already exist on the main side while a handoff is bound in a worker, an AudioWorklet, or another timing-sensitive runtime.
 
 ```mermaid
 flowchart TD
   subgraph main["Main thread / controller side"]
     spec["defineSpec<br/>author the boundary shape"]
     plan["planLayout<br/>compute memory layout"]
-    backing["allocateShared<br/>create shared backing"]
+    backing["allocatePacked<br/>create packed backing"]
     controller["bindController<br/>write params, read meters"]
     handoff["buildHandoff<br/>portable boundary artifact"]
     transport["postMessage<br/>send handoff"]
   end
 
   subgraph runtime["Worker / AudioWorklet / realtime side"]
-    accept["acceptHandoff<br/>validate protocol, plan, backing"]
     processor["bindProcessor<br/>read params, publish meters"]
   end
 
@@ -27,8 +26,7 @@ flowchart TD
   backing --> controller
   backing --> handoff
   handoff --> transport
-  transport --> accept
-  accept --> processor
+  transport --> processor
   controller -. "same SharedArrayBuffer backing" .- processor
 ```
 
@@ -36,8 +34,7 @@ The handoff is the portable artifact. It carries the plan and backing descriptor
 
 ```ts twoslash
 import {
-  acceptHandoff,
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -61,12 +58,11 @@ const spec = defineSpec((api) => ({
 }));
 
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 
 const controller = bindController(spec, plan, backing);
 const handoff = buildHandoff(plan, backing);
-const accepted = acceptHandoff(handoff);
-const processor = bindProcessor(accepted);
+const processor = bindProcessor(handoff);
 
 controller.params.update({
   "runtime.enabled": true,
@@ -113,4 +109,12 @@ The handoff is the boundary artifact. It carries the plan and backing descriptor
 worker.postMessage({ type: "boundary-handoff", handoff });
 ```
 
-On the receiving side, treat inbound values as untrusted until `acceptHandoff(...)` validates the protocol version, plan shape, packing mode, and backing sizes.
+When the transport value is `unknown`, treat it as untrusted until `acceptHandoff(...)` validates the protocol version, plan shape, packing mode, and backing sizes.
+
+```ts
+import { acceptHandoff, bindProcessor } from "@exclave/boundary";
+
+declare const message: MessageEvent;
+
+const processor = bindProcessor(acceptHandoff(message.data));
+```

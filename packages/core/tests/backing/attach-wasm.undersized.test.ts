@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { allocateWasmShared } from "../../src/backing/allocate-wasm-shared";
+import { allocateWasm } from "../../src/backing/allocate-wasm";
 import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
 
@@ -8,7 +8,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Allocate Wasm Shared: Memory Capacity", () => {
+describe("allocateWasm: memory capacity", () => {
   it("allocates a shared WebAssembly memory instance with sufficient capacity to cover the plan", () => {
     const spec = defineSpec(({ param, meter }) => ({
       id: "wasm-capacity-check",
@@ -19,10 +19,10 @@ describe("Allocate Wasm Shared: Memory Capacity", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateWasmShared(plan);
+    const backing = allocateWasm(plan);
 
     // Verify the backing kind and the underlying SharedArrayBuffer existence
-    expect(backing.kind).toBe("wasm-shared");
+    expect(backing.kind).toBe("wasm");
     expect(backing.memory.buffer).toBeInstanceOf(SharedArrayBuffer);
 
     // The allocated buffer must be at least as large as the planned requirements.

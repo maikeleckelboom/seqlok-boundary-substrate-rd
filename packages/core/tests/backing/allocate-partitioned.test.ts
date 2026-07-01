@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { allocateSharedPartitioned } from "../../src/backing/allocate-shared-partitioned";
+import { allocatePartitioned } from "../../src/backing/allocate-partitioned";
 import { mapViews } from "../../src/backing/map-views";
 import { planLayout } from "../../src/plan/layout";
 import { BYTES_PER_ELEM } from "../../src/primitives/planes";
 import { defineSpec } from "../../src/spec/define";
 import { specFromPlaneBytes } from "../helpers/spec-from-bytes";
 
-import type { SharedPartitionedBacking } from "../../src/backing/types";
+import type { PartitionedBacking } from "../../src/backing/types";
 
 const BYTES_F32 = 4;
 const BYTES_F64 = 8;
@@ -34,7 +34,8 @@ describe("Shared Partitioned Allocation (Split Backing)", () => {
     };
 
     const plan = planLayout(specFromPlaneBytes(bytes));
-    const split = allocateSharedPartitioned(plan);
+    const split = allocatePartitioned(plan);
+    expect(split.kind).toBe("partitioned");
     const v = mapViews(plan, split);
 
     // Parameter Views
@@ -89,13 +90,13 @@ describe("Shared Partitioned Allocation (Split Backing)", () => {
     expect(plannedPB).toBeGreaterThan(0);
 
     // Allocate valid backing, then surgically replace PB with an undersized buffer
-    const split = allocateSharedPartitioned(plan);
+    const split = allocatePartitioned(plan);
 
     // Create a buffer that is valid (multiple of 4) but strictly smaller than required
     const pbUndersized = Math.max(4, floorTo(plannedPB, 4) - 4);
 
-    const badBacking: SharedPartitionedBacking = {
-      kind: "shared-partitioned",
+    const badBacking: PartitionedBacking = {
+      kind: "partitioned",
       planes: {
         ...split.planes,
         PB: new SharedArrayBuffer(pbUndersized),

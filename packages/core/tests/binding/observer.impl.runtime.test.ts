@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindObserver,
   defineSpec,
@@ -11,8 +11,8 @@ import {
 } from "../../src";
 
 import type {
-  SharedBacking,
-  SharedPartitionedBacking,
+  PackedBacking,
+  PartitionedBacking,
 } from "../../src/backing/types";
 
 describe("observer binding – coverage edges", () => {
@@ -30,7 +30,7 @@ describe("observer binding – coverage edges", () => {
 
   it("supports object-form snapshots and subset/varargs forms", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
 
     const controller = bindController(spec, plan, backing);
     const observer = bindObserver(spec, plan, backing);
@@ -94,7 +94,7 @@ describe("observer binding – coverage edges", () => {
 
   it("exposes version information for params and meters", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
 
     const controller = bindController(spec, plan, backing);
     const observer = bindObserver(spec, plan, backing);
@@ -117,7 +117,7 @@ describe("observer binding – coverage edges", () => {
 
   it("handles dispose idempotency and safeguards", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
 
     const observer = bindObserver(spec, plan, backing);
 
@@ -150,7 +150,7 @@ describe("observer binding – coverage edges", () => {
 
   it("accepts and respects budget/policy options", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
 
     const observer = bindObserver(spec, plan, backing, {
       spinBudget: 10,
@@ -181,7 +181,7 @@ describe("observer binding – coverage edges", () => {
     observer.dispose();
   });
 
-  it("rejects undersized shared backings", () => {
+  it("rejects undersized packed backings", () => {
     const smallSpec = defineSpec(({ param, meter }) => ({
       params: {
         a: param.f32(),
@@ -198,8 +198,8 @@ describe("observer binding – coverage edges", () => {
     const undersizedBytes = required > 4 ? required - 4 : required >>> 0;
 
     const sab = new SharedArrayBuffer(undersizedBytes);
-    const smallBacking: SharedBacking = {
-      kind: "shared",
+    const smallBacking: PackedBacking = {
+      kind: "packed",
       sab,
     };
 
@@ -225,7 +225,7 @@ describe("observer binding – coverage edges", () => {
     const makePlane = (bytes: number): SharedArrayBuffer =>
       new SharedArrayBuffer(bytes);
 
-    const planes: SharedPartitionedBacking["planes"] = {
+    const planes: PartitionedBacking["planes"] = {
       PF32: makePlane(partitionedPlan.planes.PF32),
       PI32: makePlane(partitionedPlan.planes.PI32),
       PB: makePlane(partitionedPlan.planes.PB),
@@ -239,8 +239,8 @@ describe("observer binding – coverage edges", () => {
       MU: makePlane(partitionedPlan.planes.MU),
     };
 
-    const undersizedPartitionedBacking: SharedPartitionedBacking = {
-      kind: "shared-partitioned",
+    const undersizedPartitionedBacking: PartitionedBacking = {
+      kind: "partitioned",
       planes,
     };
 

@@ -293,30 +293,30 @@ function writeScalarUnchecked(
  * Assert that the backing buffer is large enough for the plan.
  *
  * @remarks
- * - For shared backings, validates that the SAB `byteLength` can satisfy
- *   `plan.bytesTotal`.
- * - Other backing kinds (WASM, partitioned) are expected to be validated in
+ * - For packed backings, validates that the SharedArrayBuffer byte length can
+ *   satisfy `plan.bytesTotal`.
+ * - Other backing kinds (wasm, partitioned) are expected to be validated in
  *   their respective allocators or `mapViews` implementations.
  */
 function assertBackingCapacity<S extends SpecInput>(
   plan: Plan<S>,
   backing: Backing,
 ): void {
-  if (backing.kind === "shared") {
+  if (backing.kind === "packed") {
     const required = plan.bytesTotal >>> 0;
     const actual = backing.sab.byteLength >>> 0;
 
     invariant(
       actual >= required,
       "internal.assertionFailed",
-      "Shared backing byteLength smaller than plan.bytesTotal",
+      "Packed backing byteLength smaller than plan.bytesTotal",
       {
         where: "binding.controller.backing",
         detail: `required=${String(required)}, actual=${String(actual)}`,
       },
     );
   }
-  // Other backing kinds (e.g. WASM, partitioned) should be validated
+  // Other backing kinds (wasm, partitioned) should be validated
   // in their respective allocators / mapViews implementations.
 }
 

@@ -32,7 +32,7 @@ Controller code writes params and reads meters. Processor code reads params and 
 | --- | --- | --- |
 | `defineSpec` | Author params and meters as a typed contract. | Canonical spec with dot keys. |
 | `planLayout` | Compute deterministic plane sizes, offsets, and hash identity. | Plan. |
-| `allocateShared` / `allocateSharedPartitioned` | Allocate backing memory that matches the plan. | Shared backing. |
+| `allocatePacked` / `allocatePartitioned` | Allocate backing memory that matches the plan. | Backing. |
 | `buildHandoff` | Package plan and backing descriptor for transfer. | Handoff. |
 | `acceptHandoff` | Validate the received artifact before binding. | Accepted handoff. |
 | `bindController` | Bind host-side param writes and meter reads. | Controller binding. |
@@ -51,4 +51,4 @@ This separation is the product. Avoid hiding plan or backing creation behind amb
 
 ## Timing-Sensitive Path
 
-The hot path should already have an accepted handoff and a bound processor. It should read params inside `processor.params.within(...)` and publish meters inside `processor.meters.publish(...)`. Spec authoring, planning, allocation, validation, and worker lifecycle work belong outside the tight loop.
+The hot path should already have a bound processor. It should read params inside `processor.params.within(...)` and publish meters inside `processor.meters.publish(...)`. Spec authoring, planning, allocation, validation, and worker lifecycle work belong outside the tight loop.

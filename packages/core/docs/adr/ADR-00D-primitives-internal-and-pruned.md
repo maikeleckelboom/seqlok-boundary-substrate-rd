@@ -14,7 +14,7 @@ Accepted
 
 At the same time, the public value proposition of `@exclave/boundary` is the **high-level binding pipeline**:
 
-- `defineSpec` → `planLayout` → `allocateShared` / `allocateWasmShared`
+- `defineSpec` → `planLayout` → `allocatePacked` / `allocateWasm`
 - `buildHandoff` / `acceptHandoff`
 - `bindController` / `bindProcessor`
 

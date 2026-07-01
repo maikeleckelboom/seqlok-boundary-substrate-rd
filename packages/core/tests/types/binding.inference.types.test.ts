@@ -3,7 +3,7 @@ import { describe, it, expectTypeOf } from "vitest";
 import {
   defineSpec,
   planLayout,
-  allocateShared,
+  allocatePacked,
   buildHandoff,
   acceptHandoff,
   bindController,
@@ -24,7 +24,7 @@ describe("BindController / BindProcessor: Inference Contracts", () => {
       meters: { fps: meter.f32() },
     }));
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
     expectTypeOf(ctl.params).toEqualTypeOf<ControllerParams<typeof spec>>();
     expectTypeOf(ctl.meters).toEqualTypeOf<ControllerMeters<typeof spec>>();
@@ -40,7 +40,7 @@ describe("BindController / BindProcessor: Inference Contracts", () => {
     type DemoSpec = typeof spec;
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const handoff = buildHandoff(plan, backing);
 
     const accepted = acceptHandoff(handoff);

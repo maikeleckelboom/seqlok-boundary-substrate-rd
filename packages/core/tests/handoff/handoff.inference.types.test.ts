@@ -1,6 +1,6 @@
 import { describe, it, expectTypeOf } from "vitest";
 
-import { allocateShared } from "../../src/backing/allocate-shared";
+import { allocatePacked } from "../../src/backing/allocate-packed";
 import { bindProcessor } from "../../src/binding/processor";
 import { buildHandoff, acceptHandoff } from "../../src/handoff/handoff";
 import { planLayout } from "../../src/plan/layout";
@@ -25,7 +25,7 @@ describe("Typed Handoff → acceptHandoff → bindProcessor: Inference Contracts
     type DemoSpec = typeof spec;
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const handoff = buildHandoff(plan, backing);
 
     // Verify compile-time type inference: the produced envelope is Handoff<DemoSpec>.

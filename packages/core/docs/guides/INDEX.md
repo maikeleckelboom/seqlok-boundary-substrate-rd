@@ -5,7 +5,7 @@ Deep-dive documents for `@exclave/boundary`.
 These are focused walkthroughs and patterns that build on the main README and API reference. They assume you already
 know the basic golden flow:
 
-> `defineSpec → planLayout → allocateShared/allocateWasmShared → buildHandoff → acceptHandoff → bindController / bindProcessor`
+> `defineSpec → planLayout → allocatePacked/allocateWasm → buildHandoff → acceptHandoff → bindController / bindProcessor`
 
 Some guide filenames and older headings retain the Seqlok prototype name as historical context. Current imports and package references should use `@exclave/boundary`.
 

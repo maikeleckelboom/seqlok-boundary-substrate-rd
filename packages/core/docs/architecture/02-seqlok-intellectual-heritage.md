@@ -266,7 +266,7 @@ const spec = defineSpec(({ param, meter }) => ({
 
 // owner / controller side
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const controller = bindController(spec, backing);
 const handoff = buildHandoff(plan, backing);
 

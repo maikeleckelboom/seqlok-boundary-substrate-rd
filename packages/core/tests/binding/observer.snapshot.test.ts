@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { allocateShared } from "../../src/backing/allocate-shared";
+import { allocatePacked } from "../../src/backing/allocate-packed";
 import { mapViews } from "../../src/backing/map-views";
 import {
   validateMeterSlots,
@@ -34,7 +34,7 @@ describe("observer snapshots", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const mapped = mapViews(plan, backing);
 
     const paramSlots = validateParamSlots(
@@ -132,7 +132,7 @@ describe("observer snapshots", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const mapped = mapViews(plan, backing);
 
     const paramSlots = validateParamSlots(

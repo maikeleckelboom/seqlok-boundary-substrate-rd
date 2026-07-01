@@ -13,7 +13,7 @@ The kernel itself stays functional for reasons of correctness, analyzability, po
 
 This version of the document assumes the **golden flow** is the only supported, canonical way to wire Seqlok:
 
-- **Owner / main side:** `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff` → `bindController`
+- **Owner / main side:** `defineSpec` → `planLayout` → `allocatePacked` → `buildHandoff` → `bindController`
 - **Worker / processor side:** `acceptHandoff` → `bindProcessor`
 
 Everything below is written in terms of that flow, with the **plan** explicitly threaded into `bindController`:
@@ -35,7 +35,7 @@ At the kernel level, APIs are shaped like the golden flow:
 // owner / main
 const spec = defineSpec(/* ... */); // DSL → SpecInput
 const plan = planLayout(spec); // SpecInput → Plan<S>
-const backing = allocateShared(plan); // Plan<S> → Backing
+const backing = allocatePacked(plan); // Plan<S> → Backing
 const handoff = buildHandoff(plan, backing); // Plan<S> × Backing → Handoff
 const controller = bindController(spec, plan, backing); // SpecInput × Plan<S> × Backing → ControllerBinding<S>
 
@@ -108,7 +108,7 @@ Seqlok's core operations in the golden flow are intentionally shaped like **tota
 wherever possible:
 
 - `planLayout(spec): Plan<S>`
-- `allocateShared(plan): Backing`
+- `allocatePacked(plan): Backing`
 - `buildHandoff(plan, backing): Handoff`
 - `acceptHandoff(handoff): AcceptedHandoff<S>`
 - `bindController(spec, plan, backing, options?): ControllerBinding<S>`
@@ -123,7 +123,7 @@ Owner / main:
 ```ts
 const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const handoff = buildHandoff(plan, backing);
 const controller = bindController(spec, plan, backing);
 ```
@@ -138,7 +138,7 @@ const processor = bindProcessor(accepted);
 Preconditions and postconditions are explicit:
 
 - If `planLayout(spec)` succeeds, `plan` encodes a valid, non-overlapping layout.
-- If `allocateShared(plan)` succeeds, `backing` is large enough and aligned for that plan.
+- If `allocatePacked(plan)` succeeds, `backing` is large enough and aligned for that plan.
 - If `buildHandoff(plan, backing)` succeeds, the handoff envelope consistently describes `plan` + `backing`.
 - If `acceptHandoff(handoff)` succeeds, the processor has a verified `AcceptedHandoff<S>` view.
 - If `bindController(spec, plan, backing)` or `bindProcessor(accepted)` succeeds, Seqlok has proven that the
@@ -192,7 +192,7 @@ Seqlok targets:
 The golden flow is intentionally **portable**:
 
 - `Plan<S>` is a plain data structure describing the layout.
-- `allocateShared(plan)` constructs raw shared memory for that layout.
+- `allocatePacked(plan)` constructs raw shared memory for that layout.
 - `buildHandoff(plan, backing)` serializes the plan/backing relationship into a portable envelope.
 - `acceptHandoff(handoff)` re-establishes a verified view of the same layout on the processor side.
 - `bindController(spec, plan, backing, options?)` and `bindProcessor(accepted, options?)` map typed views on top of the
@@ -234,7 +234,7 @@ Each layer has a small, explicit API and depends on a restricted set of lower la
 The golden flow function signatures **encode those dependencies**:
 
 - `planLayout(spec)` lives in `plan`
-- `allocateShared(plan)` lives in `backing`
+- `allocatePacked(plan)` lives in `backing`
 - `buildHandoff(plan, backing)` lives in `handoff`
 - `acceptHandoff(handoff)` lives in `handoff`
 - `bindController(spec, plan, backing, options?)` and `bindProcessor(accepted, options?)` live in `binding`
@@ -286,7 +286,7 @@ These can wrap the golden flow:
 // example sketch: orchestration helper (could be OO, could be functional)
 export function createControllerKit<S extends SpecInput>(spec: S) {
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
   const handoff = buildHandoff(plan, backing);
   const controller = bindController(spec, plan, backing);
 
@@ -336,7 +336,7 @@ You can answer along these lines, in terms of the golden flow:
 - We want explicit flows:
 
   ```ts
-  defineSpec → planLayout → allocateShared → buildHandoff → acceptHandoff → bind*
+  defineSpec → planLayout → allocatePacked → buildHandoff → acceptHandoff → bind*
   ```
 
 3. **Layering**
@@ -368,7 +368,7 @@ A concise line you can reuse:
 
 - The Seqlok **core** is intentionally non-OOP and organized around a single **golden flow**:
 
-  - Owner / main: `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff` →
+  - Owner / main: `defineSpec` → `planLayout` → `allocatePacked` → `buildHandoff` →
     `bindController(spec, plan, backing, options?)`
   - Worker / processor: `acceptHandoff` → `bindProcessor(accepted, options?)`
 

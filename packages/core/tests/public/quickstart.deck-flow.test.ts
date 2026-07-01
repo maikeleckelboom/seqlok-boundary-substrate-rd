@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -28,7 +28,7 @@ describe("public quickstart: deck controller ↔ processor flow", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const controller = bindController(spec, plan, backing);
     const handoff = buildHandoff(plan, backing);
     const accepted = acceptHandoff(handoff);

@@ -1,6 +1,6 @@
 import {
   acceptHandoff,
-  allocateShared,
+  allocatePacked,
   bindController,
   bindObserver,
   bindProcessor,
@@ -32,7 +32,7 @@ import { signalsmithStretchSpec } from "./specs";
 
 export interface BoundaryPlanSummary {
   readonly bytesTotal: number;
-  readonly handoffPacking: "shared" | "shared-partitioned";
+  readonly handoffPacking: "packed" | "partitioned";
   readonly handoffVersion: number;
   readonly hash: string;
   readonly id: string;
@@ -69,7 +69,7 @@ function createAppBoundarySession<const S extends SpecInput>(
   spec: S,
 ): AppBoundarySession<S> {
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
   const controller = bindController(spec, plan, backing, {
     params: { rangePolicy: "clamp" },
   });

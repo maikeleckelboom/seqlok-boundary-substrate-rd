@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { allocateWasmShared } from "../../src/backing/allocate-wasm-shared";
+import { allocateWasm } from "../../src/backing/allocate-wasm";
 import { isBoundaryError } from "../../src/errors/error";
 import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
@@ -9,10 +9,10 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Allocate Wasm Shared: Shared Memory Validation", () => {
+describe("allocateWasm: shared memory validation", () => {
   it("throws backing.wasmMemoryNotShared when the allocated WebAssembly memory buffer is not shared", () => {
     const spec = defineSpec(({ param, meter }) => ({
-      id: "wasm-shared-check",
+      id: "wasm-check",
       params: { p: param.f32({ min: 0, max: 1 }) },
       meters: { m: meter.f32() },
     }));
@@ -34,18 +34,18 @@ describe("Allocate Wasm Shared: Shared Memory Validation", () => {
     let thrown: unknown;
 
     try {
-      allocateWasmShared(plan);
+      allocateWasm(plan);
     } catch (e) {
       thrown = e;
     }
 
     // Verify the error is strictly typed and contains the expected diagnostic details
     if (!isBoundaryError(thrown)) {
-      throw new Error("Expected allocateWasmShared to throw a BoundaryError");
+      throw new Error("Expected allocateWasm to throw a BoundaryError");
     }
 
     expect(thrown.code).toBe("backing.wasmMemoryNotShared");
-    expect(thrown.details.where).toBe("allocateWasmShared");
+    expect(thrown.details.where).toBe("allocateWasm");
 
     if ("shared" in thrown.details) {
       expect(thrown.details.shared).toBe(false);

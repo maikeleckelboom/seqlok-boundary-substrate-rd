@@ -5,17 +5,16 @@
  * This module defines the public handoff envelopes used to move a planned
  * memory layout and its backing across concurrency boundaries:
  *
- * - {@link Handoff} – owner-side transport envelope (protocol-level shape).
- * - {@link AcceptedHandoff} – processor-side capability (plan + backing descriptor).
+ * - {@link Handoff}: owner-side transport envelope (protocol-level shape).
+ * - {@link AcceptedHandoff}: accepted processor/observer capability (plan
+ *   plus backing descriptor).
  *
  * Design principles:
  *
  * - `Plan<S>` is the single source of truth for layout and spec metadata.
  * - No duplicated header fields (hash, byte lengths, planes) outside `Plan<S>`.
- * - **Branded Types**: `Handoff<S>` uses a phantom brand to ensure that only
- *   envelopes created by `buildHandoff` can be passed to typed consumers, preventing
- *   accidental usage of raw objects.
- * - Processors bind from {@link AcceptedHandoff}, not from `(Plan, Backing)`.
+ * - `Handoff<S>` and `AcceptedHandoff<S>` are type-branded, so application code
+ *   cannot accidentally use raw structural objects as capabilities.
  */
 
 import type { Plan } from "../plan/types";
@@ -25,32 +24,40 @@ import type { SpecInput } from "../spec/types";
  * Unique symbol used to brand Handoff types.
  *
  * @remarks
- * This prevents accidental assignment of raw objects to `Handoff<S>` in TypeScript.
- * It has no runtime representation.
+ * This prevents accidental assignment of raw objects to `Handoff<S>` in
+ * TypeScript. It has no runtime representation.
  */
 declare const HandoffBrand: unique symbol;
+
+/**
+ * Unique symbol used to brand AcceptedHandoff types.
+ *
+ * @remarks
+ * `acceptHandoff` is the constructor for this capability. This prevents
+ * application code from structurally forging an accepted transport value in
+ * TypeScript. It has no runtime representation.
+ */
+declare const AcceptedHandoffBrand: unique symbol;
 
 /**
  * Handoff packing strategy discriminator.
  *
  * @remarks
  * - v1 supports:
- *   - `'shared'` – single contiguous `SharedArrayBuffer` backing all planes.
- *   - `'shared-partitioned'` – separate `SharedArrayBuffer` per plane.
- * - Future versions may introduce additional packing modes
- *   (e.g. shared Wasm memory or hybrid layouts).
+ *   - `packed`: a single contiguous `SharedArrayBuffer` backing all planes.
+ *   - `partitioned`: one `SharedArrayBuffer` per logical plane.
  *
  * This value is consumed by `acceptHandoff` and interpreted by bindings;
  * it is not meant to be inspected by most application code.
  */
-export type HandoffPacking = "shared" | "shared-partitioned";
+export type HandoffPacking = "packed" | "partitioned";
 
 /**
- * Owner-side handoff envelope for a single SAB backing.
+ * Owner-side handoff envelope for a packed backing.
  *
  * @typeParam S - Spec type parameter inferred from `defineSpec`.
  */
-interface SharedHandoff<S extends SpecInput = SpecInput> {
+interface PackedHandoff<S extends SpecInput = SpecInput> {
   /**
    * Phantom property ensuring this object was created via `buildHandoff`.
    */
@@ -62,8 +69,8 @@ interface SharedHandoff<S extends SpecInput = SpecInput> {
    * @remarks
    * - Currently fixed to `1`.
    * - Checked by `acceptHandoff` at the boundary.
-   * - Incremented when making breaking changes to the envelope or its
-   *   interpretation semantics.
+   * - Version 1 describes the current unreleased handoff shape:
+   *   `{ version, packing, plan, sab | planes }`.
    */
   readonly version: 1;
 
@@ -71,30 +78,31 @@ interface SharedHandoff<S extends SpecInput = SpecInput> {
    * Memory layout strategy used by this handoff.
    *
    * @remarks
-   * - `'shared'` means a single contiguous `SharedArrayBuffer` backing all planes.
+   * - `packed` means a single contiguous `SharedArrayBuffer` backs all planes.
    */
-  readonly packing: "shared";
+  readonly packing: "packed";
 
   /**
    * Backing memory for all planes.
    *
    * @remarks
-   * - In this packing mode, this is a single contiguous {@link SharedArrayBuffer}.
+   * - In this packing mode, this is a single contiguous
+   *   {@link SharedArrayBuffer}.
    * - The {@link Plan} describes how this buffer is partitioned into logical
-   *   planes such as PF32, PI32, PB, MU32, etc.
+   *   planes such as PF32, PI32, PB, MU32, and MU.
    */
   readonly sab: SharedArrayBuffer;
 
   /**
-   * Embedded plan – the inference anchor and metadata source.
+   * Embedded plan: the inference anchor and metadata source.
    *
    * @remarks
    * All layout and spec information flows through this field:
    *
-   * - `plan.hash` – spec hash / identity.
-   * - `plan.bytesTotal` – required backing byte length.
-   * - `plan.planes` – per-plane byte lengths.
-   * - `Plan<S>` – carries the spec type, enabling end-to-end inference.
+   * - `plan.hash`: spec hash / identity.
+   * - `plan.bytesTotal`: required backing byte length.
+   * - `plan.planes`: per-plane byte lengths.
+   * - `Plan<S>`: carries the spec type, enabling end-to-end inference.
    *
    * There is intentionally no duplicated or denormalized metadata in
    * the handoff envelope; consumers always look at `plan` for details.
@@ -103,11 +111,11 @@ interface SharedHandoff<S extends SpecInput = SpecInput> {
 }
 
 /**
- * Owner-side handoff envelope for partitioned SAB backing.
+ * Owner-side handoff envelope for a partitioned backing.
  *
  * @typeParam S - Spec type parameter inferred from `defineSpec`.
  */
-interface SharedPartitionedHandoff<S extends SpecInput = SpecInput> {
+interface PartitionedHandoff<S extends SpecInput = SpecInput> {
   /**
    * Phantom property ensuring this object was created via `buildHandoff`.
    */
@@ -119,8 +127,8 @@ interface SharedPartitionedHandoff<S extends SpecInput = SpecInput> {
    * @remarks
    * - Currently fixed to `1`.
    * - Checked by `acceptHandoff` at the boundary.
-   * - Incremented when making breaking changes to the envelope or its
-   *   interpretation semantics.
+   * - Version 1 describes the current unreleased handoff shape:
+   *   `{ version, packing, plan, sab | planes }`.
    */
   readonly version: 1;
 
@@ -128,30 +136,31 @@ interface SharedPartitionedHandoff<S extends SpecInput = SpecInput> {
    * Memory layout strategy used by this handoff.
    *
    * @remarks
-   * - `'shared-partitioned'` means one `SharedArrayBuffer` per logical plane.
+   * - `partitioned` means one `SharedArrayBuffer` backs each logical plane.
    */
-  readonly packing: "shared-partitioned";
+  readonly packing: "partitioned";
 
   /**
    * Backing memory map for all planes.
    *
    * @remarks
    * - Each entry is a `SharedArrayBuffer` backing a single logical plane.
-   * - Plane keys are implementation-defined (e.g. `"PF32"`, `"PI32"`, `"PB"`, ...).
+   * - Plane keys are implementation-defined (for example, `"PF32"`, `"PI32"`,
+   *   `"PB"`, and `"MU32"`).
    * - The {@link Plan} describes byte lengths and offsets for each plane.
    */
   readonly planes: Readonly<Record<string, SharedArrayBuffer>>;
 
   /**
-   * Embedded plan – the inference anchor and metadata source.
+   * Embedded plan: the inference anchor and metadata source.
    *
    * @remarks
    * All layout and spec information flows through this field:
    *
-   * - `plan.hash` – spec hash / identity.
-   * - `plan.bytesTotal` – aggregate backing byte length.
-   * - `plan.planes` – per-plane byte lengths.
-   * - `Plan<S>` – carries the spec type, enabling end-to-end inference.
+   * - `plan.hash`: spec hash / identity.
+   * - `plan.bytesTotal`: aggregate backing byte length.
+   * - `plan.planes`: per-plane byte lengths.
+   * - `Plan<S>`: carries the spec type, enabling end-to-end inference.
    *
    * There is intentionally no duplicated or denormalized metadata in
    * the handoff envelope; consumers always look at `plan` for details.
@@ -165,13 +174,13 @@ interface SharedPartitionedHandoff<S extends SpecInput = SpecInput> {
  * @typeParam S - Spec type parameter inferred from `defineSpec`.
  *
  * @remarks
- * This is the shape produced by `buildHandoff` on the owner/orchestrator side,
- * either from `(plan, backing)` or from a `SharedContext<S>`. It is designed to be:
+ * This is the shape produced by `buildHandoff` on the owner/orchestrator side
+ * from `(plan, backing)`. It is designed to be:
  *
- * - **Serializable** via `postMessage` / structured clone.
- * - **Minimal**: carries only protocol bits + backing descriptor + `Plan<S>`.
- * - **Stable**: future protocol changes are versioned, not ad hoc.
- * - **Branded**: Ensures type safety when used within TypeScript environments.
+ * - Serializable via `postMessage` / structured clone.
+ * - Minimal: carries only protocol bits, a backing descriptor, and `Plan<S>`.
+ * - Stable: future protocol changes are versioned.
+ * - Branded: ensures type safety within TypeScript environments.
  *
  * The embedded `plan: Plan<S>` is the single source of truth for:
  *
@@ -179,35 +188,35 @@ interface SharedPartitionedHandoff<S extends SpecInput = SpecInput> {
  * - Spec structure: params/meters as defined by `defineSpec`.
  * - Memory offsets and alignment: plane-relative byte layouts.
  *
- * Consumers should not construct this type manually; use
- * `buildHandoff(...)` to ensure invariants are met.
+ * Consumers should not construct this type manually; use `buildHandoff(...)`.
  */
 export type Handoff<S extends SpecInput = SpecInput> =
-  | SharedHandoff<S>
-  | SharedPartitionedHandoff<S>;
+  | PackedHandoff<S>
+  | PartitionedHandoff<S>;
 
 /**
- * Accepted view of a single-SAB handoff.
+ * Accepted view of a packed handoff.
  *
- * @typeParam S - Spec type (inferred from `handoff.plan`).
+ * @typeParam S - Spec type inferred from `handoff.plan`.
  */
-interface AcceptedSharedHandoff<S extends SpecInput = SpecInput> {
+interface AcceptedPackedHandoff<S extends SpecInput = SpecInput> {
   /**
-   * Memory layout strategy used by this accepted handoff.
-   *
-   * @remarks
-   * - Preserved from the original {@link Handoff} to allow bindings to
-   *   reconstruct an appropriate backing strategy.
+   * Phantom property ensuring this object was produced by `acceptHandoff`.
    */
-  readonly packing: "shared";
+  readonly [AcceptedHandoffBrand]: S;
 
   /**
-   * Shared memory backing for all planes.
+   * Memory layout strategy preserved from the original {@link Handoff}.
+   */
+  readonly packing: "packed";
+
+  /**
+   * SharedArrayBuffer backing for all planes.
    *
    * @remarks
-   * - The SAB is assumed to be at least `plan.bytesTotal` bytes long.
-   *   This invariant is typically enforced by bindings/mapViews rather
-   *   than at the handoff boundary.
+   * The buffer is assumed to be at least `plan.bytesTotal` bytes long. This is
+   * checked while accepting the handoff and again by mapping/binding helpers
+   * where relevant.
    */
   readonly sab: SharedArrayBuffer;
 
@@ -218,28 +227,29 @@ interface AcceptedSharedHandoff<S extends SpecInput = SpecInput> {
    * - This is the same `Plan<S>` that was embedded in the original
    *   {@link Handoff}.
    * - It is the single source of truth for all layout and spec metadata
-   *   required by `bindController` / `bindProcessor`.
+   *   required by processor and observer bindings.
    */
   readonly plan: Plan<S>;
 }
 
 /**
- * Accepted view of a partitioned-SAB handoff.
+ * Accepted view of a partitioned handoff.
  *
- * @typeParam S - Spec type (inferred from `handoff.plan`).
+ * @typeParam S - Spec type inferred from `handoff.plan`.
  */
-interface AcceptedSharedPartitionedHandoff<S extends SpecInput = SpecInput> {
+interface AcceptedPartitionedHandoff<S extends SpecInput = SpecInput> {
   /**
-   * Memory layout strategy used by this accepted handoff.
-   *
-   * @remarks
-   * - Preserved from the original {@link Handoff} to allow bindings to
-   *   reconstruct an appropriate backing strategy.
+   * Phantom property ensuring this object was produced by `acceptHandoff`.
    */
-  readonly packing: "shared-partitioned";
+  readonly [AcceptedHandoffBrand]: S;
 
   /**
-   * Shared memory backings for all planes.
+   * Memory layout strategy preserved from the original {@link Handoff}.
+   */
+  readonly packing: "partitioned";
+
+  /**
+   * SharedArrayBuffer backings for all planes.
    *
    * @remarks
    * - Each entry is a `SharedArrayBuffer` backing a single logical plane.
@@ -254,41 +264,26 @@ interface AcceptedSharedPartitionedHandoff<S extends SpecInput = SpecInput> {
    * - This is the same `Plan<S>` that was embedded in the original
    *   {@link Handoff}.
    * - It is the single source of truth for all layout and spec metadata
-   *   required by `bindController` / `bindProcessor`.
+   *   required by processor and observer bindings.
    */
   readonly plan: Plan<S>;
 }
 
 /**
- * Result of `acceptHandoff` – validated handoff with typed plan.
+ * Result of `acceptHandoff`: validated handoff with typed plan.
  *
- * @typeParam S - Spec type (inferred from `handoff.plan`).
+ * @typeParam S - Spec type inferred from `handoff.plan`.
  *
  * @remarks
- * This is the minimal capability a processor needs in order to bind to
- * shared state. It is intentionally smaller than {@link Handoff} and
- * strips away protocol-level header fields:
+ * This is the minimal capability a processor or observer needs in order to
+ * bind after accepting a transport value. It strips away protocol-level header
+ * fields after validation and keeps only the backing descriptor plus `Plan<S>`.
  *
- * - The processor cares only about:
- *   - the backing descriptor (`sab` or `planes`), and
- *   - how to interpret it (`plan`).
- * - Protocol details like `version` are validated and then discarded by
- *   `acceptHandoff`.
- *
- * **Authority model:**
- *
- * - Owner/orchestrator:
- *   - calls `planLayout(spec)` and `allocateShared(plan)` / `allocateSharedPartitioned(plan)`,
- *   - then builds a {@link Handoff} via `buildHandoff(...)`,
- *   - and transfers it across the boundary.
- * - Processor:
- *   - calls `acceptHandoff(handoff)` and obtains `AcceptedHandoff<S>`,
- *   - then binds via `bindProcessor(accepted)`.
- *
- * Processors do **not** bind directly from `(Plan<S>, Backing)`.
- * `AcceptedHandoff<S>` is the only supported input to `bindProcessor`,
- * preserving the separation between memory ownership and capability.
+ * `AcceptedHandoff<S>` is intentionally branded. Users should obtain it from
+ * `acceptHandoff(value)` at an unknown transport boundary, or pass a typed
+ * `Handoff<S>` directly to `bindProcessor` / `bindObserver` when the type is
+ * preserved in the same program.
  */
 export type AcceptedHandoff<S extends SpecInput = SpecInput> =
-  | AcceptedSharedHandoff<S>
-  | AcceptedSharedPartitionedHandoff<S>;
+  | AcceptedPackedHandoff<S>
+  | AcceptedPartitionedHandoff<S>;

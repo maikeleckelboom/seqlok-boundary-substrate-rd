@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { allocateShared } from "../../src/backing/allocate-shared";
-import { allocateSharedPartitioned } from "../../src/backing/allocate-shared-partitioned";
+import { allocatePacked } from "../../src/backing/allocate-packed";
+import { allocatePartitioned } from "../../src/backing/allocate-partitioned";
+import { bindObserver } from "../../src/binding/observer";
+import { bindProcessor } from "../../src/binding/processor";
 import { isBoundaryError } from "../../src/errors/error";
 import {
   buildHandoff,
@@ -12,11 +14,11 @@ import { planLayout } from "../../src/plan/layout";
 import { defineSpec } from "../../src/spec/define";
 
 import type {
-  SharedPartitionedBacking,
-  WasmSharedBacking,
+  PartitionedBacking,
+  WasmBacking,
 } from "../../src/backing/types";
 
-describe("Handoff Mechanisms (Contiguous SAB)", () => {
+describe("Handoff Mechanisms (packed backing)", () => {
   const spec = defineSpec(({ param, meter }) => ({
     id: "handoff",
     params: {
@@ -31,10 +33,13 @@ describe("Handoff Mechanisms (Contiguous SAB)", () => {
 
   it("successfully completes the build -> receive -> verify lifecycle", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
 
     const env = buildHandoff(plan, backing);
     const accepted = acceptHandoff(env);
+
+    expect(env.packing).toBe("packed");
+    expect(accepted.packing).toBe("packed");
 
     // Verify metadata integrity through the plan source of truth
     expect(accepted.plan.id).toBe("handoff");
@@ -49,7 +54,7 @@ describe("Handoff Mechanisms (Contiguous SAB)", () => {
 
   it("throws specifically on spec hash mismatch during verification", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const env = buildHandoff(plan, backing);
     const accepted = acceptHandoff(env);
 
@@ -74,7 +79,7 @@ describe("Handoff Mechanisms (Contiguous SAB)", () => {
 
   it("rejects non-SharedArrayBuffer instances via shape guards", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const env = buildHandoff(plan, backing);
 
     // Poison the sab field with a standard ArrayBuffer to test type enforcement
@@ -83,9 +88,37 @@ describe("Handoff Mechanisms (Contiguous SAB)", () => {
     expect(() => acceptHandoff(badEnv)).toThrow();
   });
 
+  it("rejects old and unknown handoff packing strings", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const env = buildHandoff(plan, backing);
+
+    const oldPackedPacking = "sh" + "ared";
+    const oldPartitionedPacking = oldPackedPacking + "-" + "partitioned";
+
+    for (const packing of [
+      oldPackedPacking,
+      oldPartitionedPacking,
+      "mystery",
+    ]) {
+      let thrown: unknown;
+      try {
+        acceptHandoff({ ...env, packing });
+      } catch (error) {
+        thrown = error;
+      }
+
+      expect(isBoundaryError(thrown)).toBe(true);
+      if (isBoundaryError(thrown)) {
+        expect(thrown.code).toBe("handoff.invalidArtifact");
+        expect(thrown.details.detail).toBe(`packing=${packing}`);
+      }
+    }
+  });
+
   it("provides comprehensive metadata via the accepted plan object", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const env = buildHandoff(plan, backing);
     const accepted = acceptHandoff(env);
 
@@ -108,9 +141,24 @@ describe("Handoff Mechanisms (Contiguous SAB)", () => {
     expect("planes" in env).toBe(false);
     expect("meta" in accepted).toBe(false);
   });
+
+  it("binds processor and observer directly from a handoff", () => {
+    const plan = planLayout(spec);
+    const backing = allocatePacked(plan);
+    const handoff = buildHandoff(plan, backing);
+
+    const processor = bindProcessor(handoff);
+    const observer = bindObserver(handoff);
+
+    expect(processor.params.version()).toBe(0);
+    expect(observer.params.version()).toBe(0);
+
+    observer.dispose();
+    processor.dispose();
+  });
 });
 
-describe("Handoff Mechanisms (Partitioned SAB)", () => {
+describe("Handoff Mechanisms (partitioned backing)", () => {
   const spec = defineSpec(({ param, meter }) => ({
     id: "handoff-partitioned",
     params: {
@@ -125,14 +173,14 @@ describe("Handoff Mechanisms (Partitioned SAB)", () => {
 
   it("supports the build -> receive lifecycle for partitioned backing", () => {
     const plan = planLayout(spec);
-    const backing = allocateSharedPartitioned(plan);
+    const backing = allocatePartitioned(plan);
 
     const env = buildHandoff(plan, backing);
     const accepted = acceptHandoff(env);
 
-    if (accepted.packing !== "shared-partitioned") {
+    if (accepted.packing !== "partitioned") {
       throw new Error(
-        'Expected packing "shared-partitioned" for partitioned backing',
+        'Expected packing "partitioned" for partitioned backing',
       );
     }
 
@@ -148,13 +196,13 @@ describe("Handoff Mechanisms (Partitioned SAB)", () => {
 
   it("throws when a plane backing is undersized", () => {
     const plan = planLayout(spec);
-    const backing = allocateSharedPartitioned(plan);
+    const backing = allocatePartitioned(plan);
 
     const pf32Bytes = plan.planes.PF32;
     const undersizedBytes = pf32Bytes > 0 ? pf32Bytes - 4 : 0;
 
-    const badBacking: SharedPartitionedBacking = {
-      kind: "shared-partitioned",
+    const badBacking: PartitionedBacking = {
+      kind: "partitioned",
       planes: {
         ...backing.planes,
         PF32: new SharedArrayBuffer(undersizedBytes),
@@ -171,11 +219,12 @@ describe("Handoff Mechanisms (Partitioned SAB)", () => {
         throw error;
       }
       expect(error.code).toBe("handoff.invalidArtifact");
+      expect(error.details.detail).toBe("plane=PF32");
     }
   });
 });
 
-describe("Handoff Mechanisms (Wasm shared)", () => {
+describe("Handoff Mechanisms (wasm backing)", () => {
   const spec = defineSpec(({ param, meter }) => ({
     id: "handoff-wasm",
     params: {
@@ -186,22 +235,23 @@ describe("Handoff Mechanisms (Wasm shared)", () => {
     },
   }));
 
-  it("rejects wasm-shared backings at build time", () => {
+  it("rejects wasm backings at build time", () => {
     const plan = planLayout(spec);
 
-    const wasmBacking: WasmSharedBacking = {
-      kind: "wasm-shared",
+    const wasmBacking: WasmBacking = {
+      kind: "wasm",
       memory: new WebAssembly.Memory({ initial: 1 }),
     };
 
     try {
       buildHandoff(plan, wasmBacking);
-      expect.unreachable("buildHandoff should throw for wasm-shared backing");
+      expect.unreachable("buildHandoff should throw for wasm backing");
     } catch (error: unknown) {
       if (!isBoundaryError(error)) {
         throw error;
       }
       expect(error.code).toBe("handoff.invalidArtifact");
+      expect(error.details.detail).toBe("kind=wasm");
     }
   });
 });

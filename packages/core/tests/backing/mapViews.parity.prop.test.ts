@@ -1,12 +1,12 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { allocateSharedPartitioned } from "../../src/backing/allocate-shared-partitioned";
+import { allocatePartitioned } from "../../src/backing/allocate-partitioned";
 import { mapViews } from "../../src/backing/map-views";
 import { planLayout } from "../../src/plan/layout";
 import { specFromPlaneBytes } from "../helpers/spec-from-bytes";
 
-import type { SharedBacking } from "../../src/backing/types";
+import type { PackedBacking } from "../../src/backing/types";
 import type { PlaneByteLengths } from "../../src/plan/types";
 
 const BYTES_F32 = 4;
@@ -43,13 +43,13 @@ describe("Map Views: Parity & Consistency (Property-Based)", () => {
         const plan = planLayout(specFromPlaneBytes(req));
 
         // Strategy A: Contiguous SharedArrayBuffer
-        const contiguousBacking: SharedBacking = {
-          kind: "shared",
+        const contiguousBacking: PackedBacking = {
+          kind: "packed",
           sab: new SharedArrayBuffer(plan.bytesTotal),
         };
 
         // Strategy B: Partitioned (Split) Backing
-        const partitionedBacking = allocateSharedPartitioned(plan);
+        const partitionedBacking = allocatePartitioned(plan);
 
         const viewsContiguous = mapViews(plan, contiguousBacking);
         const viewsPartitioned = mapViews(plan, partitionedBacking);

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  isSharedBacking,
-  isSharedPartitionedBacking,
-  isWasmSharedBacking,
+  isPackedBacking,
+  isPartitionedBacking,
+  isWasmBacking,
   type Backing,
-  type SharedBacking,
-  type SharedPartitionedBacking,
-  type WasmSharedBacking,
+  type PackedBacking,
+  type PartitionedBacking,
+  type WasmBacking,
 } from "../../src/backing/types";
 
 /**
@@ -17,18 +17,18 @@ import {
 const allocSab = (bytes: number) => new SharedArrayBuffer(bytes);
 
 describe("Backing Type Guards: Runtime Identification", () => {
-  it("correctly identifies and narrows a standard contiguous SharedBacking", () => {
-    const b: Backing = { kind: "shared", sab: allocSab(16) };
+  it("correctly identifies and narrows a standard contiguous PackedBacking", () => {
+    const b: Backing = { kind: "packed", sab: allocSab(16) };
 
-    expect(isSharedBacking(b)).toBe(true);
+    expect(isPackedBacking(b)).toBe(true);
 
     // Verify structural access after narrowing
-    expect((b satisfies SharedBacking).sab.byteLength).toBe(16);
+    expect((b satisfies PackedBacking).sab.byteLength).toBe(16);
   });
 
   it("correctly identifies and narrows a partitioned backing layout", () => {
     const b: Backing = {
-      kind: "shared-partitioned",
+      kind: "partitioned",
       planes: {
         PF32: allocSab(4),
         PI32: allocSab(4),
@@ -41,8 +41,8 @@ describe("Backing Type Guards: Runtime Identification", () => {
       },
     };
 
-    expect(isSharedPartitionedBacking(b)).toBe(true);
-    expect((b satisfies SharedPartitionedBacking).planes.PB.byteLength).toBe(1);
+    expect(isPartitionedBacking(b)).toBe(true);
+    expect((b satisfies PartitionedBacking).planes.PB.byteLength).toBe(1);
   });
 
   it("correctly identifies and narrows a WebAssembly shared memory backing", () => {
@@ -51,11 +51,11 @@ describe("Backing Type Guards: Runtime Identification", () => {
       maximum: 1,
       shared: true,
     });
-    const b: Backing = { kind: "wasm-shared", memory: mem };
+    const b: Backing = { kind: "wasm", memory: mem };
 
-    expect(isWasmSharedBacking(b)).toBe(true);
+    expect(isWasmBacking(b)).toBe(true);
     expect(
-      (b satisfies WasmSharedBacking).memory.buffer instanceof
+      (b satisfies WasmBacking).memory.buffer instanceof
         SharedArrayBuffer,
     ).toBe(true);
   });

@@ -14,9 +14,9 @@ describe("Public API Surface (Runtime Exports)", () => {
       "planLayout",
 
       // BACKING
-      "allocateShared",
-      "allocateSharedPartitioned",
-      "allocateWasmShared",
+      "allocatePacked",
+      "allocatePartitioned",
+      "allocateWasm",
 
       // BINDING
       "bindController",
@@ -54,8 +54,6 @@ describe("Public API Surface (Runtime Exports)", () => {
       "bindSwsrRingProducer",
       "bindSwsrRingConsumer",
 
-      // CONTEXT
-      "createSharedContext",
     ].sort();
 
     expect(runtimeExports).toEqual(expectedExports);

@@ -4,7 +4,7 @@ import { mapViews } from "../../src/backing/map-views";
 import { planLayout } from "../../src/plan/layout";
 import { specFromPlaneBytes } from "../helpers/spec-from-bytes";
 
-import type { SharedBacking, WasmSharedBacking } from "../../src/backing/types";
+import type { PackedBacking, WasmBacking } from "../../src/backing/types";
 import type { PlaneByteLengths } from "../../src/plan/types";
 
 const BYTES_F32 = 4;
@@ -26,7 +26,7 @@ describe("Map Views: Buffer Identity & Shared Memory Wiring", () => {
 
     const plan = planLayout(specFromPlaneBytes(bytes));
     const sab = new SharedArrayBuffer(plan.bytesTotal);
-    const backing: SharedBacking = { kind: "shared", sab };
+    const backing: PackedBacking = { kind: "packed", sab };
 
     const v = mapViews(plan, backing);
 
@@ -56,7 +56,7 @@ describe("Map Views: Buffer Identity & Shared Memory Wiring", () => {
       initial: pages,
       maximum: pages,
     });
-    const wasm: WasmSharedBacking = { kind: "wasm-shared", memory };
+    const wasm: WasmBacking = { kind: "wasm", memory };
 
     const v = mapViews(plan, wasm);
 

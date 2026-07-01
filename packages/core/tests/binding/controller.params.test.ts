@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -41,7 +41,7 @@ function setupController(
 ) {
   const spec = makeSpec();
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
 
   const handoff = buildHandoff(plan, backing);
   const accepted = acceptHandoff(handoff);

@@ -4,7 +4,7 @@
  *
  * @remarks
  * - Covers allocation, attachment, and buffer/plane shape validation.
- * - Used by shared/partitioned/Wasm backing allocators and helpers.
+ * - Used by packed/partitioned/Wasm backing allocators and helpers.
  * - Registered into the global error registry as the `backing.*` domain.
  */
 

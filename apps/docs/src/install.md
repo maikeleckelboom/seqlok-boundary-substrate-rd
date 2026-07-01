@@ -18,7 +18,7 @@ Import from the root package for the runtime flow:
 ```ts
 import {
   acceptHandoff,
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,

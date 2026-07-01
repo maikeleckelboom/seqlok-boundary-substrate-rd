@@ -132,7 +132,7 @@ if (isDiagnosticsFeatureEnabled("seqlockTrace")) {
 
 ```ts
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const handoff = buildHandoff(plan, backing);
 const accepted = acceptHandoff(handoff);
 

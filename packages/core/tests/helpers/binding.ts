@@ -1,7 +1,7 @@
 // File: packages/core/tests/helpers/binding.ts
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -11,7 +11,7 @@ import {
   type ProcessorBinding,
 } from "../../src";
 
-import type { SharedBacking } from "../../src/backing/types";
+import type { PackedBacking } from "../../src/backing/types";
 import type {
   ControllerOptions,
   ProcessorOptions,
@@ -23,7 +23,7 @@ import type { SpecInput } from "../../src/spec/types";
 export interface BoundPair<S extends SpecInput> {
   readonly spec: S;
   readonly plan: Plan<S>;
-  readonly backing: SharedBacking;
+  readonly backing: PackedBacking;
   readonly handoff: Handoff<S>;
   readonly accepted: AcceptedHandoff<S>;
   readonly ctl: ControllerBinding<S>;
@@ -42,7 +42,7 @@ export function bindingsFromSpec<S extends SpecInput>(
   },
 ): BoundPair<S> {
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
   const handoff = buildHandoff(plan, backing);
   const accepted = acceptHandoff(handoff);
 

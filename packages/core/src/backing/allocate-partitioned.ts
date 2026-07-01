@@ -3,7 +3,7 @@
  * Allocates partitioned SharedArrayBuffer backings for a plan.
  *
  * @remarks
- * - Creates one SAB per plane based on planner byte lengths.
+ * - Creates one SharedArrayBuffer per plane based on planner byte lengths.
  * - Validates SharedArrayBuffer support and throws structured errors on failure.
  * - Used when planes must be isolated instead of stored contiguously.
  *
@@ -14,7 +14,7 @@ import { createError } from "../errors/error";
 import { throwEnvUnsupported } from "../errors/helpers";
 import { ALL_PLANES, type PlaneKey } from "../primitives/planes";
 
-import type { SharedPartitionedBacking } from "./types";
+import type { PartitionedBacking } from "./types";
 import type { Plan } from "../plan/types";
 import type { SpecInput } from "../spec/types";
 
@@ -23,7 +23,7 @@ import type { SpecInput } from "../spec/types";
  *
  * @typeParam S - Layout spec type
  * @param plan - Memory layout specification
- * @returns Backing with independent SAB per plane
+ * @returns Backing with independent SharedArrayBuffer storage per plane
  *
  * @throws {Error}
  * - If SharedArrayBuffer is unsupported in the environment
@@ -31,13 +31,13 @@ import type { SpecInput } from "../spec/types";
  *
  * @example
  * ```typescript
- * const backing = allocateSharedPartitioned(plan);
- * // backing.planes contains separate SABs for each plane
+ * const backing = allocatePartitioned(plan);
+ * // backing.planes contains separate SharedArrayBuffers for each plane
  * ```
  */
-export function allocateSharedPartitioned<S extends SpecInput>(
+export function allocatePartitioned<S extends SpecInput>(
   plan: Plan<S>,
-): SharedPartitionedBacking {
+): PartitionedBacking {
   if (typeof SharedArrayBuffer === "undefined") {
     throwEnvUnsupported(
       "SharedArrayBuffer",
@@ -63,7 +63,7 @@ export function allocateSharedPartitioned<S extends SpecInput>(
           plane,
           requestedBytes: bytes,
           allocatedBytes: 0,
-          where: "allocateSharedPartitioned",
+          where: "allocatePartitioned",
         },
         cause,
       );
@@ -71,7 +71,7 @@ export function allocateSharedPartitioned<S extends SpecInput>(
   }
 
   return {
-    kind: "shared-partitioned",
+    kind: "partitioned",
     planes: sabByPlane,
   };
 }

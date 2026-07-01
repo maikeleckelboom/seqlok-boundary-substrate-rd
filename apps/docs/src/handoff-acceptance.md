@@ -8,7 +8,7 @@ The owner side plans and allocates memory once:
 
 ```ts
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const handoff = buildHandoff(plan, backing);
 ```
 
@@ -16,14 +16,19 @@ The handoff is not a second spec and it is not a request for the receiver to re-
 
 ## Receiver Side
 
-The runtime side accepts the handoff before binding:
+When the handoff type is preserved, the runtime side can bind directly:
 
 ```ts
-const accepted = acceptHandoff(inbound);
-const processor = bindProcessor(accepted);
+const processor = bindProcessor(handoff);
 ```
 
 `acceptHandoff(...)` validates the protocol version, plan shape, packing mode, and backing sizes. It returns a smaller accepted capability containing the plan and backing descriptor a binding needs.
+
+Use it at unknown transport boundaries:
+
+```ts
+const processor = bindProcessor(acceptHandoff(message.data));
+```
 
 ## Verification
 
@@ -33,7 +38,7 @@ const processor = bindProcessor(accepted);
 
 | Packing | Meaning |
 | --- | --- |
-| `shared` | One contiguous `SharedArrayBuffer` backs all planes. |
-| `shared-partitioned` | One `SharedArrayBuffer` backs each logical plane. |
+| `packed` | One contiguous `SharedArrayBuffer` backs all planes. |
+| `partitioned` | One `SharedArrayBuffer` backs each logical plane. |
 
-WASM-oriented backing exists as an allocation path, but the current handoff protocol does not serialize `wasm-shared` backing.
+WASM-oriented backing exists as an allocation path, but the current handoff protocol does not serialize `wasm` backing.

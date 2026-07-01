@@ -213,9 +213,9 @@ function detectRuntime(): SupportReport["runtime"] {
   }
 
   const backingsAvailable = [
-    sharedArrayBuffer && atomics ? "shared" : undefined,
-    sharedArrayBuffer && atomics ? "shared-partitioned" : undefined,
-    wasmSharedMemory && atomics ? "wasm-shared" : undefined,
+    sharedArrayBuffer && atomics ? "packed" : undefined,
+    sharedArrayBuffer && atomics ? "partitioned" : undefined,
+    wasmSharedMemory && atomics ? "wasm" : undefined,
   ].filter((value): value is string => value !== undefined);
 
   return {

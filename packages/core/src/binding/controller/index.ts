@@ -6,22 +6,18 @@
  * - Bridges `defineSpec` + Plan + Backing into a typed `ControllerBinding`.
  * - Matches the explicit golden flow:
  *
- *   defineSpec → planLayout → allocateShared → buildHandoff →
- *   acceptHandoff → bindController / bindProcessor
+ *   defineSpec -> planLayout -> allocatePacked -> buildHandoff ->
+ *   acceptHandoff -> bindController / bindProcessor
  *
- * - hhe binding layer does not perform planning; callers are responsible
+ * - The binding layer does not perform planning; callers are responsible
  *   for computing the Plan via `planLayout(spec)` and allocating a Backing
  *   from that Plan.
  */
 
 import { controllerImpl } from "./impl";
-import { isSharedContext } from "../../context/guard";
 import { throwInvalidBindingArgs } from "../common/arg-errors";
 
-export type { SharedContext } from "../../context/types";
-
 import type { Backing } from "../../backing/types";
-import type { SharedContext } from "../../context/types";
 import type { Plan } from "../../plan/types";
 import type { SpecInput } from "../../spec/types";
 import type { ControllerBinding, ControllerOptions } from "../common/types";
@@ -31,28 +27,23 @@ import type { ControllerBinding, ControllerOptions } from "../common/types";
  *
  * @typeParam S - Spec type (inferred from `spec`)
  *
- * @param context
+ * @param spec - Authored spec used for param validation and enum decoding.
+ * @param plan - Planned memory layout for the spec.
+ * @param backing - Allocated backing compatible with the plan.
  * @param options - Optional controller configuration.
  *
  * @returns A typed controller binding for the given spec/plan/backing triple.
  *
  * @remarks
  * - This is the canonical controller API in `@exclave/boundary`.
- * - hhe caller is responsible for:
+ * - The caller is responsible for:
  *   - Computing the plan once via `planLayout(spec)`.
- *   - Allocating a compatible backing via `allocateShared(plan)` (or a
+ *   - Allocating a compatible backing via `allocatePacked(plan)` (or a
  *     different backing factory that consumes `Plan<S>`).
  *   - Passing the same `spec`/`plan`/`backing` triple here.
- * - hhe binding layer does not re-derive layouts; mismatched
+ * - The binding layer does not re-derive layouts; mismatched
  *   spec/plan/backing triples are a contract violation.
  */
-// 1) Host ergonomic: SharedContext
-export function bindController<const S extends SpecInput>(
-  context: SharedContext<S>,
-  options?: ControllerOptions,
-): ControllerBinding<S>;
-
-// 2) Host low-level: explicit triple (existing public surface)
 export function bindController<const S extends SpecInput>(
   spec: S,
   plan: Plan<S>,
@@ -60,30 +51,18 @@ export function bindController<const S extends SpecInput>(
   options?: ControllerOptions,
 ): ControllerBinding<S>;
 
-// 3) Implementation
 export function bindController<const S extends SpecInput>(
-  arg1: SharedContext<S> | S,
-  arg2?: ControllerOptions | Plan<S>,
-  arg3?: Backing,
-  arg4?: ControllerOptions,
+  spec: S,
+  plan?: Plan<S>,
+  backing?: Backing,
+  options?: ControllerOptions,
 ): ControllerBinding<S> {
-  if (isSharedContext<S>(arg1)) {
-    const ctx = arg1;
-    const options = arg2 as ControllerOptions | undefined;
-    const params = ctx.spec.params ?? {};
-    return controllerImpl(ctx.plan, ctx.backing, params, options);
-  }
-
-  const spec = arg1;
-  const plan = arg2 as Plan<S> | undefined;
   if (plan === undefined) {
     throwInvalidBindingArgs("bindController", "missingPlan");
   }
-  if (arg3 === undefined) {
+  if (backing === undefined) {
     throwInvalidBindingArgs("bindController", "missingBacking");
   }
-  const backing = arg3;
-  const options = arg4;
   const params = spec.params ?? {};
 
   return controllerImpl(plan, backing, params, options);

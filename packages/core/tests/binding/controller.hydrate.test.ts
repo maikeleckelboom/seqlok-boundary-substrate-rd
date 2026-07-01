@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   defineSpec,
   planLayout,
@@ -20,7 +20,7 @@ describe("Controller: Hydrate Validation", () => {
   const plan = planLayout(spec);
 
   it("validates hydrate inputs rigorously against spec mismatch", () => {
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctrl = bindController(spec, plan, backing);
 
     // 1. Unknown key check

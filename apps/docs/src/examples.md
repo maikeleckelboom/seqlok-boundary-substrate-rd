@@ -36,7 +36,7 @@ The authored shape is nested, but the canonical spec uses dot keys. Those keys a
 
 ```ts twoslash
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   defineSpec,
   planLayout,
@@ -57,7 +57,7 @@ const spec = defineSpec((api) => ({
 }));
 
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const controller = bindController(spec, plan, backing);
 
 controller.params.set("transport.enabled", true);
@@ -74,8 +74,7 @@ Scalar enum params use labels on the controller side. Processor and meter enum v
 
 ```ts twoslash
 import {
-  acceptHandoff,
-  allocateShared,
+  allocatePacked,
   bindProcessor,
   buildHandoff,
   defineSpec,
@@ -98,9 +97,9 @@ const spec = defineSpec((api) => ({
 }));
 
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
-const accepted = acceptHandoff(buildHandoff(plan, backing));
-const processor = bindProcessor(accepted);
+const backing = allocatePacked(plan);
+const handoff = buildHandoff(plan, backing);
+const processor = bindProcessor(handoff);
 
 processor.params.within((params) => {
   params.transport.enabled;
@@ -123,12 +122,11 @@ The nested aliases inside `within(...)` are read conveniences over the canonical
 
 ## Observer Snapshots
 
-Observers are read-only bindings for telemetry, inspection, or secondary consumers. They can bind from the same accepted handoff as the processor.
+Observers are read-only bindings for telemetry, inspection, or secondary consumers. They can bind from the same handoff as the processor.
 
 ```ts twoslash
 import {
-  acceptHandoff,
-  allocateShared,
+  allocatePacked,
   bindObserver,
   buildHandoff,
   defineSpec,
@@ -152,9 +150,9 @@ const spec = defineSpec((api) => ({
 }));
 
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
-const accepted = acceptHandoff(buildHandoff(plan, backing));
-const observer = bindObserver(accepted);
+const backing = allocatePacked(plan);
+const handoff = buildHandoff(plan, backing);
+const observer = bindObserver(handoff);
 
 const params = observer.params.snapshot([
   "transport.enabled",

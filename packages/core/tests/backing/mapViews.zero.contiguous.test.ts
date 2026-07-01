@@ -25,7 +25,7 @@ describe("Map Views (Contiguous Layout)", () => {
 
     const plan = planLayout(specFromPlaneBytes(planeSizes));
     const sab = new SharedArrayBuffer(plan.bytesTotal);
-    const v = mapViews(plan, { kind: "shared", sab });
+    const v = mapViews(plan, { kind: "packed", sab });
 
     // The boolean/byte plane should reflect the requested zero-length exactly
     expect(v.params.PB.byteLength).toBe(0);

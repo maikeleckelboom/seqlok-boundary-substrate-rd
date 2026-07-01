@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindObserver,
   bindProcessor,
@@ -38,7 +38,7 @@ describe("binding invalid argument errors", () => {
     const plan = planLayout(spec);
     let thrown: unknown;
     try {
-      bindProcessor(spec, plan);
+      bindProcessor(plan as never);
     } catch (error) {
       thrown = error;
     }
@@ -68,12 +68,12 @@ describe("binding invalid argument errors", () => {
     }
   });
 
-  it("still accepts explicit controller/processor/observer triples", () => {
+  it("accepts explicit controller triple, processor plan/backing, and observer triple", () => {
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
 
     const controller = bindController(spec, plan, backing);
-    const processor = bindProcessor(spec, plan, backing);
+    const processor = bindProcessor(plan, backing);
     const observer = bindObserver(spec, plan, backing);
 
     controller.params.set("gain", 0.75);

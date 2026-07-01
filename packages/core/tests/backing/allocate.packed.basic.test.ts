@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { allocateShared, planLayout } from "../../src";
+import { allocatePacked, planLayout } from "../../src";
 
 import type { SpecInput } from "../../src/spec/types";
 
@@ -25,9 +25,9 @@ function makeSpec(bytesPB: number, bytesPF32: number): SpecInput {
  */
 function expectBackingMatchesPlan(spec: SpecInput) {
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
 
-  expect(backing.kind).toBe("shared");
+  expect(backing.kind).toBe("packed");
   expect(backing.sab).toBeInstanceOf(SharedArrayBuffer);
   expect(backing.sab.byteLength).toBe(plan.bytesTotal);
 
@@ -60,9 +60,9 @@ describe("Allocate Shared (Contiguous Layout)", () => {
     expect(midPlan.bytesTotal).toBeGreaterThan(smallPlan.bytesTotal);
     expect(largePlan.bytesTotal).toBeGreaterThan(midPlan.bytesTotal);
 
-    const smallBacking = allocateShared(smallPlan);
-    const midBacking = allocateShared(midPlan);
-    const largeBacking = allocateShared(largePlan);
+    const smallBacking = allocatePacked(smallPlan);
+    const midBacking = allocatePacked(midPlan);
+    const largeBacking = allocatePacked(largePlan);
 
     expect(smallBacking.sab.byteLength).toBe(smallPlan.bytesTotal);
     expect(midBacking.sab.byteLength).toBe(midPlan.bytesTotal);

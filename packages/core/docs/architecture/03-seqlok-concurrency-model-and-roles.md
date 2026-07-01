@@ -64,13 +64,13 @@ Example (golden flow up to the Controller binding):
 import {
   defineSpec,
   planLayout,
-  allocateShared,
+  allocatePacked,
   bindController,
 } from "@exclave/boundary";
 
 const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 
 // Compatibility check: spec ↔ plan ↔ backing
 const controller = bindController(spec, plan, backing);
@@ -535,14 +535,14 @@ Golden-flow wiring for a typical browser + AudioWorklet setup.
 import {
   defineSpec,
   planLayout,
-  allocateShared,
+  allocatePacked,
   buildHandoff,
   bindController,
 } from "@exclave/boundary";
 
 const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 
 // Controller binding (spec + plan + backing cross-check)
 const controller = bindController(spec, plan, backing);
@@ -611,7 +611,7 @@ registerProcessor("my-processor", MyProcessor);
 
 This is the canonical **Controller ↔ Processor** Seqlok pipeline:
 
-- Main side: `defineSpec → planLayout → allocateShared → buildHandoff → bindController`
+- Main side: `defineSpec → planLayout → allocatePacked → buildHandoff → bindController`
 - Worklet side: `acceptHandoff → bindProcessor`
 
 All shared state is in planes under seqlock; all accesses go through bindings.

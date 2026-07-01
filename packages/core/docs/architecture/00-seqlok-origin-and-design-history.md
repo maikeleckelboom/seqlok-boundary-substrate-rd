@@ -153,7 +153,7 @@ The core is intentionally **not** object-oriented:
 
 - It's built from data types and pure-ish functions:
 
-  - `planLayout`, `allocateShared`, `buildHandoff`, `bindController`, `bindProcessor`, …
+  - `planLayout`, `allocatePacked`, `buildHandoff`, `bindController`, `bindProcessor`, …
 
 - Each function lives in a clear layer:
 

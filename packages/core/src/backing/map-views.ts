@@ -3,7 +3,8 @@
  * Maps backing memory into typed views for all planes and lock arrays.
  *
  * @remarks
- * - Interprets a Plan's layout over SharedArrayBuffer or WASM backings.
+ * - Interprets a Plan's layout over SharedArrayBuffer or WebAssembly.Memory
+ *   backings.
  * - Produces strongly typed views for param, meter and lock planes.
  * - Validates offsets, alignment and sizes with structured diagnostics.
  *
@@ -18,7 +19,7 @@ import {
   type PlaneKey,
 } from "../primitives/planes";
 
-import type { Backing, SharedBacking, WasmSharedBacking } from "./types";
+import type { Backing, PackedBacking, WasmBacking } from "./types";
 import type { Plan, PlaneByteLengths } from "../plan/types";
 import type { SpecInput } from "../spec/types";
 
@@ -26,7 +27,7 @@ import type { SpecInput } from "../spec/types";
  * Defines the memory layout for packed plane storage.
  *
  * @remarks
- * - Determines byte offsets for planes in contiguous/WASM backings
+ * - Determines byte offsets for planes in packed and wasm backings
  * - Changing requires a new version constant (V2, V3, etc.)
  * - Order affects memory locality and alignment
  *
@@ -110,7 +111,7 @@ function createZeroPlaneBases(): MutablePlaneBases {
  * @remarks
  * - Offsets are in bytes, not elements
  * - Follows {@link BACKING_PLANE_PACK_ORDER_V1} for layout
- * - Used by both contiguous and WASM backings
+ * - Used by both packed and wasm backings
  *
  * @param planes - Byte lengths for each plane
  * @returns Record mapping planes to their byte offsets
@@ -128,7 +129,7 @@ export function computeBackingPlaneBases(planes: PlaneByteLengths): PlaneBases {
 }
 
 /**
- * Creates typed array views for a packed backing (contiguous or WASM).
+ * Creates typed array views for a packed-layout backing.
  *
  * @typeParam S - Layout spec type
  * @param plan - Memory layout specification
@@ -139,7 +140,7 @@ export function computeBackingPlaneBases(planes: PlaneByteLengths): PlaneBases {
  */
 function mapPackedBacking<S extends SpecInput>(
   plan: Plan<S>,
-  backing: SharedBacking | WasmSharedBacking,
+  backing: PackedBacking | WasmBacking,
 ): MappedViews {
   const buf = getBackingBuffer(backing);
   const actualBytes = buf.byteLength;
@@ -214,9 +215,9 @@ function mapPackedBacking<S extends SpecInput>(
  */
 function mapPartitionedBacking<S extends SpecInput>(
   plan: Plan<S>,
-  partitionedBacking: Extract<Backing, { kind: "shared-partitioned" }>,
+  partitionedBacking: Extract<Backing, { kind: "partitioned" }>,
 ): MappedViews {
-  // In partitioned mode, each plane has its own SAB starting at offset 0
+  // In partitioned mode, each plane has its own SharedArrayBuffer at offset 0.
   const bases = createZeroPlaneBases();
 
   /**
@@ -306,10 +307,10 @@ export function mapViews<S extends SpecInput>(
   backing: Backing,
 ): MappedViews {
   switch (backing.kind) {
-    case "shared-partitioned":
+    case "partitioned":
       return mapPartitionedBacking(plan, backing);
-    case "shared":
-    case "wasm-shared":
+    case "packed":
+    case "wasm":
       return mapPackedBacking(plan, backing);
   }
 }

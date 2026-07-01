@@ -3,7 +3,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateSharedPartitioned,
+  allocatePartitioned,
   bindController,
   bindProcessor,
   buildHandoff,
@@ -32,16 +32,16 @@ describe("public quickstart: deck controller ↔ processor flow (partitioned bac
     const plan = planLayout(spec);
 
     // This is the behavioural bit we care about: full flow on partitioned backing.
-    const backing = allocateSharedPartitioned(plan);
+    const backing = allocatePartitioned(plan);
     const controller = bindController(spec, plan, backing);
 
     const handoff = buildHandoff(plan, backing);
     const accepted = acceptHandoff(handoff);
 
     // Sanity check: we really are exercising the partitioned variant.
-    expect(accepted.packing).toBe("shared-partitioned");
-    if (accepted.packing !== "shared-partitioned") {
-      throw new Error("Test invariant: expected shared-partitioned packing");
+    expect(accepted.packing).toBe("partitioned");
+    if (accepted.packing !== "partitioned") {
+      throw new Error("Test invariant: expected partitioned packing");
     }
 
     const processor = bindProcessor(accepted);

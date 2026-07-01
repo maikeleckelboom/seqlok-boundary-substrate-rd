@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   defineSpec,
   planLayout,
@@ -22,7 +22,7 @@ function createHarness() {
   }));
 
   const plan = planLayout(spec);
-  const backing = allocateShared(plan);
+  const backing = allocatePacked(plan);
   const ctl = bindController(spec, plan, backing);
   return { ctl };
 }

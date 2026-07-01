@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { getBackingBuffer } from "../../src/backing/buffers";
+import { getBackingBuffer, getPlaneBuffer } from "../../src/backing/buffers";
 import { planLayout } from "../../src/plan/layout";
 import { specFromPlaneBytes } from "../helpers/spec-from-bytes";
 
 import type {
   Backing,
-  SharedBacking,
-  SharedPartitionedBacking,
-  WasmSharedBacking,
+  PackedBacking,
+  PartitionedBacking,
+  WasmBacking,
 } from "../../src/backing/types";
 import type { PlaneByteLengths } from "../../src/plan/types";
 import type { PlaneKey } from "../../src/primitives/planes";
@@ -24,7 +24,7 @@ export function getBufferForPlane(
   backing: Backing,
   plane: PlaneKey,
 ): SharedArrayBuffer {
-  if (backing.kind === "shared-partitioned") {
+  if (backing.kind === "partitioned") {
     return backing.planes[plane];
   }
   return getBackingBuffer(backing);
@@ -47,7 +47,7 @@ describe("Backing Buffer Utilities: Retrieval Strategies", () => {
   it("retrieves the underlying SharedArrayBuffer for contiguous and WebAssembly backings", () => {
     // Case 1: Standard Contiguous Shared Backing
     const sab = new SharedArrayBuffer(plan.bytesTotal);
-    const cont: SharedBacking = { kind: "shared", sab };
+    const cont: PackedBacking = { kind: "packed", sab };
 
     expect(getBackingBuffer(cont)).toBe(sab);
 
@@ -58,15 +58,46 @@ describe("Backing Buffer Utilities: Retrieval Strategies", () => {
       initial: pages,
       maximum: pages,
     });
-    const wasm: WasmSharedBacking = { kind: "wasm-shared", memory };
+    const wasm: WasmBacking = { kind: "wasm", memory };
 
     expect(getBackingBuffer(wasm)).toBe(memory.buffer);
   });
 
+  it("retrieves plane buffers for packed, partitioned, and wasm backings", () => {
+    const packedSab = new SharedArrayBuffer(plan.bytesTotal);
+    const packed: PackedBacking = { kind: "packed", sab: packedSab };
+
+    const partitioned: PartitionedBacking = {
+      kind: "partitioned",
+      planes: {
+        PF32: new SharedArrayBuffer(plan.planes.PF32),
+        PI32: new SharedArrayBuffer(plan.planes.PI32),
+        PB: new SharedArrayBuffer(plan.planes.PB),
+        PU: new SharedArrayBuffer(plan.planes.PU),
+        MF32: new SharedArrayBuffer(plan.planes.MF32),
+        MF64: new SharedArrayBuffer(plan.planes.MF64),
+        MU32: new SharedArrayBuffer(plan.planes.MU32),
+        MU: new SharedArrayBuffer(plan.planes.MU),
+      },
+    };
+
+    const pages = Math.ceil(plan.bytesTotal / WASM_PAGE_SIZE);
+    const memory = new WebAssembly.Memory({
+      shared: true,
+      initial: pages,
+      maximum: pages,
+    });
+    const wasm: WasmBacking = { kind: "wasm", memory };
+
+    expect(getPlaneBuffer(packed, "PF32")).toBe(packedSab);
+    expect(getPlaneBuffer(partitioned, "PF32")).toBe(partitioned.planes.PF32);
+    expect(getPlaneBuffer(wasm, "PF32")).toBe(memory.buffer);
+  });
+
   it("throws on partitioned backings when accessing a single buffer, requiring plane-specific retrieval", () => {
     // Construct a partitioned backing where every plane has its own isolated buffer
-    const split: SharedPartitionedBacking = {
-      kind: "shared-partitioned",
+    const split: PartitionedBacking = {
+      kind: "partitioned",
       planes: {
         PF32: new SharedArrayBuffer(plan.planes.PF32),
         PI32: new SharedArrayBuffer(plan.planes.PI32),

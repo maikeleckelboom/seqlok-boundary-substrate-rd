@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { allocateSharedPartitioned } from "../../src/backing/allocate-shared-partitioned";
+import { allocatePartitioned } from "../../src/backing/allocate-partitioned";
 import { getBackingBuffer } from "../../src/backing/buffers";
 import { BoundaryError } from "../../src/errors/error";
 import { planLayout } from "../../src/plan/layout";
@@ -18,7 +18,7 @@ describe("getBackingBuffer: Partitioned Backing Restrictions", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateSharedPartitioned(plan);
+    const backing = allocatePartitioned(plan);
 
     // Assert that the generic error type is correct
     expect(() => getBackingBuffer(backing)).toThrow(BoundaryError);

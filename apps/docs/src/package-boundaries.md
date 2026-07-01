@@ -20,7 +20,7 @@ Do not import internal files from `packages/core/src`. Internal modules may chan
 
 - Spec authoring helpers and canonical spec types.
 - Deterministic layout planning.
-- Supported shared backing allocation.
+- Supported packed and partitioned backing allocation.
 - Handoff construction and acceptance.
 - Controller, processor, and observer bindings.
 - Enum helpers, structured errors, and diagnostics helpers.

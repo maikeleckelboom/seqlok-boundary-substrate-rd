@@ -3,13 +3,13 @@
  *
  * Verifies that:
  * - `assertSabSupportFromSummary` reports `env.unsupported` when SAB is unavailable.
- * - `allocateShared` also reports `env.unsupported` when SAB is unavailable.
- * - `allocateShared` succeeds when SAB is present.
+ * - `allocatePacked` also reports `env.unsupported` when SAB is unavailable.
+ * - `allocatePacked` succeeds when SAB is present.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 
-import { allocateShared } from "../../src/backing/allocate-shared";
+import { allocatePacked } from "../../src/backing/allocate-packed";
 import {
   assertSabSupportFromSummary,
   summarizeEnv,
@@ -20,7 +20,7 @@ import { defineSpec } from "../../src/spec/define";
 
 import type { BoundaryError } from "../../src/errors/error";
 
-describe("allocate-shared.env-guard", () => {
+describe("allocate-packed.env-guard", () => {
   let originalSharedArrayBuffer: typeof SharedArrayBuffer | undefined;
 
   beforeEach(() => {
@@ -52,11 +52,11 @@ describe("allocate-shared.env-guard", () => {
     expect(summary.hasSharedArrayBuffer).toBe(false);
 
     expect(() => {
-      assertSabSupportFromSummary("allocate-shared.env-guard.test", summary);
+      assertSabSupportFromSummary("allocate-packed.env-guard.test", summary);
     }).toThrow();
 
     try {
-      assertSabSupportFromSummary("allocate-shared.env-guard.test", summary);
+      assertSabSupportFromSummary("allocate-packed.env-guard.test", summary);
     } catch (error) {
       const boundaryError = error as BoundaryError<"env.unsupported">;
       expect(boundaryError.code).toBe("env.unsupported");
@@ -64,12 +64,12 @@ describe("allocate-shared.env-guard", () => {
       expect(boundaryError.details).toBeDefined();
       expect(boundaryError.details).toHaveProperty(
         "where",
-        "allocate-shared.env-guard.test",
+        "allocate-packed.env-guard.test",
       );
     }
   });
 
-  it("throws env.unsupported when allocateShared is called without SharedArrayBuffer", () => {
+  it("throws env.unsupported when allocatePacked is called without SharedArrayBuffer", () => {
     delete (globalThis as { SharedArrayBuffer?: typeof SharedArrayBuffer })
       .SharedArrayBuffer;
 
@@ -84,11 +84,11 @@ describe("allocate-shared.env-guard", () => {
     const plan = planLayout(spec);
 
     expect(() => {
-      allocateShared(plan);
+      allocatePacked(plan);
     }).toThrow();
 
     try {
-      allocateShared(plan);
+      allocatePacked(plan);
     } catch (error) {
       const boundaryError = error as BoundaryError<"env.unsupported">;
       expect(boundaryError.code).toBe("env.unsupported");
@@ -114,10 +114,10 @@ describe("allocate-shared.env-guard", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
 
     expect(backing).toBeDefined();
-    expect(backing.kind).toBe("shared");
+    expect(backing.kind).toBe("packed");
     expect(backing.sab).toBeInstanceOf(SharedArrayBuffer);
     expect(backing.sab.byteLength).toBeGreaterThan(0);
   });
@@ -137,11 +137,11 @@ describe("allocate-shared.env-guard", () => {
     const plan = planLayout(spec);
 
     expect(() => {
-      allocateShared(plan);
+      allocatePacked(plan);
     }).toThrow();
 
     try {
-      allocateShared(plan);
+      allocatePacked(plan);
     } catch (error) {
       const boundaryError = error as BoundaryError<"env.unsupported">;
       expect(boundaryError.code).toBe("env.unsupported");

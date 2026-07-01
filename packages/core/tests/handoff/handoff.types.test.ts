@@ -4,15 +4,15 @@ import { type buildHandoff } from "../../src/handoff/handoff";
 
 import type {
   Backing,
-  SharedBacking,
-  SharedPartitionedBacking,
-  WasmSharedBacking,
+  PackedBacking,
+  PartitionedBacking,
+  WasmBacking,
 } from "../../src/backing/types";
 import type { Plan } from "../../src/plan/types";
 import type { SpecInput } from "../../src/spec/types";
 
 describe("Handoff v1: Type Barrier Contracts", () => {
-  it("buildHandoff second parameter is the Backing union (shared | partitioned | wasm)", () => {
+  it("buildHandoff second parameter is the Backing union (packed | partitioned | wasm)", () => {
     type SecondParam = Parameters<typeof buildHandoff>[1];
     expectTypeOf<SecondParam>().toEqualTypeOf<Backing>();
     expectTypeOf<Backing>().toEqualTypeOf<SecondParam>();
@@ -21,9 +21,9 @@ describe("Handoff v1: Type Barrier Contracts", () => {
   it("buildHandoff accepts all Backing variants at the type level", () => {
     type SecondParam = Parameters<typeof buildHandoff>[1];
 
-    expectTypeOf<SharedBacking>().toExtend<SecondParam>();
-    expectTypeOf<SharedPartitionedBacking>().toExtend<SecondParam>();
-    expectTypeOf<WasmSharedBacking>().toExtend<SecondParam>();
+    expectTypeOf<PackedBacking>().toExtend<SecondParam>();
+    expectTypeOf<PartitionedBacking>().toExtend<SecondParam>();
+    expectTypeOf<WasmBacking>().toExtend<SecondParam>();
   });
 
   it("buildHandoff preserves the spec type parameter from the Plan", () => {

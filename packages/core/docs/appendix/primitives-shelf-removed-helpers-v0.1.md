@@ -9,7 +9,7 @@
 
 `@exclave/boundary` deliberately exposes **only** the high-level flow:
 
-- `defineSpec` → `planLayout` → `allocateShared` → `buildHandoff` / `acceptHandoff` → `bindController` /
+- `defineSpec` → `planLayout` → `allocatePacked` → `buildHandoff` / `acceptHandoff` → `bindController` /
   `bindProcessor`
 
 The `primitives` layer (planes, atomics, seqlock internals) is treated as **internal implementation**, not a public API.

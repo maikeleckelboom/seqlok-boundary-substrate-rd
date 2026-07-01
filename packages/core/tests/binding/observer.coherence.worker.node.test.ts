@@ -13,7 +13,7 @@ import { Worker } from "node:worker_threads";
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   bindObserver,
   defineSpec,
@@ -77,7 +77,7 @@ describe("Observer binding – cross-thread coherence", () => {
   it("sees finite, in-range values under concurrent processor publishes", async () => {
     const spec = createSpec();
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
 
     const planes = plan.planes as Record<PlaneKey, number>;
     const bases = computePlaneBases(planes);

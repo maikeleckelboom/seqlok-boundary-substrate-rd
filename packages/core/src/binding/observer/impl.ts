@@ -112,8 +112,8 @@ function assertBackingCapacity<S extends SpecInput>(
 ): void {
   const requiredTotal = plan.bytesTotal >>> 0;
 
-  // Single-buffer backings: shared + wasm-shared
-  if (backing.kind === "shared" || backing.kind === "wasm-shared") {
+  // Single-buffer backings: packed + wasm
+  if (backing.kind === "packed" || backing.kind === "wasm") {
     const buf = getBackingBuffer(backing);
     const actual = buf.byteLength >>> 0;
 
@@ -130,7 +130,8 @@ function assertBackingCapacity<S extends SpecInput>(
     return;
   }
 
-  // shared-partitioned: each plane has its own SAB; check per-plane capacity.
+  // Partitioned: each plane has its own SharedArrayBuffer; check per-plane
+  // capacity.
   for (const plane of ALL_PLANES) {
     const required = plan.planes[plane] >>> 0;
     const buf = getPlaneBuffer(backing, plane);
@@ -141,7 +142,7 @@ function assertBackingCapacity<S extends SpecInput>(
       "internal.assertionFailed",
       "Partitioned backing plane undersized for plan",
       {
-        where: "binding.observer.backing.shared-partitioned",
+        where: "binding.observer.backing.partitioned",
         detail: `plane=${plane}, required=${String(required)}, actual=${String(
           actual,
         )}`,
@@ -342,7 +343,7 @@ export function observerImpl<const S extends SpecInput>(
       assertNotDisposed(disposed, "observer.params.within");
       // Full snapshot view; uses the same raw machinery as snapshot().
       const snap = paramsSnapshotRaw() as ParamsSnapshot<S>;
-      return snap as unknown as ObserverWithinView<S>;
+      return snap as ObserverWithinView<S>;
     };
 
     const paramsWithin = makeWithin(

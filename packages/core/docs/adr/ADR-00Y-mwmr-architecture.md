@@ -21,7 +21,7 @@ Seqlok core provides rock-solid **SWMR** primitives with seqlock-based coherence
 ```txt
 defineSpec
 → planLayout
-→ allocateShared
+→ allocatePacked
 → buildHandoff
 → acceptHandoff
 → bind{Controller,Processor}

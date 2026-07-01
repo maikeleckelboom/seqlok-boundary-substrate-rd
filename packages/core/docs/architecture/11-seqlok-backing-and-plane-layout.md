@@ -20,7 +20,7 @@ There are two parallel ways to think about the pipeline.
 import {
   defineSpec,
   planLayout,
-  allocateShared,
+  allocatePacked,
   buildHandoff,
   acceptHandoff,
   bindController,
@@ -33,7 +33,7 @@ const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
 
 // Backing allocation: Plan → memory
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 
 // Agent-local controller binding (owner side)
 const controller = bindController(spec, plan, backing);
@@ -49,7 +49,7 @@ const processor = bindProcessor(accepted);
 
 From the user's point of view:
 
-- `allocateShared(plan)` gives you "the memory".
+- `allocatePacked(plan)` gives you "the memory".
 - `buildHandoff(plan, backing)` gives you "the envelope".
 - `bindController` / `bindProcessor` give you "the APIs".
 
@@ -114,7 +114,7 @@ Conventions:
 
 ### 2.2 Packing order & alignment invariants
 
-Contiguous and wasm-shared backings use a single ABI-controlled packing order, exposed as:
+Contiguous and wasm backings use a single ABI-controlled packing order, exposed as:
 
 ```ts
 export const BACKING_PLANE_PACK_ORDER_V1: readonly PlaneKey[] = [
@@ -203,8 +203,8 @@ The three main strategies:
 | Flavor             | `Backing.kind`         | Container                                    | Mapping                                  | Typical use case                               |
 | :----------------- | :--------------------- | :------------------------------------------- | :--------------------------------------- | :--------------------------------------------- |
 | Contiguous SAB     | `'shared'`             | **One** `SharedArrayBuffer`                  | All planes slice the same SAB            | Golden path: best locality, simplest handoff   |
-| Per-plane SAB      | `'shared-partitioned'` | **One SAB per plane**                        | Each plane has its own SAB               | Debugging, tooling, exotic memory governance   |
-| Shared Wasm memory | `'wasm-shared'`        | **One** `WebAssembly.Memory` (`shared:true`) | All views map over `memory.buffer` (SAB) | WASM DSP engines that own the main memory pool |
+| Per-plane SAB      | `'partitioned'` | **One SAB per plane**                        | Each plane has its own SAB               | Debugging, tooling, exotic memory governance   |
+| Shared Wasm memory | `'wasm'`        | **One** `WebAssembly.Memory` (`shared:true`) | All views map over `memory.buffer` (SAB) | WASM DSP engines that own the main memory pool |
 
 ### 3.1 Public backing entry points
 
@@ -212,19 +212,19 @@ Backings are created via the backing layer:
 
 ```ts
 // Contiguous SAB (golden path)
-declare function allocateShared<S extends SpecInput>(
+declare function allocatePacked<S extends SpecInput>(
   plan: Plan<S>,
-): SharedBacking;
+): PackedBacking;
 
 // Separate SAB per plane (advanced / tooling)
-declare function allocateSharedPartitioned<S extends SpecInput>(
+declare function allocatePartitioned<S extends SpecInput>(
   plan: Plan<S>,
-): SharedPartitionedBacking;
+): PartitionedBacking;
 
 // Shared WebAssembly.Memory (advanced)
-declare function allocateWasmShared<S extends SpecInput>(
+declare function allocateWasm<S extends SpecInput>(
   plan: Plan<S>,
-): WasmSharedBacking;
+): WasmBacking;
 ```
 
 Common properties:
@@ -237,13 +237,13 @@ Bindings work against the union `Backing` abstraction; they do not care which fl
 
 ---
 
-### 3.2 `kind: 'shared'` – contiguous SAB (golden path)
+### 3.2 `kind: 'packed'` – contiguous SAB (golden path)
 
-`allocateShared(plan)`:
+`allocatePacked(plan)`:
 
 - Allocates a single `SharedArrayBuffer(plan.bytesTotal)`.
 - Uses `computeBackingPlaneBases(plan.planes)` + `BACKING_PLANE_PACK_ORDER_V1` to establish per-plane base offsets.
-- Returns a `SharedBacking` the rest of the stack can use.
+- Returns a `PackedBacking` the rest of the stack can use.
 
 Benefits:
 
@@ -259,9 +259,9 @@ This is the **default** path used by examples and recommended for most use cases
 
 ---
 
-### 3.3 `kind: 'shared-partitioned'` – one SAB per plane
+### 3.3 `kind: 'partitioned'` – one SAB per plane
 
-`allocateSharedPartitioned(plan)`:
+`allocatePartitioned(plan)`:
 
 - Allocates one `SharedArrayBuffer` **per plane**:
 
@@ -273,7 +273,7 @@ This is the **default** path used by examples and recommended for most use cases
 
 - Each plane's base offset is implicitly `0` in its own SAB.
 
-- Returns a `SharedPartitionedBacking` that still implements the `Backing` union.
+- Returns a `PartitionedBacking` that still implements the `Backing` union.
 
 Reasons to use this:
 
@@ -293,9 +293,9 @@ Internally, `mapViews` treats this variant specially:
 
 ---
 
-### 3.4 `kind: 'wasm-shared'` – shared WebAssembly.Memory
+### 3.4 `kind: 'wasm'` – shared WebAssembly.Memory
 
-`allocateWasmShared(plan)`:
+`allocateWasm(plan)`:
 
 - Allocates a `WebAssembly.Memory` with `{ shared: true }`.
 - Verifies its `buffer` is a `SharedArrayBuffer` and large enough for `plan.bytesTotal`.
@@ -350,13 +350,13 @@ views.locks.MU; // same underlying view as meters.MU
 
 Internally:
 
-- For `kind: 'shared' | 'wasm-shared'`:
+- For `kind: 'packed' | 'wasm'`:
 
   - grab a single SAB via `getBackingBuffer(backing)`,
   - use `computeBackingPlaneBases(plan.planes)` to compute per-plane bases,
   - slice TypedArrays using those bases and `plan.planes[plane] / BYTES_PER_ELEM[plane]`.
 
-- For `kind: 'shared-partitioned'`:
+- For `kind: 'partitioned'`:
 
   - each plane uses its own SAB,
   - all bases are implicitly `0` for that plane,
@@ -409,7 +409,7 @@ Representative backing-domain errors:
 |:----------------------------------|:------------------------------|:----------------------------------------------------------|
 | Buffer too small for `bytesTotal` | `backing.allocUndersized`     | Broken allocator or mismatched Plan                       |
 | Wasm memory not shared            | `backing.wasmMemoryNotShared` | `WebAssembly.Memory` wasn't created with `shared:true`    |
-| Misuse of partitioned backing     | `internal.assertionFailed`    | e.g. calling `getBackingBuffer` on `'shared-partitioned'` |
+| Misuse of partitioned backing     | `internal.assertionFailed`    | e.g. calling `getBackingBuffer` on `'partitioned'` |
 
 These are treated as configuration/programming faults, not runtime "soft failures".
 
@@ -454,7 +454,7 @@ ABI v1 constrains:
 
 - Control planes `PU` and `MU` always contain a single seqlock pair `[LOCK, SEQ]`.
 
-- Backing flavor (`'shared'` vs `'shared-partitioned'` vs `'wasm-shared'`) is not observable through the binding APIs;
+- Backing flavor (`'shared'` vs `'partitioned'` vs `'wasm'`) is not observable through the binding APIs;
   only performance/tooling might care.
 
 As long as those invariants hold, backings are interchangeable from the perspective of:
@@ -481,7 +481,7 @@ Backing & plane layout code has a very specific personality:
 
 - **Zero allocations in the hot path.**
 
-  - `allocateShared*`, `allocateWasmShared`, `allocateSharedPartitioned`, and `mapViews` are setup-time only.
+  - `allocatePacked*`, `allocateWasm`, `allocatePartitioned`, and `mapViews` are setup-time only.
   - `params.within`, `meters.publish`, `meters.snapshot` never allocate backing or views.
 
 - **Strong invariants, loud failures.**

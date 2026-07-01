@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  allocateShared,
+  allocatePacked,
   bindController,
   defineSpec,
   planLayout,
@@ -17,7 +17,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
 
     expect(() => {
@@ -35,7 +35,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing, {
       params: { rangePolicy: "clamp" },
     });
@@ -61,7 +61,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing, {
       params: { rangePolicy: "reject" },
     });
@@ -81,7 +81,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
 
     // Intentional type mismatch: Int32Array provided for Float32 param
@@ -105,7 +105,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
 
     // Buffer is too small for the declared parameter size
@@ -126,7 +126,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
 
     const snap = ctl.params.snapshot();
@@ -142,7 +142,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
 
     // @ts-expect-error Testing runtime coercion of numeric truthy
@@ -163,7 +163,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
 
     expect(() => {
@@ -183,7 +183,7 @@ describe("Controller: Edge Cases & Validation", () => {
     }));
 
     const plan = planLayout(spec);
-    const backing = allocateShared(plan);
+    const backing = allocatePacked(plan);
     const ctl = bindController(spec, plan, backing);
 
     // Writing index 1 ('square') directly

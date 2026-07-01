@@ -34,19 +34,20 @@ spec.params["filter.cutoff"];
 ## Plan and Backing
 
 - `planLayout(spec)` returns a deterministic memory plan.
-- `allocateShared(plan)` creates single-buffer shared backing.
-- `allocateSharedPartitioned(plan)` creates per-plane shared backing.
-- `allocateWasmShared(plan, memory)` attaches compatible shared WebAssembly memory.
+- `allocatePacked(plan)` creates packed backing.
+- `allocatePartitioned(plan)` creates partitioned backing.
+- `allocateWasm(plan, memory)` attaches compatible shared WebAssembly memory.
 
 ## Binding
 
 - `bindController(spec, plan, backing, options?)`
-- `bindProcessor(source, options?)`
-- `bindProcessor(spec, plan, backing, options?)`
+- `bindProcessor(handoff, options?)`
+- `bindProcessor(acceptedHandoff, options?)`
+- `bindProcessor(plan, backing, options?)`
 - `bindObserver(source, options?)`
 - `bindObserver(spec, plan, backing, options?)`
 
-`source` can be a handoff, accepted handoff, or shared context where supported.
+Observer `source` can be a handoff or accepted handoff.
 
 Role-specific public types include `ControllerBinding`, `ProcessorBinding`, `ObserverBinding`, `ControllerParams`, `ProcessorParams`, `ObserverParams`, `ControllerMeters`, `ProcessorMeters`, `ObserverMeters`, `ParamValueFor`, `MeterValueFor`, `ScalarParamPatch`, `HydratePatch`, `ParamsSnapshot`, and `MetersSnapshot`.
 
@@ -123,7 +124,6 @@ Grouped publishing is for exact schema groups: `publishGroup("runtime", values)`
 ## Handoff
 
 - `buildHandoff(plan, backing)` creates a boundary artifact.
-- `buildHandoff(context)` creates a boundary artifact from a shared context.
 - `acceptHandoff(handoff)` validates and normalizes a received artifact.
 - `verifyHandoff(localPlan, remotePlan)` compares plan identity and byte length.
 

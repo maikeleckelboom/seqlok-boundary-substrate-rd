@@ -10,7 +10,8 @@ export type BindingInvalidArgsReason = "missingPlan" | "missingBacking";
 const SIGNATURES: Record<BindingFactoryFn, string> = {
   bindController: "bindController(spec, plan, backing, options?)",
   bindObserver: "bindObserver(spec, plan, backing, options?)",
-  bindProcessor: "bindProcessor(spec, plan, backing, options?)",
+  bindProcessor:
+    "bindProcessor(handoff, options?) or bindProcessor(plan, backing, options?)",
 };
 
 export function throwInvalidBindingArgs(

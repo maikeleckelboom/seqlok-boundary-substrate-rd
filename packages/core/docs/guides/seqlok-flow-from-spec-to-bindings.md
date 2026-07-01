@@ -42,9 +42,9 @@ Key invariant:
 import {
   defineSpec,
   planLayout,
-  allocateShared,
-  allocateSharedPartitioned,
-  allocateWasmShared,
+  allocatePacked,
+  allocatePartitioned,
+  allocateWasm,
   buildHandoff,
   receiveHandoff,
   bindController,
@@ -70,9 +70,9 @@ const plan = planLayout(spec);
 
 // ── Allocate ──────────────────────────────────────────────────────────────────
 
-const backing = allocateShared(plan);
-// or: const backing = allocateSharedPartitioned(plan);
-// or: const backing = allocateWasmShared(plan);
+const backing = allocatePacked(plan);
+// or: const backing = allocatePartitioned(plan);
+// or: const backing = allocateWasm(plan);
 
 // ── Handoff (host side) ──────────────────────────────────────────────────────
 
@@ -189,11 +189,11 @@ Responsibilities:
 Allocators:
 
 ```ts
-const contiguous = allocateShared(plan);             // single SAB, contiguous
+const contiguous = allocatePacked(plan);             // single SAB, contiguous
 // or
-const partitioned = allocateSharedPartitioned(plan); // one SAB per plane
+const partitioned = allocatePartitioned(plan); // one SAB per plane
 // or
-const wasmShared = allocateWasmShared(plan);         // backed by WebAssembly.Memory
+const wasmShared = allocateWasm(plan);         // backed by WebAssembly.Memory
 ```
 
 Error namespace: `backing.*`.
@@ -377,7 +377,7 @@ const spec = defineSpec(({ param, meter }) => ({
 }));
 
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const handoff = buildHandoff(plan, backing);
 
 const controller = bindController(spec, plan, backing);
@@ -463,7 +463,7 @@ is a valid Seqlok pipeline, even if the exact function names differ.
 3. **Final naming / semantics**
 
 * `defineSpec`, `planLayout`,
-  `allocateShared` / `allocateSharedPartitioned` / `allocateWasmShared`,
+  `allocatePacked` / `allocatePartitioned` / `allocateWasm`,
   `buildHandoff`, `receiveHandoff`,
   `bindController(spec, plan, backing)`, `bindProcessor(received)`.
 * No `setMany`, no `meters.sample`, no DSL defaults/steps/origins.

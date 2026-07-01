@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { backingByteLength } from "../../src/backing/allocate-shared";
+import { backingByteLength } from "../../src/backing/allocate-packed";
 
 describe("Backing Byte Length: Buffer Size Resolution", () => {
   it("returns the exact byte length for a standard contiguous SharedArrayBuffer backing", () => {
     const size = 256;
     const sab = new SharedArrayBuffer(size);
 
-    const len = backingByteLength({ kind: "shared", sab } as const);
+    const len = backingByteLength({ kind: "packed", sab } as const);
 
     expect(len).toBe(size);
   });
@@ -20,7 +20,7 @@ describe("Backing Byte Length: Buffer Size Resolution", () => {
       maximum: 1,
     });
 
-    const len = backingByteLength({ kind: "wasm-shared", memory } as const);
+    const len = backingByteLength({ kind: "wasm", memory } as const);
 
     // Expect exact match with the underlying buffer
     expect(len).toBe(memory.buffer.byteLength);

@@ -15,9 +15,9 @@ This file is about **shape and signatures**. For rationale and design notes, see
 
   - [`defineSpec`](#definespec)
   - [`planLayout`](#planlayout)
-  - [`allocateShared`](#allocateshared)
-  - [`allocateSharedPartitioned`](#allocatesharedpartitioned)
-  - [`allocateWasmShared`](#allocatewasmshared)
+  - [`allocatePacked`](#allocateshared)
+  - [`allocatePartitioned`](#allocatesharedpartitioned)
+  - [`allocateWasm`](#allocatewasmshared)
   - [`buildHandoff`](#buildhandoff)
   - [`acceptHandoff`](#accepthandoff)
   - [`verifyHandoff`](#verifyhandoff)
@@ -115,19 +115,19 @@ Plans are **pure**: they do not allocate memory and do not depend on runtime env
 
 ---
 
-### `allocateShared`
+### `allocatePacked`
 
 Allocate a single contiguous `SharedArrayBuffer` and slice into planes.
 
 ```ts
-declare function allocateShared<S extends SpecInput>(
+declare function allocatePacked<S extends SpecInput>(
   plan: Plan<S>,
-): SharedBacking;
+): PackedBacking;
 ```
 
 - Returns a backing object with:
 
-  - `kind: 'shared'`,
+  - `kind: 'packed'`,
   - `sab: SharedArrayBuffer`,
   - `byteLength: number`,
   - per-plane `TypedArray` views (PF32, PI32, PB, PU, MF32, MF64, MU32, MU).
@@ -141,19 +141,19 @@ This is the **golden path** for controller/processor/observer bindings.
 
 ---
 
-### `allocateSharedPartitioned`
+### `allocatePartitioned`
 
 Allocate separate SABs per plane (partitioned backing).
 
 ```ts
-declare function allocateSharedPartitioned<S extends SpecInput>(
+declare function allocatePartitioned<S extends SpecInput>(
   plan: Plan<S>,
-): SharedPartitionedBacking;
+): PartitionedBacking;
 ```
 
 - Returns a backing object with:
 
-  - `kind: 'shared-partitioned'`,
+  - `kind: 'partitioned'`,
   - one `SharedArrayBuffer` per plane,
   - each plane sized according to `plan.planes[plane]`.
 
@@ -165,23 +165,23 @@ declare function allocateSharedPartitioned<S extends SpecInput>(
 
 - **Supported by handoff**:
 
-  - `buildHandoff(plan, backing)` accepts `SharedPartitionedBacking`,
-  - `Handoff<S>` encodes `packing: 'shared-partitioned'`,
+  - `buildHandoff(plan, backing)` accepts `PartitionedBacking`,
+  - `Handoff<S>` encodes `packing: 'partitioned'`,
   - `acceptHandoff` reconstructs a `AcceptedHandoff<S>` with a partitioned backing descriptor.
 
 Bindings do not care whether backing is contiguous vs partitioned; the param/meter API is identical.
 
 ---
 
-### `allocateWasmShared`
+### `allocateWasm`
 
 Use a shared `WebAssembly.Memory` as backing (advanced).
 
 ```ts
-declare function allocateWasmShared<S extends SpecInput>(
+declare function allocateWasm<S extends SpecInput>(
   plan: Plan<S>,
   memory: WebAssembly.Memory,
-): WasmSharedBacking;
+): WasmBacking;
 ```
 
 - Uses a **shared** `WebAssembly.Memory` instead of JS `SharedArrayBuffer`.
@@ -195,7 +195,7 @@ declare function allocateWasmShared<S extends SpecInput>(
 
 - **Current limitation (v0.2.0)**:
 
-  - `buildHandoff(plan, backing)` does **not** support `kind: 'wasm-shared'`,
+  - `buildHandoff(plan, backing)` does **not** support `kind: 'wasm'`,
   - passing a Wasm backing to `buildHandoff` throws `handoff.invalidArtifact`.
 
 You can still bind directly to a Wasm backing via `bindController` / `bindProcessor` if you manage agent boundaries yourself.
@@ -209,18 +209,18 @@ Create a serializable handoff payload (owner/main → worker/secondary).
 ```ts
 declare function buildHandoff<S extends SpecInput>(
   plan: Plan<S>,
-  backing: Backing, // shared or shared-partitioned
+  backing: Backing, // shared or partitioned
 ): Handoff<S>;
 ```
 
 - Accepts:
 
-  - `SharedBacking` (`kind: 'shared'`),
-  - `SharedPartitionedBacking` (`kind: 'shared-partitioned'`).
+  - `PackedBacking` (`kind: 'packed'`),
+  - `PartitionedBacking` (`kind: 'partitioned'`).
 
 - Rejects:
 
-  - `kind: 'wasm-shared'` backings with `handoff.invalidArtifact`.
+  - `kind: 'wasm'` backings with `handoff.invalidArtifact`.
 
 - Packs:
 
@@ -234,13 +234,13 @@ Conceptually:
 type Handoff<S extends SpecInput = SpecInput> =
   | {
       version: 1;
-      packing: "shared";
+      packing: "packed";
       backingDescriptor: { sab: SharedArrayBuffer };
       plan: Plan<S>;
     }
   | {
       version: 1;
-      packing: "shared-partitioned";
+      packing: "partitioned";
       backingDescriptor: { planes: Record<PlaneKey, SharedArrayBuffer> };
       plan: Plan<S>;
     };
@@ -264,7 +264,7 @@ declare function acceptHandoff<S extends SpecInput>(
 - Validates:
 
   - handoff schema version,
-  - packing kind (`'shared'` / `'shared-partitioned'`),
+  - packing kind (`'shared'` / `'partitioned'`),
   - SAB presence and byte lengths.
 
 - Materializes new typed views over the SAB(s):
@@ -293,7 +293,7 @@ Usage:
 // main thread
 const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 const handoff = buildHandoff(plan, backing);
 
 // worker
@@ -352,7 +352,7 @@ Typical usage:
 import {
   defineSpec,
   planLayout,
-  allocateShared,
+  allocatePacked,
   buildHandoff,
   bindController,
   type Handoff,
@@ -360,7 +360,7 @@ import {
 
 export const spec = defineSpec(/* ... */);
 const plan = planLayout(spec);
-const backing = allocateShared(plan);
+const backing = allocatePacked(plan);
 
 export const handoff: Handoff<typeof spec> = buildHandoff(plan, backing);
 
@@ -918,7 +918,7 @@ export type Handoff<S extends SpecInput = SpecInput> = unknown;
  */
 export interface AcceptedHandoff<S extends SpecInput = SpecInput> {
   readonly plan: Plan<S>;
-  readonly backing: Backing; // shared or shared-partitioned
+  readonly backing: Backing; // shared or partitioned
 }
 ```
 
@@ -927,29 +927,29 @@ export interface AcceptedHandoff<S extends SpecInput = SpecInput> {
 ### Backing types
 
 ```ts
-export interface SharedBacking {
-  readonly kind: "shared";
+export interface PackedBacking {
+  readonly kind: "packed";
   readonly sab: SharedArrayBuffer;
   readonly byteLength: number;
 }
 
-export interface SharedPartitionedBacking {
-  readonly kind: "shared-partitioned";
+export interface PartitionedBacking {
+  readonly kind: "partitioned";
   readonly planes: Record<PlaneKey, SharedArrayBuffer>;
 }
 
-export interface WasmSharedBacking {
-  readonly kind: "wasm-shared";
+export interface WasmBacking {
+  readonly kind: "wasm";
   readonly memory: WebAssembly.Memory;
 }
 
 export type Backing =
-  | SharedBacking
-  | SharedPartitionedBacking
-  | WasmSharedBacking;
+  | PackedBacking
+  | PartitionedBacking
+  | WasmBacking;
 ```
 
-`Plan<S>`, `SharedBacking`, `SharedPartitionedBacking`, and `WasmSharedBacking` are exported generics over `SpecInput` and validated by type tests.
+`Plan<S>`, `PackedBacking`, `PartitionedBacking`, and `WasmBacking` are exported generics over `SpecInput` and validated by type tests.
 
 ---
 

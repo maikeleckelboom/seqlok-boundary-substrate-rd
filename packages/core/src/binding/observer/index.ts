@@ -1,5 +1,4 @@
 import { observerImpl } from "./impl";
-import { isSharedContext } from "../../context/guard";
 import { acceptHandoff } from "../../handoff/handoff";
 import { throwInvalidBindingArgs } from "../common/arg-errors";
 import {
@@ -9,7 +8,6 @@ import {
 } from "../common/handoff-source";
 
 import type { Backing } from "../../backing/types";
-import type { SharedContext } from "../../context/types";
 import type { Handoff, AcceptedHandoff } from "../../handoff/types";
 import type { Plan } from "../../plan/types";
 import type { ParamDef, SpecInput } from "../../spec/types";
@@ -18,7 +16,7 @@ import type { ObserverBinding, ObserverOptions } from "../common/types";
 const EMPTY_PARAM_DEFS: Readonly<Record<string, ParamDef>> = {};
 
 export function bindObserver<const S extends SpecInput>(
-  source: Handoff<S> | AcceptedHandoff<S> | SharedContext<S>,
+  source: Handoff<S> | AcceptedHandoff<S>,
   options?: ObserverOptions,
 ): ObserverBinding<S>;
 
@@ -30,7 +28,7 @@ export function bindObserver<const S extends SpecInput>(
 ): ObserverBinding<S>;
 
 export function bindObserver<const S extends SpecInput>(
-  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
+  arg1: Handoff<S> | AcceptedHandoff<S> | S,
   arg2?: ObserverOptions | Plan<S>,
   arg3?: Backing,
   arg4?: ObserverOptions,
@@ -41,7 +39,7 @@ export function bindObserver<const S extends SpecInput>(
 }
 
 function normalizeSource<const S extends SpecInput>(
-  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
+  arg1: Handoff<S> | AcceptedHandoff<S> | S,
   arg2?: ObserverOptions | Plan<S>,
   arg3?: Backing,
 ): {
@@ -55,14 +53,6 @@ function normalizeSource<const S extends SpecInput>(
 
   if (isAcceptedHandoff<S>(arg1)) {
     return normalizeFromAccepted(arg1);
-  }
-
-  if (isSharedContext<S>(arg1)) {
-    return {
-      plan: arg1.plan,
-      backing: arg1.backing,
-      defs: arg1.spec.params ?? EMPTY_PARAM_DEFS,
-    };
   }
 
   const spec = arg1;
@@ -98,15 +88,11 @@ function normalizeFromAccepted<const S extends SpecInput>(
 }
 
 function getOptions<const S extends SpecInput>(
-  arg1: Handoff<S> | AcceptedHandoff<S> | SharedContext<S> | S,
+  arg1: Handoff<S> | AcceptedHandoff<S> | S,
   arg2?: ObserverOptions | Plan<S>,
   arg4?: ObserverOptions,
 ): ObserverOptions | undefined {
-  if (
-    isHandoff<S>(arg1) ||
-    isAcceptedHandoff<S>(arg1) ||
-    isSharedContext<S>(arg1)
-  ) {
+  if (isHandoff<S>(arg1) || isAcceptedHandoff<S>(arg1)) {
     return arg2 as ObserverOptions | undefined;
   }
 
